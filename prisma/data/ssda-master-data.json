@@ -1,0 +1,1185 @@
+{
+  "source": "SSDA ERP Master Data Pack (24 Oct 2026) — Google Sheet 1fXW94yVUqUlbCDdgjeEfWyE01fRp68Jl",
+  "services": [
+    {
+      "code": "SRV-01",
+      "name": "Internal Audit",
+      "department": "Audit",
+      "description": "Review of internal controls, vouching, process & compliance checks, stock/fixed-asset verification, audit observations and management report.",
+      "frequency": "Monthly / Quarterly / Annual",
+      "deliverable": "Internal audit report, observation tracker",
+      "billingBasis": "Per assignment / Annual fee",
+      "confirmed": true
+    },
+    {
+      "code": "SRV-02",
+      "name": "Accounts Outsourcing (Bookkeeping)",
+      "department": "Accounts Outsourcing",
+      "description": "Day-to-day accounting for clients: bank, purchase, sales and expense posting, journal entries, reconciliations, ledger scrutiny, MIS and final accounts (work types listed below).",
+      "frequency": "Daily / Monthly",
+      "deliverable": "Updated books, reconciliations, MIS, final accounts",
+      "billingBasis": "Monthly retainer",
+      "confirmed": true
+    },
+    {
+      "code": "SRV-03",
+      "name": "GST Return Filing",
+      "department": "GST",
+      "description": "GSTR-1 / IFF, GSTR-3B, PMT-06, CMP-08, GSTR-4, GSTR-7/8, ITC reconciliation with GSTR-2B / IMS, e-invoice & e-way bill support.",
+      "frequency": "Monthly / Quarterly",
+      "deliverable": "Filed returns, ARN, challans, reconciliation",
+      "billingBasis": "Monthly retainer",
+      "confirmed": true
+    },
+    {
+      "code": "SRV-04",
+      "name": "Income Tax Return Filing",
+      "department": "Income Tax",
+      "description": "ITR preparation & filing for individuals, HUF, firms, LLPs, companies, trusts; computation; advance-tax working; 26AS/AIS reconciliation.",
+      "frequency": "Annual (+ quarterly advance tax)",
+      "deliverable": "ITR acknowledgement, computation",
+      "billingBasis": "Per return / Annual",
+      "confirmed": true
+    },
+    {
+      "code": "SRV-05",
+      "name": "TDS / TCS Return Filing",
+      "department": "TDS",
+      "description": "Monthly TDS/TCS working & challan deposit, quarterly statements (Form 138/140/143/144, earlier 24Q/26Q/27EQ/27Q), Form 130/131 (earlier 16/16A), corrections, lower-deduction applications.",
+      "frequency": "Monthly / Quarterly",
+      "deliverable": "Challans, filed statements, certificates",
+      "billingBasis": "Monthly / Quarterly retainer",
+      "confirmed": true
+    },
+    {
+      "code": "SRV-06",
+      "name": "Digital Signature Certificate (DSC)",
+      "department": "Registrations & Certificates",
+      "description": "New / renewal Class 3 DSC (individual & organisation; signing / encryption), token supply and video/Aadhaar verification support.",
+      "frequency": "One-time (validity 1–3 years)",
+      "deliverable": "DSC token, renewal reminder",
+      "billingBasis": "Per DSC",
+      "confirmed": true
+    },
+    {
+      "code": "SRV-07",
+      "name": "PAN Application / Correction",
+      "department": "Registrations & Certificates",
+      "description": "New PAN, PAN correction / reprint, PAN–Aadhaar linking.",
+      "frequency": "One-time",
+      "deliverable": "PAN acknowledgement / e-PAN",
+      "billingBasis": "Per application",
+      "confirmed": true
+    },
+    {
+      "code": "SRV-08",
+      "name": "TAN Application / Correction",
+      "department": "Registrations & Certificates",
+      "description": "New TAN and TAN correction for deductors.",
+      "frequency": "One-time",
+      "deliverable": "TAN allotment letter",
+      "billingBasis": "Per application",
+      "confirmed": true
+    },
+    {
+      "code": "SRV-09",
+      "name": "GST Audit & Annual Return",
+      "department": "GST",
+      "description": "GSTR-9 annual return, GSTR-9C reconciliation statement, books vs GST reconciliation, support in departmental GST audit (ADT-01/02) and notices.",
+      "frequency": "Annual",
+      "deliverable": "GSTR-9 / 9C, reconciliation report",
+      "billingBasis": "Per assignment",
+      "confirmed": true
+    },
+    {
+      "code": "SRV-10",
+      "name": "Tax Consultancy Services",
+      "department": "Income Tax / GST",
+      "description": "Advisory and opinions, tax planning, replies to notices, assessments and appeals support, representation before department.",
+      "frequency": "As required",
+      "deliverable": "Opinion / reply / representation",
+      "billingBasis": "Per assignment / hourly",
+      "confirmed": true
+    },
+    {
+      "code": "SRV-11",
+      "name": "ROC / MCA Compliance",
+      "department": "ROC",
+      "description": "Annual filings (AOC-4, MGT-7/7A, LLP Form 8/11), DIR-3 KYC, ADT-1, DPT-3, MSME-1, event-based forms, minutes and registers.",
+      "frequency": "Annual / Event-based",
+      "deliverable": "MCA SRNs, filed forms",
+      "billingBasis": "Annual / Per form",
+      "confirmed": false
+    },
+    {
+      "code": "SRV-12",
+      "name": "ESI & EPF (Payroll Compliance)",
+      "department": "ESI / EPF",
+      "description": "Registration, monthly ECR / contribution filing, employee joining / exit, UAN / IP number generation.",
+      "frequency": "Monthly",
+      "deliverable": "ECR, challans, contribution reports",
+      "billingBasis": "Monthly retainer",
+      "confirmed": false
+    },
+    {
+      "code": "SRV-13",
+      "name": "MSME (Udyam) Registration & Compliance",
+      "department": "MSME",
+      "description": "Udyam registration / update, MSME-1 half-yearly return, 45-day payment monitoring for creditors.",
+      "frequency": "One-time / Half-yearly",
+      "deliverable": "Udyam certificate, MSME-1 SRN",
+      "billingBasis": "Per assignment",
+      "confirmed": false
+    }
+  ],
+  "workTypes": [
+    {
+      "code": "WT-01",
+      "name": "Bank Statement Posting"
+    },
+    {
+      "code": "WT-02",
+      "name": "Purchase Invoice Posting"
+    },
+    {
+      "code": "WT-03",
+      "name": "Sale Invoice Posting"
+    },
+    {
+      "code": "WT-04",
+      "name": "Expense Posting"
+    },
+    {
+      "code": "WT-05",
+      "name": "Journal / Adjustment Entries"
+    },
+    {
+      "code": "WT-06",
+      "name": "Bank Reconciliation"
+    },
+    {
+      "code": "WT-07",
+      "name": "Credit Card Reconciliation"
+    },
+    {
+      "code": "WT-08",
+      "name": "Creditors Reconciliation"
+    },
+    {
+      "code": "WT-09",
+      "name": "Debtors Reconciliation"
+    },
+    {
+      "code": "WT-10",
+      "name": "Data Reconciliation"
+    },
+    {
+      "code": "WT-11",
+      "name": "Ledger Scrutiny / Clean-up"
+    },
+    {
+      "code": "WT-12",
+      "name": "Making of Accounts / Final Accounts"
+    },
+    {
+      "code": "WT-13",
+      "name": "GST Work"
+    },
+    {
+      "code": "WT-14",
+      "name": "TDS Work"
+    },
+    {
+      "code": "WT-15",
+      "name": "Balance Confirmation"
+    },
+    {
+      "code": "WT-16",
+      "name": "Client Meeting / Discussion"
+    },
+    {
+      "code": "WT-17",
+      "name": "Other"
+    }
+  ],
+  "departments": [
+    {
+      "code": "DEP-01",
+      "name": "GST",
+      "scope": "GST registration, returns, reconciliation, annual return / 9C, GST audit, notices",
+      "confirmed": true
+    },
+    {
+      "code": "DEP-02",
+      "name": "TDS",
+      "scope": "TDS/TCS deduction working, deposit, quarterly statements, certificates, corrections",
+      "confirmed": true
+    },
+    {
+      "code": "DEP-03",
+      "name": "Income Tax",
+      "scope": "ITR filing, advance tax, tax audit support, notices, assessments, consultancy",
+      "confirmed": true
+    },
+    {
+      "code": "DEP-04",
+      "name": "ROC",
+      "scope": "MCA / ROC annual and event-based filings for companies & LLPs, DIR-3 KYC",
+      "confirmed": true
+    },
+    {
+      "code": "DEP-05",
+      "name": "ESI",
+      "scope": "ESIC registration, monthly contributions, employee IP numbers",
+      "confirmed": true
+    },
+    {
+      "code": "DEP-06",
+      "name": "EPF",
+      "scope": "EPFO registration, monthly ECR, UAN management, claims support",
+      "confirmed": true
+    },
+    {
+      "code": "DEP-07",
+      "name": "MSME",
+      "scope": "Udyam registration / update, MSME-1, MSME payment (45-day) monitoring",
+      "confirmed": true
+    },
+    {
+      "code": "DEP-08",
+      "name": "Accounts Outsourcing",
+      "scope": "Bookkeeping, reconciliations, MIS, final accounts",
+      "confirmed": false
+    },
+    {
+      "code": "DEP-09",
+      "name": "Audit",
+      "scope": "Internal audit assignments",
+      "confirmed": false
+    },
+    {
+      "code": "DEP-10",
+      "name": "Registrations & Certificates",
+      "scope": "DSC, PAN, TAN",
+      "confirmed": false
+    }
+  ],
+  "businessNatures": [
+    {
+      "code": "NB-01",
+      "label": "Trading",
+      "description": "Buying and selling goods without processing"
+    },
+    {
+      "code": "NB-02",
+      "label": "Manufacturing",
+      "description": "Converting raw material into finished goods"
+    },
+    {
+      "code": "NB-03",
+      "label": "Service Provider",
+      "description": "Providing services (consulting, IT, maintenance etc.)"
+    },
+    {
+      "code": "NB-04",
+      "label": "Renting – Immovable Property",
+      "description": "Letting out commercial / residential property"
+    },
+    {
+      "code": "NB-05",
+      "label": "Renting – Movable Assets",
+      "description": "Hiring out vehicles, machinery, equipment"
+    },
+    {
+      "code": "NB-06",
+      "label": "Wholesaler / Distributor",
+      "description": "Bulk sales to retailers / businesses (B2B)"
+    },
+    {
+      "code": "NB-07",
+      "label": "Retailer",
+      "description": "Sales to end consumers (B2C)"
+    },
+    {
+      "code": "NB-08",
+      "label": "Job Worker",
+      "description": "Processing goods belonging to another person"
+    },
+    {
+      "code": "NB-09",
+      "label": "Works Contractor",
+      "description": "Construction / installation contracts"
+    },
+    {
+      "code": "NB-10",
+      "label": "Importer",
+      "description": "Imports goods / services"
+    },
+    {
+      "code": "NB-11",
+      "label": "Exporter",
+      "description": "Exports goods / services"
+    },
+    {
+      "code": "NB-12",
+      "label": "E-commerce Seller",
+      "description": "Sells through online marketplaces"
+    },
+    {
+      "code": "NB-13",
+      "label": "E-commerce Operator",
+      "description": "Runs an online marketplace"
+    },
+    {
+      "code": "NB-14",
+      "label": "Professional",
+      "description": "CA, doctor, lawyer, architect, engineer etc."
+    },
+    {
+      "code": "NB-15",
+      "label": "Commission Agent / Broker",
+      "description": "Earns commission on sales / purchases"
+    },
+    {
+      "code": "NB-16",
+      "label": "Transporter / GTA",
+      "description": "Goods transport agency, logistics"
+    },
+    {
+      "code": "NB-17",
+      "label": "Restaurant / Hospitality",
+      "description": "Restaurants, hotels, caterers"
+    },
+    {
+      "code": "NB-18",
+      "label": "Healthcare",
+      "description": "Hospitals, clinics, pharmacies, diagnostics"
+    },
+    {
+      "code": "NB-19",
+      "label": "Education",
+      "description": "Schools, coaching, training institutes"
+    },
+    {
+      "code": "NB-20",
+      "label": "Real Estate / Builder",
+      "description": "Development and sale of property"
+    },
+    {
+      "code": "NB-21",
+      "label": "Financial Services / NBFC",
+      "description": "Lending, investment, insurance agency"
+    },
+    {
+      "code": "NB-22",
+      "label": "NGO / Charitable Trust",
+      "description": "Non-profit activities"
+    },
+    {
+      "code": "NB-23",
+      "label": "Agriculture / Farming",
+      "description": "Farms, dairy, agricultural produce"
+    },
+    {
+      "code": "NB-24",
+      "label": "Software / IT Services",
+      "description": "Software development, IT support"
+    },
+    {
+      "code": "NB-25",
+      "label": "Franchisee",
+      "description": "Operates under a brand franchise"
+    },
+    {
+      "code": "NB-26",
+      "label": "Freelancer / Consultant",
+      "description": "Individual service provider"
+    },
+    {
+      "code": "NB-27",
+      "label": "Investment / Holding",
+      "description": "Holds investments, earns dividend / interest"
+    },
+    {
+      "code": "NB-28",
+      "label": "Media / Advertising",
+      "description": "Advertising, printing, digital media"
+    },
+    {
+      "code": "NB-29",
+      "label": "Mixed / Multiple",
+      "description": "More than one nature of business"
+    }
+  ],
+  "classifications": [
+    {
+      "basis": "GST_STATUS",
+      "code": "GST-01",
+      "label": "Regular – Monthly",
+      "description": "Files GSTR-1 & 3B monthly"
+    },
+    {
+      "basis": "GST_STATUS",
+      "code": "GST-02",
+      "label": "Regular – QRMP",
+      "description": "Quarterly returns, monthly payment"
+    },
+    {
+      "basis": "GST_STATUS",
+      "code": "GST-03",
+      "label": "Composition",
+      "description": "CMP-08 & GSTR-4"
+    },
+    {
+      "basis": "GST_STATUS",
+      "code": "GST-04",
+      "label": "Unregistered",
+      "description": "Below threshold / exempt supplies"
+    },
+    {
+      "basis": "GST_STATUS",
+      "code": "GST-05",
+      "label": "Exporter / SEZ",
+      "description": "LUT, refunds"
+    },
+    {
+      "basis": "GST_STATUS",
+      "code": "GST-06",
+      "label": "TDS / TCS registration only",
+      "description": "Govt. deductors / e-commerce operators"
+    },
+    {
+      "basis": "BILLING_BASIS",
+      "code": "BIL-01",
+      "label": "Monthly Retainer",
+      "description": "Fixed monthly fee"
+    },
+    {
+      "basis": "BILLING_BASIS",
+      "code": "BIL-02",
+      "label": "Quarterly",
+      "description": "Fixed quarterly fee"
+    },
+    {
+      "basis": "BILLING_BASIS",
+      "code": "BIL-03",
+      "label": "Annual",
+      "description": "Yearly engagement (e.g., ITR, audit)"
+    },
+    {
+      "basis": "BILLING_BASIS",
+      "code": "BIL-04",
+      "label": "Per Assignment",
+      "description": "One-time work (DSC, PAN, notice reply)"
+    },
+    {
+      "basis": "BILLING_BASIS",
+      "code": "BIL-05",
+      "label": "Per Visit / Hourly",
+      "description": "Billed on visits or hours"
+    },
+    {
+      "basis": "PLACE_OF_WORK",
+      "code": "PLC-01",
+      "label": "Client Office (Onsite)",
+      "description": "Staff deputed at client premises"
+    },
+    {
+      "basis": "PLACE_OF_WORK",
+      "code": "PLC-02",
+      "label": "Our Office",
+      "description": "Work done at Naraina office"
+    },
+    {
+      "basis": "PLACE_OF_WORK",
+      "code": "PLC-03",
+      "label": "Work from Home",
+      "description": null
+    },
+    {
+      "basis": "PLACE_OF_WORK",
+      "code": "PLC-04",
+      "label": "Mixed / Other",
+      "description": null
+    },
+    {
+      "basis": "TURNOVER",
+      "code": "TO-01",
+      "label": "Up to ₹40 lakh",
+      "description": "Generally below GST threshold for goods (₹20 lakh services)"
+    },
+    {
+      "basis": "TURNOVER",
+      "code": "TO-02",
+      "label": "₹40 lakh – ₹2 crore",
+      "description": "GSTR-9 optional"
+    },
+    {
+      "basis": "TURNOVER",
+      "code": "TO-03",
+      "label": "₹2 crore – ₹5 crore",
+      "description": "GSTR-9 mandatory; QRMP allowed"
+    },
+    {
+      "basis": "TURNOVER",
+      "code": "TO-04",
+      "label": "₹5 crore – ₹10 crore",
+      "description": "GSTR-9C, e-invoice, monthly returns"
+    },
+    {
+      "basis": "TURNOVER",
+      "code": "TO-05",
+      "label": "Above ₹10 crore",
+      "description": "E-invoice 30-day reporting limit; tax audit likely"
+    },
+    {
+      "basis": "PRIORITY",
+      "code": "PRI-01",
+      "label": "A – Key client",
+      "description": "High fee / daily onsite"
+    },
+    {
+      "basis": "PRIORITY",
+      "code": "PRI-02",
+      "label": "B – Regular client",
+      "description": "Monthly work"
+    },
+    {
+      "basis": "PRIORITY",
+      "code": "PRI-03",
+      "label": "C – Occasional",
+      "description": "One-time / annual"
+    }
+  ],
+  "constitutions": [
+    {
+      "code": "CON-01",
+      "label": "Individual",
+      "description": "Salaried / professional / business individual"
+    },
+    {
+      "code": "CON-02",
+      "label": "HUF",
+      "description": "Hindu Undivided Family"
+    },
+    {
+      "code": "CON-03",
+      "label": "Proprietorship",
+      "description": "Sole proprietor business"
+    },
+    {
+      "code": "CON-04",
+      "label": "Partnership Firm",
+      "description": "Registered / unregistered partnership"
+    },
+    {
+      "code": "CON-05",
+      "label": "LLP",
+      "description": "Limited Liability Partnership"
+    },
+    {
+      "code": "CON-06",
+      "label": "Private Limited Company",
+      "description": null
+    },
+    {
+      "code": "CON-07",
+      "label": "Public Limited Company",
+      "description": null
+    },
+    {
+      "code": "CON-08",
+      "label": "One Person Company (OPC)",
+      "description": null
+    },
+    {
+      "code": "CON-09",
+      "label": "Trust / NGO / Society / Section 8",
+      "description": "Charitable & non-profit bodies"
+    },
+    {
+      "code": "CON-10",
+      "label": "AOP / BOI",
+      "description": "Association of persons / Body of individuals"
+    },
+    {
+      "code": "CON-11",
+      "label": "Government / Local body",
+      "description": null
+    }
+  ],
+  "compliances": [
+    {
+      "department": "GST",
+      "name": "GSTR-1 (monthly)",
+      "form": "GSTR-1",
+      "applicableTo": "Regular taxpayers not in QRMP",
+      "frequency": "Monthly",
+      "dueDateRule": "11th of next month",
+      "penalty": "Late fee ₹50/day (₹20/day for nil), capped",
+      "remarks": "Outward supplies"
+    },
+    {
+      "department": "GST",
+      "name": "Invoice Furnishing Facility (IFF)",
+      "form": "IFF",
+      "applicableTo": "QRMP taxpayers (optional)",
+      "frequency": "Month 1 & 2 of quarter",
+      "dueDateRule": "13th of next month",
+      "penalty": "—",
+      "remarks": "B2B invoices only"
+    },
+    {
+      "department": "GST",
+      "name": "GSTR-1 (quarterly – QRMP)",
+      "form": "GSTR-1",
+      "applicableTo": "QRMP taxpayers (turnover up to ₹5 crore)",
+      "frequency": "Quarterly",
+      "dueDateRule": "13th of month after quarter",
+      "penalty": "As GSTR-1",
+      "remarks": null
+    },
+    {
+      "department": "GST",
+      "name": "GSTR-3B (monthly)",
+      "form": "GSTR-3B",
+      "applicableTo": "Regular taxpayers not in QRMP",
+      "frequency": "Monthly",
+      "dueDateRule": "20th of next month",
+      "penalty": "Late fee + interest 18% p.a. on late tax",
+      "remarks": "Reconcile with GSTR-2B / IMS before filing"
+    },
+    {
+      "department": "GST",
+      "name": "GSTR-3B (quarterly – QRMP)",
+      "form": "GSTR-3B",
+      "applicableTo": "QRMP taxpayers",
+      "frequency": "Quarterly",
+      "dueDateRule": "22nd / 24th of month after quarter (Delhi: 24th)",
+      "penalty": "As GSTR-3B",
+      "remarks": "Delhi is in the 24th-date group"
+    },
+    {
+      "department": "GST",
+      "name": "Monthly tax payment – QRMP",
+      "form": "PMT-06",
+      "applicableTo": "QRMP taxpayers",
+      "frequency": "Month 1 & 2 of quarter",
+      "dueDateRule": "25th of next month",
+      "penalty": "Interest 18% p.a.",
+      "remarks": "Fixed-sum or self-assessment method"
+    },
+    {
+      "department": "GST",
+      "name": "Composition – quarterly payment",
+      "form": "CMP-08",
+      "applicableTo": "Composition dealers",
+      "frequency": "Quarterly",
+      "dueDateRule": "18th of month after quarter",
+      "penalty": "Interest + late fee",
+      "remarks": null
+    },
+    {
+      "department": "GST",
+      "name": "Composition – annual return",
+      "form": "GSTR-4",
+      "applicableTo": "Composition dealers",
+      "frequency": "Annual",
+      "dueDateRule": "30 April after year-end",
+      "penalty": "Late fee",
+      "remarks": null
+    },
+    {
+      "department": "GST",
+      "name": "TDS under GST",
+      "form": "GSTR-7",
+      "applicableTo": "Govt. departments / notified deductors",
+      "frequency": "Monthly",
+      "dueDateRule": "10th of next month",
+      "penalty": "Late fee",
+      "remarks": null
+    },
+    {
+      "department": "GST",
+      "name": "TCS by e-commerce operator",
+      "form": "GSTR-8",
+      "applicableTo": "E-commerce operators",
+      "frequency": "Monthly",
+      "dueDateRule": "10th of next month",
+      "penalty": "Late fee",
+      "remarks": null
+    },
+    {
+      "department": "GST",
+      "name": "Annual return",
+      "form": "GSTR-9",
+      "applicableTo": "Turnover above ₹2 crore (optional below)",
+      "frequency": "Annual",
+      "dueDateRule": "31 December after year-end",
+      "penalty": "Late fee",
+      "remarks": null
+    },
+    {
+      "department": "GST",
+      "name": "Reconciliation statement",
+      "form": "GSTR-9C",
+      "applicableTo": "Turnover above ₹5 crore",
+      "frequency": "Annual",
+      "dueDateRule": "31 December after year-end",
+      "penalty": "Late fee",
+      "remarks": "Self-certified"
+    },
+    {
+      "department": "GST",
+      "name": "Job-work return",
+      "form": "ITC-04",
+      "applicableTo": "Principal sending goods for job work",
+      "frequency": "Half-yearly (turnover > ₹5 cr) / Annual",
+      "dueDateRule": "25 Oct & 25 Apr (half-yearly) / 25 Apr (annual)",
+      "penalty": "Penalty",
+      "remarks": null
+    },
+    {
+      "department": "GST",
+      "name": "LUT for exports",
+      "form": "RFD-11",
+      "applicableTo": "Exporters / SEZ suppliers without tax",
+      "frequency": "Annual",
+      "dueDateRule": "Before start of financial year (31 March)",
+      "penalty": "—",
+      "remarks": null
+    },
+    {
+      "department": "GST",
+      "name": "E-invoice (IRN)",
+      "form": "E-invoice",
+      "applicableTo": "Turnover above ₹5 crore",
+      "frequency": "Per invoice",
+      "dueDateRule": "At the time of invoicing; turnover ≥ ₹10 crore must report within 30 days",
+      "penalty": "Invoice invalid without IRN",
+      "remarks": null
+    },
+    {
+      "department": "GST",
+      "name": "E-way bill",
+      "form": "EWB-01",
+      "applicableTo": "Movement of goods above ₹50,000",
+      "frequency": "Per movement",
+      "dueDateRule": "Before movement of goods",
+      "penalty": "Penalty / detention",
+      "remarks": null
+    },
+    {
+      "department": "TDS",
+      "name": "TDS / TCS deposit",
+      "form": "Challan",
+      "applicableTo": "All deductors / collectors",
+      "frequency": "Monthly",
+      "dueDateRule": "7th of next month (March: 30 April)",
+      "penalty": "Interest 1% / 1.5% per month",
+      "remarks": null
+    },
+    {
+      "department": "TDS",
+      "name": "TDS statement – salary",
+      "form": "Form 138 (old 24Q)",
+      "applicableTo": "Employers deducting TDS on salary",
+      "frequency": "Quarterly",
+      "dueDateRule": "31 Jul, 31 Oct, 31 Jan, 31 May",
+      "penalty": "Late fee ₹200/day (max = TDS) + penalty",
+      "remarks": null
+    },
+    {
+      "department": "TDS",
+      "name": "TDS statement – resident non-salary",
+      "form": "Form 140 (old 26Q)",
+      "applicableTo": "All deductors",
+      "frequency": "Quarterly",
+      "dueDateRule": "31 Jul, 31 Oct, 31 Jan, 31 May",
+      "penalty": "As above",
+      "remarks": null
+    },
+    {
+      "department": "TDS",
+      "name": "TDS statement – non-resident",
+      "form": "Form 144 (old 27Q)",
+      "applicableTo": "Payments to non-residents",
+      "frequency": "Quarterly",
+      "dueDateRule": "31 Jul, 31 Oct, 31 Jan, 31 May",
+      "penalty": "As above",
+      "remarks": null
+    },
+    {
+      "department": "TDS",
+      "name": "TCS statement",
+      "form": "Form 143 (old 27EQ)",
+      "applicableTo": "Collectors of TCS",
+      "frequency": "Quarterly",
+      "dueDateRule": "31 Jul, 31 Oct, 31 Jan, 31 May (Q1 moved from 15 Jul)",
+      "penalty": "As above",
+      "remarks": null
+    },
+    {
+      "department": "TDS",
+      "name": "Salary TDS certificate",
+      "form": "Form 130 (old Form 16)",
+      "applicableTo": "Employers",
+      "frequency": "Annual",
+      "dueDateRule": "15 June",
+      "penalty": "Penalty ₹100/day",
+      "remarks": null
+    },
+    {
+      "department": "TDS",
+      "name": "Non-salary TDS certificate",
+      "form": "Form 131 (old Form 16A)",
+      "applicableTo": "All deductors",
+      "frequency": "Quarterly",
+      "dueDateRule": "Within 15 days of statement due date",
+      "penalty": "Penalty ₹100/day",
+      "remarks": null
+    },
+    {
+      "department": "TDS",
+      "name": "TDS on property / rent / contract by individuals",
+      "form": "Challan-cum-statement (old 26QB / 26QC / 26QD)",
+      "applicableTo": "Individuals / HUF not liable to audit",
+      "frequency": "Per transaction",
+      "dueDateRule": "Within 30 days from end of month of deduction",
+      "penalty": "Late fee + interest",
+      "remarks": "Confirm new form number"
+    },
+    {
+      "department": "Income Tax",
+      "name": "Advance tax",
+      "form": "Challan",
+      "applicableTo": "Tax liability ≥ ₹10,000 (not senior citizens without business income)",
+      "frequency": "Quarterly",
+      "dueDateRule": "15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)",
+      "penalty": "Interest u/s 234B / 234C (old Act)",
+      "remarks": "Presumptive (44AD/44ADA): 100% by 15 March"
+    },
+    {
+      "department": "Income Tax",
+      "name": "ITR – non-audit (salary / other)",
+      "form": "ITR-1 / ITR-2",
+      "applicableTo": "Individuals / HUF without business audit",
+      "frequency": "Annual",
+      "dueDateRule": "31 July",
+      "penalty": "Late fee up to ₹5,000 + interest",
+      "remarks": null
+    },
+    {
+      "department": "Income Tax",
+      "name": "ITR – non-audit business / profession",
+      "form": "ITR-3 / ITR-4 / ITR-5",
+      "applicableTo": "Business cases not liable to audit",
+      "frequency": "Annual",
+      "dueDateRule": "31 August (as per AY 2026-27 schedule)",
+      "penalty": "Late fee + interest",
+      "remarks": "Verify each year"
+    },
+    {
+      "department": "Income Tax",
+      "name": "Tax audit report",
+      "form": "Form 3CA/3CB-3CD (new Act form no. to confirm)",
+      "applicableTo": "Turnover > ₹1 crore (₹10 crore if cash ≤ 5%), professionals > ₹50 lakh",
+      "frequency": "Annual",
+      "dueDateRule": "30 September (one month before ITR date)",
+      "penalty": "Penalty 0.5% of turnover, max ₹1.5 lakh",
+      "remarks": null
+    },
+    {
+      "department": "Income Tax",
+      "name": "ITR – audit cases",
+      "form": "ITR-3 / 5 / 6 / 7",
+      "applicableTo": "Assessees liable to audit",
+      "frequency": "Annual",
+      "dueDateRule": "31 October",
+      "penalty": "Late fee + interest",
+      "remarks": null
+    },
+    {
+      "department": "Income Tax",
+      "name": "ITR – transfer pricing cases",
+      "form": "ITR + Form 3CEB",
+      "applicableTo": "International / specified domestic transactions",
+      "frequency": "Annual",
+      "dueDateRule": "30 November",
+      "penalty": "Penalty",
+      "remarks": null
+    },
+    {
+      "department": "Income Tax",
+      "name": "Belated / revised return",
+      "form": "ITR",
+      "applicableTo": "All",
+      "frequency": "Annual",
+      "dueDateRule": "31 Dec (belated) / 31 Mar (revised)",
+      "penalty": "Late fee",
+      "remarks": null
+    },
+    {
+      "department": "Income Tax",
+      "name": "Updated return",
+      "form": "ITR-U",
+      "applicableTo": "All (conditions apply)",
+      "frequency": "As needed",
+      "dueDateRule": "Within 4 years from end of assessment year",
+      "penalty": "Additional tax 25%–70%",
+      "remarks": null
+    },
+    {
+      "department": "Income Tax",
+      "name": "Statement of financial transactions",
+      "form": "Form 61A (SFT)",
+      "applicableTo": "Banks, registrars and specified entities",
+      "frequency": "Annual",
+      "dueDateRule": "31 May",
+      "penalty": "Penalty",
+      "remarks": null
+    },
+    {
+      "department": "ROC",
+      "name": "Annual return – LLP",
+      "form": "LLP Form 11",
+      "applicableTo": "All LLPs",
+      "frequency": "Annual",
+      "dueDateRule": "30 May",
+      "penalty": "₹100/day",
+      "remarks": null
+    },
+    {
+      "department": "ROC",
+      "name": "Return of deposits",
+      "form": "DPT-3",
+      "applicableTo": "Companies with deposits / exempt deposits outstanding",
+      "frequency": "Annual",
+      "dueDateRule": "30 June",
+      "penalty": "Late fee",
+      "remarks": null
+    },
+    {
+      "department": "ROC",
+      "name": "Director KYC",
+      "form": "DIR-3 KYC / Web",
+      "applicableTo": "Every DIN holder",
+      "frequency": "Annual",
+      "dueDateRule": "30 September",
+      "penalty": "₹5,000 to reactivate DIN",
+      "remarks": null
+    },
+    {
+      "department": "ROC",
+      "name": "Annual General Meeting",
+      "form": "—",
+      "applicableTo": "Companies (not OPC)",
+      "frequency": "Annual",
+      "dueDateRule": "Within 6 months of year-end (30 Sep)",
+      "penalty": "Penalty",
+      "remarks": null
+    },
+    {
+      "department": "ROC",
+      "name": "Auditor appointment",
+      "form": "ADT-1",
+      "applicableTo": "Companies",
+      "frequency": "On appointment",
+      "dueDateRule": "Within 15 days of AGM",
+      "penalty": "Late fee",
+      "remarks": null
+    },
+    {
+      "department": "ROC",
+      "name": "Financial statements",
+      "form": "AOC-4 / AOC-4 XBRL",
+      "applicableTo": "Companies",
+      "frequency": "Annual",
+      "dueDateRule": "Within 30 days of AGM",
+      "penalty": "₹100/day",
+      "remarks": null
+    },
+    {
+      "department": "ROC",
+      "name": "Statement of account & solvency – LLP",
+      "form": "LLP Form 8",
+      "applicableTo": "All LLPs",
+      "frequency": "Annual",
+      "dueDateRule": "30 October",
+      "penalty": "₹100/day",
+      "remarks": null
+    },
+    {
+      "department": "ROC",
+      "name": "MSME dues return",
+      "form": "MSME-1",
+      "applicableTo": "Companies with MSME dues > 45 days",
+      "frequency": "Half-yearly",
+      "dueDateRule": "30 April & 31 October",
+      "penalty": "Penalty",
+      "remarks": null
+    },
+    {
+      "department": "ROC",
+      "name": "Annual return – company",
+      "form": "MGT-7 / MGT-7A",
+      "applicableTo": "Companies (7A for small & OPC)",
+      "frequency": "Annual",
+      "dueDateRule": "Within 60 days of AGM",
+      "penalty": "₹100/day",
+      "remarks": null
+    },
+    {
+      "department": "ROC",
+      "name": "Filing of resolutions",
+      "form": "MGT-14",
+      "applicableTo": "Companies passing specified resolutions",
+      "frequency": "Event-based",
+      "dueDateRule": "Within 30 days of resolution",
+      "penalty": "Late fee",
+      "remarks": null
+    },
+    {
+      "department": "ROC",
+      "name": "Commencement of business",
+      "form": "INC-20A",
+      "applicableTo": "New companies with share capital",
+      "frequency": "One-time",
+      "dueDateRule": "Within 180 days of incorporation",
+      "penalty": "Penalty",
+      "remarks": null
+    },
+    {
+      "department": "ROC",
+      "name": "Board meetings",
+      "form": "—",
+      "applicableTo": "Companies",
+      "frequency": "Quarterly",
+      "dueDateRule": "4 meetings a year; gap ≤ 120 days",
+      "penalty": "Penalty",
+      "remarks": "Small companies / OPC: 2 per year"
+    },
+    {
+      "department": "ESI",
+      "name": "ESI contribution & filing",
+      "form": "Monthly contribution (ESIC portal)",
+      "applicableTo": "Establishments with 10+ employees; employees earning up to ₹21,000/month",
+      "frequency": "Monthly",
+      "dueDateRule": "15th of next month",
+      "penalty": "Interest 12% p.a. + damages",
+      "remarks": "Employee 0.75%, employer 3.25%"
+    },
+    {
+      "department": "ESI",
+      "name": "Employee registration",
+      "form": "IP number",
+      "applicableTo": "New joiners covered under ESI",
+      "frequency": "Event-based",
+      "dueDateRule": "On joining (before first contribution)",
+      "penalty": "—",
+      "remarks": null
+    },
+    {
+      "department": "ESI",
+      "name": "Accident report",
+      "form": "Accident report",
+      "applicableTo": "Covered establishments",
+      "frequency": "Event-based",
+      "dueDateRule": "Within 24 hours of accident",
+      "penalty": "Penalty",
+      "remarks": null
+    },
+    {
+      "department": "EPF",
+      "name": "PF contribution & ECR",
+      "form": "ECR + challan",
+      "applicableTo": "Establishments with 20+ employees (wage ceiling ₹15,000)",
+      "frequency": "Monthly",
+      "dueDateRule": "15th of next month",
+      "penalty": "Interest 12% p.a. + damages",
+      "remarks": "Employee 12%, employer 12% (incl. EPS)"
+    },
+    {
+      "department": "EPF",
+      "name": "UAN generation / KYC",
+      "form": "UAN",
+      "applicableTo": "New joiners",
+      "frequency": "Event-based",
+      "dueDateRule": "On joining",
+      "penalty": "—",
+      "remarks": null
+    },
+    {
+      "department": "EPF",
+      "name": "Exit marking",
+      "form": "Date of exit",
+      "applicableTo": "Leaving employees",
+      "frequency": "Event-based",
+      "dueDateRule": "After exit, before next ECR",
+      "penalty": "—",
+      "remarks": null
+    },
+    {
+      "department": "MSME",
+      "name": "Udyam registration",
+      "form": "Udyam",
+      "applicableTo": "Micro, small & medium enterprises",
+      "frequency": "One-time",
+      "dueDateRule": "Anytime (free); details auto-updated from ITR / GST",
+      "penalty": "—",
+      "remarks": null
+    },
+    {
+      "department": "MSME",
+      "name": "Payment to MSME suppliers",
+      "form": "—",
+      "applicableTo": "Buyers from micro / small enterprises",
+      "frequency": "Ongoing",
+      "dueDateRule": "Within 45 days (15 days if no written agreement)",
+      "penalty": "Interest 3× bank rate; expense allowed only when paid",
+      "remarks": "Track in creditors ageing"
+    },
+    {
+      "department": "MSME",
+      "name": "MSME-1",
+      "form": "MSME-1",
+      "applicableTo": "Companies with MSME dues > 45 days",
+      "frequency": "Half-yearly",
+      "dueDateRule": "30 April & 31 October",
+      "penalty": "Penalty",
+      "remarks": "Same as ROC row"
+    }
+  ],
+  "clientStatuses": [
+    {
+      "code": "STS-01",
+      "label": "Active"
+    },
+    {
+      "code": "STS-02",
+      "label": "On Hold"
+    },
+    {
+      "code": "STS-03",
+      "label": "Discontinued"
+    },
+    {
+      "code": "STS-04",
+      "label": "Prospect / Lead"
+    }
+  ],
+  "firm": {
+    "Trade Name": "S S DIMRI & ASSOCIATES",
+    "Legal Name (as per GST / PAN)": "SUNIL DIMRI",
+    "Constitution": "Proprietorship",
+    "Principal Place of Business": "2nd Floor, B-191, Phase-I, Naraina Industrial Area, New Delhi – 110028",
+    "PAN": "AGBPD7743C",
+    "GSTIN": "07AGBPD7743C1ZT",
+    "TAN": "DELS68120D",
+    "Phone": "011-47094120",
+    "Email": "sunildimri@ssdimri.com",
+    "Website": "www.ssdimri.com",
+    "Office Timings": "9:30 AM – 6:30 PM",
+    "Landmark": "Near Bikanerwala Sweets, Naraina Industrial Area Phase-1"
+  }
+}

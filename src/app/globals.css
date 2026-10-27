@@ -1,0 +1,108 @@
+@import "tailwindcss";
+@import "./public-motion.css";
+@import "./portal-motion.css";
+
+/*
+ * Design tokens. A restrained, interim identity for a professional accounting
+ * firm — no official brand assets were supplied, so every colour is a token
+ * here and can be replaced centrally once the firm shares its branding.
+ */
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-serif);
+
+  --color-canvas: #f6f5f2; /* page background (warm neutral) */
+  --color-surface: #ffffff; /* cards, tables */
+
+  --color-subtle: #efede8; /* hover rows, secondary fills */
+  --color-line: #dedbd3; /* borders and dividers */
+  --color-ink: #1b1f24; /* primary text */
+  --color-muted: #5d6470; /* secondary text (4.5:1 on canvas) */
+
+  --color-brand-50: #eef3f9;
+  --color-brand-100: #d8e3f0;
+  --color-brand-200: #b3c7df;
+  --color-brand-600: #284d7a;
+  --color-brand-700: #1f3d62; /* primary actions */
+  --color-brand-800: #182f4c;
+  --color-brand-900: #10213a;
+
+  --color-ok: #1f7a4d;
+  --color-ok-bg: #e5f3eb;
+  --color-warn: #8a5300;
+  --color-warn-bg: #fdf1dc;
+  --color-danger: #b42318;
+  --color-danger-bg: #fdeceb;
+  --color-info: #285e9a;
+  --color-info-bg: #e8f0fa;
+
+  /* Public website ("ledger & stamp"): paper, ink, rubber-stamp vermilion, marigold. */
+  --font-editorial: var(--font-instrument);
+  --color-paper: #f5f1e8;
+  --color-paper-2: #ece6d8;
+  --color-paper-line: #e2dacb;
+  --color-night: #0f1d33; /* dark bands */
+  --color-night-2: #182a47;
+  --color-stamp: #b83c16; /* text-safe vermilion (5:1 on paper) */
+  --color-stamp-bright: #d9531f;
+  --color-stamp-soft: #f6dfd3;
+  --color-marigold: #e3a21a;
+  --color-marigold-soft: #fbeccb;
+  --color-ledger: #2f6b4f;
+  --color-ledger-soft: #dcece2;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-feature-settings: "tnum" 1; /* tabular figures for dates, amounts, hours */
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  body { background: #fff; }
+  table { font-size: 11px; }
+  a { color: inherit; text-decoration: none; }
+  section, article, .break-inside-avoid { break-inside: avoid; }
+}
+
+/* Chart series (validated categorical order; see src/components/charts.tsx).
+   Plain custom properties, not @theme tokens: charts reference them dynamically
+   (var(--color-series-N)), which Tailwind cannot detect, so @theme would drop unused ones. */
+:root {
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --color-series-4: #eda100;
+  --color-series-5: #e87ba4;
+  --color-series-6: #008300;
+  --color-series-7: #6250d6;
+  --color-series-8: #e34948;
+}

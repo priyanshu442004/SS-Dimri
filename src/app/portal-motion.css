@@ -1,0 +1,76 @@
+/* ======================================================================
+ * Staff & client portal — motion and surfaces
+ * Calmer than the public site: shorter, smaller movements that confirm what
+ * changed (navigation, data arriving, a press) without slowing daily work.
+ * Layered as components so Tailwind utilities on the same element win.
+ * ====================================================================== */
+@layer components {
+  /* Page enter/exit inside the portal shells (React <ViewTransition>) */
+  ::view-transition-old(.app-page) { animation: 140ms ease-in both vt-fade reverse; }
+  ::view-transition-new(.app-page) { animation: 240ms var(--ease-out-expo) 60ms both vt-fade, 360ms var(--ease-out-expo) 60ms both app-rise-y; }
+  @keyframes app-rise-y { from { transform: translateY(8px); } to { transform: none; } }
+  ::view-transition-group(app-chrome) { animation: none; z-index: 50; }
+  ::view-transition-old(app-chrome) { display: none; }
+  ::view-transition-new(app-chrome) { animation: none; }
+  ::view-transition-group(app-nav-indicator) { animation-duration: 380ms; animation-timing-function: var(--ease-spring); z-index: 60; }
+  ::view-transition-group(client-nav-indicator) { animation-duration: 380ms; animation-timing-function: var(--ease-spring); z-index: 60; }
+
+  /* Entrance for headers and first-paint blocks */
+  .app-rise { animation: app-rise 520ms var(--ease-out-expo) both; animation-delay: var(--d, 0ms); }
+  @keyframes app-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* Skeleton shimmer */
+  .app-skeleton { position: relative; overflow: hidden; background: var(--color-subtle); }
+  .app-skeleton::after {
+    content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.65), transparent);
+    animation: app-shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes app-shimmer { to { transform: translateX(100%); } }
+
+  /* Charts: marks arrive once, anchored to their baseline */
+  .chart-line { stroke-dasharray: 1; stroke-dashoffset: 1; animation: chart-draw 1100ms var(--ease-out-expo) 120ms forwards; }
+  @keyframes chart-draw { to { stroke-dashoffset: 0; } }
+  .chart-area { animation: chart-fade 900ms ease-out 400ms both; }
+  @keyframes chart-fade { from { opacity: 0; } to { opacity: 1; } }
+  .chart-col { transform-box: fill-box; transform-origin: bottom; animation: chart-col 700ms var(--ease-out-expo) both; animation-delay: calc(var(--i, 0) * 28ms); }
+  @keyframes chart-col { from { transform: scaleY(0); } to { transform: none; } }
+  .chart-hbar { transform-origin: left; animation: chart-hbar 800ms var(--ease-out-expo) both; animation-delay: calc(var(--i, 0) * 45ms); }
+  @keyframes chart-hbar { from { transform: scaleX(0); } to { transform: none; } }
+  .chart-arc { animation: chart-arc 900ms var(--ease-out-expo) both; animation-delay: calc(var(--i, 0) * 70ms); }
+  @keyframes chart-arc { from { stroke-dasharray: 0 999; } }
+  .chart-tip { animation: chart-tip 160ms ease-out both; }
+  @keyframes chart-tip { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  /* Command palette */
+  .app-palette-backdrop { animation: chart-fade 160ms ease-out both; }
+  .app-palette { animation: app-pop 240ms var(--ease-spring) both; }
+  @keyframes app-pop { from { opacity: 0; transform: translateY(-8px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+  /* Toasts: slide in, drain a progress bar (paused while hovered/focused), slide out */
+  .toast-in { animation: toast-in 380ms var(--ease-spring) both; }
+  .toast-out { animation: toast-out 220ms ease-in both; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(14px) scale(0.96); } to { opacity: 1; transform: none; } }
+  @keyframes toast-out { to { opacity: 0; transform: translateX(24px) scale(0.98); } }
+  .toast-bar { animation: toast-drain var(--dur, 6000ms) linear forwards; }
+  .group:hover .toast-bar, .group:focus-within .toast-bar { animation-play-state: paused; }
+  @keyframes toast-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+  /* Mobile drawer */
+  .app-drawer { animation: app-drawer 320ms var(--ease-out-expo) both; }
+  @keyframes app-drawer { from { transform: translateX(-100%); } to { transform: none; } }
+
+  /* Notification badge: one gentle bump when it appears */
+  .app-bump { animation: app-bump 600ms var(--ease-spring) both; }
+  @keyframes app-bump { 0% { transform: scale(0.4); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chart-line { stroke-dashoffset: 0; animation: none; }
+    .chart-col, .chart-hbar, .chart-arc, .chart-area, .app-rise, .app-palette, .app-drawer, .app-bump { animation: none; }
+    .app-skeleton::after { animation: none; }
+  }
+
+  @media print {
+    .app-chrome-print-hide { display: none !important; }
+  }
+}
