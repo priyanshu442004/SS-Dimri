@@ -5,7 +5,6 @@ import { Check, Mail, Minus, Plus } from "lucide-react";
 import { clsx } from "clsx";
 
 const CONSTITUTIONS = ["Individual", "Proprietorship", "Partnership", "LLP", "Private limited", "Other"];
-const VOLUMES = ["Under 50", "50 – 200", "200 – 1,000", "Over 1,000"];
 
 /**
  * Builds a quote request and hands it to the visitor's email app. Nothing is
@@ -14,7 +13,6 @@ const VOLUMES = ["Under 50", "50 – 200", "200 – 1,000", "Over 1,000"];
 export function QuoteBuilder({ services, bases, email }: { services: string[]; bases: { code: string; label: string }[]; email: string }) {
   const [picked, setPicked] = useState<string[]>([]);
   const [constitution, setConstitution] = useState("");
-  const [volume, setVolume] = useState(1);
   const [gstins, setGstins] = useState(1);
   const [onsite, setOnsite] = useState(false);
   const [basis, setBasis] = useState("");
@@ -26,13 +24,12 @@ export function QuoteBuilder({ services, bases, email }: { services: string[]; b
     const l: [string, string][] = [];
     if (business.trim()) l.push(["Business", business.trim()]);
     if (constitution) l.push(["Constitution", constitution]);
-    l.push(["Invoices per month", VOLUMES[volume]]);
     l.push(["GSTINs", String(gstins)]);
     l.push(["Services", picked.length ? picked.join(", ") : "Not sure yet — please advise"]);
     l.push(["On-site visits", onsite ? "Yes, at our premises" : "Not required"]);
     if (basis) l.push(["Preferred billing", basis]);
     return l;
-  }, [business, constitution, volume, gstins, picked, onsite, basis]);
+  }, [business, constitution, gstins, picked, onsite, basis]);
 
   const href = `mailto:${email}?subject=${encodeURIComponent(`Quote request${business.trim() ? ` — ${business.trim()}` : ""}`)}&body=${encodeURIComponent(
     `Hello,\n\nPlease send a proposal for the following:\n\n${lines.map(([k, v]) => `${k}: ${v}`).join("\n")}\n\nThank you.`,
@@ -74,13 +71,7 @@ export function QuoteBuilder({ services, bases, email }: { services: string[]; b
           </div>
         </fieldset>
 
-        <div className="grid gap-8 sm:grid-cols-2">
-          <div>
-            <label htmlFor="qb-volume" className="text-sm font-medium">Invoices per month</label>
-            <p className="mt-2 font-editorial text-3xl" aria-hidden>{VOLUMES[volume]}</p>
-            <input id="qb-volume" type="range" min={0} max={VOLUMES.length - 1} step={1} value={volume} onChange={(e) => setVolume(Number(e.target.value))}
-              aria-valuetext={VOLUMES[volume]} className="mt-3 w-full accent-[var(--color-stamp-bright)]" />
-          </div>
+        <div>
           <div>
             <p id="qb-gst-label" className="text-sm font-medium">Number of GSTINs</p>
             <div className="mt-3 flex items-center gap-3" role="group" aria-labelledby="qb-gst-label">
@@ -95,7 +86,7 @@ export function QuoteBuilder({ services, bases, email }: { services: string[]; b
           <span id="qb-onsite" className="text-sm font-medium">We need on-site visits at our premises</span>
           <button type="button" role="switch" aria-checked={onsite} aria-labelledby="qb-onsite" onClick={() => setOnsite((o) => !o)}
             className={clsx("relative h-7 w-12 shrink-0 rounded-full transition-colors duration-300", onsite ? "bg-ledger" : "bg-ink/20")}>
-            <span className={clsx("absolute top-1 size-5 rounded-full bg-white shadow transition-transform duration-500 ease-[var(--ease-spring)]", onsite ? "translate-x-6" : "translate-x-1")} />
+            <span className={clsx("absolute left-0 top-1 size-5 rounded-full bg-white shadow transition-transform duration-500 ease-[var(--ease-spring)]", onsite ? "translate-x-6" : "translate-x-1")} />
           </button>
         </div>
 

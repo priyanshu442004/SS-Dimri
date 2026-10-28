@@ -52,7 +52,7 @@ export async function safeAction(fn: () => Promise<ActionState | void>): Promise
       if (e.code === "P2025") return { ok: false, message: "The record was not found or you no longer have access to it." };
       console.error("Database error", e.code);
     } else {
-      console.error("Action failed", e instanceof Error ? e.name : "unknown");
+      console.error("Action failed", e instanceof Error ? `${e.name}: ${e.message}` : "unknown");
     }
     return { ok: false, message: "Something went wrong. Please try again." };
   }

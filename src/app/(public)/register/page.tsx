@@ -20,7 +20,7 @@ function SheetsArt() {
         </g>
       ))}
       <g>
-        <text x="54" y="44" fontFamily="var(--font-geist-mono), monospace" fontSize="9" fill="#5d6470">STEP 1 OF 6</text>
+        <text x="54" y="44" fontFamily="Arial, Helvetica, sans-serif" fontSize="9" fill="#5d6470">STEP 1 OF 6</text>
         <path d="M54 58h80M54 72h80M54 86h52" stroke="#1b1f24" strokeOpacity=".3" strokeWidth="5" strokeLinecap="round" />
         <rect x="54" y="98" width="44" height="14" rx="4" fill="#1b1f24" />
       </g>

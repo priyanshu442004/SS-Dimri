@@ -24,3 +24,19 @@ export const mobileSchema = z
   .string()
   .transform((s) => s.replace(/[\s-]/g, ""))
   .pipe(z.string().regex(/^(\+91)?[6-9][0-9]{9}$/, "Invalid mobile number"));
+
+/**
+ * Indian mobile (10 digits, optional +91) or an international number in
+ * +<country code><number> form (E.164: at most 15 digits in all).
+ */
+export const intlMobileSchema = z
+  .string()
+  .transform((s) => s.replace(/[\s-]/g, ""))
+  .pipe(z.string().regex(/^((\+91)?[6-9][0-9]{9}|\+(?!91)[1-9][0-9]{5,14})$/, "Invalid mobile number"));
+
+/** Combine a country code (e.g. "+91") and the digits typed after it into one stored value. */
+export function joinMobile(code: string | undefined, digits: string | undefined) {
+  if (!digits) return undefined;
+  if (!code || code === "+91") return digits; // Indian numbers are stored as the 10 digits
+  return `${code}${digits}`;
+}

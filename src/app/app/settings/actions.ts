@@ -8,7 +8,7 @@ import { dateOnly } from "@/lib/dates";
 import { actionContext } from "@/lib/session";
 import { audit } from "@/lib/services/audit";
 import { hasFile, storeUpload } from "@/lib/services/files";
-import { gstinSchema, mobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
+import { gstinSchema, intlMobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
 
 const orgSchema = z.object({
   tradeName: zRequiredText(200),
@@ -18,7 +18,7 @@ const orgSchema = z.object({
   gstin: gstinSchema.optional(),
   tan: tanSchema.optional(),
   contactPersonName: zOptionalText(120),
-  contactMobile: mobileSchema.optional(),
+  contactMobile: intlMobileSchema.optional(), // the firm may be registered with a foreign number
   contactEmail: z.email().optional(),
   contactPhone: zOptionalText(20),
   accessMode: z.enum(["SINGLE_USER", "MULTI_USER"]),

@@ -1,19 +1,20 @@
 "use client";
 
 import { useId } from "react";
-import { ActionForm, SelectField, SubmitButton, TextArea, TextField } from "@/components/form";
+import { ActionForm, PhoneField, SelectField, SubmitButton, TextArea, TextField, upperCaseInput } from "@/components/form";
 import { createAccount } from "./actions";
 
 type Option = { value: string; label: string };
 
 function Section({ title, step, children }: { title: string; step: number; children: React.ReactNode }) {
   return (
-    <fieldset className="rounded-2xl border border-ink/10 bg-surface p-5 shadow-[0_20px_40px_-32px_rgb(15_29_51/.45)] sm:p-6">
-      <legend className="px-1 text-sm font-semibold text-ink">
+    <fieldset className="pt-2">
+      {/* Floated so the heading sits above the card, not on its border */}
+      <legend className="float-left mb-3 w-full px-1 text-sm font-semibold text-ink">
         <span className="mr-2 inline-grid size-5 place-items-center rounded-full bg-brand-700 text-xs text-white">{step}</span>
         {title}
       </legend>
-      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
+      <div className="clear-left grid gap-4 rounded-2xl border border-ink/10 bg-surface p-5 shadow-[0_20px_40px_-32px_rgb(15_29_51/.45)] sm:grid-cols-2 sm:p-6">{children}</div>
     </fieldset>
   );
 }
@@ -43,11 +44,11 @@ export function CreateAccountForm({ constitutions }: { constitutions: Option[] }
         <TextField label="Trade name" name="tradeName" required className="sm:col-span-2" />
         <TextField label="Legal name" name="legalName" hint="As per PAN / GST" className="sm:col-span-2" />
         <SelectField label="Constitution" name="constitutionId" required options={constitutions} />
-        <TextField label="PAN" name="pan" maxLength={10} autoCapitalize="characters" />
-        <TextField label="GSTIN" name="gstin" maxLength={15} autoCapitalize="characters" />
-        <TextField label="TAN" name="tan" maxLength={10} autoCapitalize="characters" />
+        <TextField label="PAN" name="pan" maxLength={10} autoCapitalize="characters" spellCheck={false} onInput={upperCaseInput} />
+        <TextField label="GSTIN" name="gstin" maxLength={15} autoCapitalize="characters" spellCheck={false} onInput={upperCaseInput} />
+        <TextField label="TAN" name="tan" maxLength={10} autoCapitalize="characters" spellCheck={false} onInput={upperCaseInput} />
         <TextArea label="Address" name="address" rows={2} className="sm:col-span-2" />
-        <TextField label="Contact mobile" name="contactMobile" type="tel" autoComplete="tel" />
+        <PhoneField label="Contact mobile" name="contactMobile" />
       </Section>
 
       <Section title="Certificate & logo (optional)" step={3}>

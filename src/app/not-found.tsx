@@ -32,7 +32,7 @@ export default function NotFound() {
                 <rect x="70" y="40" width="160" height="190" rx="6" fill="#fff" stroke="#1b1f24" strokeWidth="2" transform="rotate(-8 150 135)" />
                 <g transform="rotate(-8 150 135)" stroke="#1b1f24" strokeLinecap="round">
                   <path d="M92 74h90M92 94h116M92 114h70" strokeWidth="6" strokeOpacity=".18" />
-                  <text x="92" y="180" fontFamily="var(--font-instrument), serif" fontSize="64" fill="#1b1f24" stroke="none">404</text>
+                  <text x="92" y="180" fontFamily="Arial, Helvetica, sans-serif" fontSize="64" fill="#1b1f24" stroke="none">404</text>
                 </g>
               </g>
             </g>

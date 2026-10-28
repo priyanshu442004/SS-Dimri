@@ -44,7 +44,6 @@ function Rhythm({ code }: { code: string }): ReactNode {
 
 const FACTORS = [
   ["Your constitution", "A proprietorship, partnership, LLP or company each carries different filings and registers."],
-  ["Transaction volume", "How many invoices, purchases and bank entries we post and reconcile each month."],
   ["GSTINs and locations", "Every GSTIN is a separate set of returns and reconciliations."],
   ["Services and frequency", "Monthly compliance, quarterly statements, annual returns or one-time work."],
   ["Where the work happens", "At our office, or on-site at your premises on agreed days."],

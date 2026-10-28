@@ -1,14 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Instrument_Serif, Source_Serif_4 } from "next/font/google";
 import { InlineScript } from "@/components/inline-script";
 import { Toaster } from "@/components/toaster";
 import "./globals.css";
-
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
-const serif = Source_Serif_4({ variable: "--font-serif", subsets: ["latin"], weight: ["500", "600"] });
-// Editorial display face for the public website only.
-const editorial = Instrument_Serif({ variable: "--font-instrument", subsets: ["latin"], weight: "400", style: ["normal", "italic"] });
 
 // Runs before first paint: marks the document as motion-capable so scroll reveals
 // start hidden instead of flashing. If the motion script never starts (blocked JS,
@@ -25,7 +18,7 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, them
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en-IN" className={`${geistSans.variable} ${geistMono.variable} ${serif.variable} ${editorial.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="en-IN" className="h-full antialiased" suppressHydrationWarning>
       <head>
         <InlineScript html={MOTION_BOOT} />
       </head>

@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useActionState, useContext, useEffect, useId, useRef, useTransition, type ComponentProps, type FormEvent, type ReactNode } from "react";
+import { createContext, useActionState, useContext, useEffect, useId, useRef, useState, useTransition, type ComponentProps, type FormEvent, type ReactNode } from "react";
+import { unstable_rethrow } from "next/navigation";
 import { clsx } from "clsx";
 import { Copy } from "lucide-react";
 import { buttonClass } from "@/components/ui";
@@ -44,7 +45,16 @@ export function ActionForm({
   resetOnSuccess?: boolean;
   successMessage?: string;
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  // A failed call (server error, or an action from an older deployment) becomes an
+  // error message on the form instead of the full-page error screen; typed values stay.
+  const [state, formAction, pending] = useActionState(async (prev: FormState, fd: FormData): Promise<FormState> => {
+    try {
+      return await action(prev, fd);
+    } catch (e) {
+      unstable_rethrow(e); // redirects after success
+      return { ok: false, message: "Could not submit the form. Please try again, or reload the page if it keeps happening." };
+    }
+  }, {});
   const ref = useRef<HTMLFormElement>(null);
   const onSubmit = useSubmitWithoutReset(formAction);
   // A message carrying a one-time link must not disappear: it stays in the form with a copy button.
@@ -128,6 +138,75 @@ function useFieldError(name: string) {
 }
 
 type FieldBase = { label: string; name: string; hint?: string; required?: boolean; className?: string };
+
+/** onInput handler for identifiers (PAN, GSTIN, TAN…): upper-cases as the user types, keeping the caret. */
+export function upperCaseInput(e: FormEvent<HTMLInputElement>) {
+  const el = e.currentTarget;
+  const upper = el.value.toUpperCase();
+  if (upper === el.value) return;
+  const { selectionStart, selectionEnd } = el;
+  el.value = upper;
+  el.setSelectionRange(selectionStart, selectionEnd);
+}
+
+/** Common dialling codes; India first. */
+const COUNTRY_CODES = [
+  ["+91", "India"], ["+1", "USA / Canada"], ["+44", "United Kingdom"], ["+971", "UAE"], ["+966", "Saudi Arabia"],
+  ["+974", "Qatar"], ["+965", "Kuwait"], ["+968", "Oman"], ["+973", "Bahrain"], ["+65", "Singapore"],
+  ["+60", "Malaysia"], ["+61", "Australia"], ["+64", "New Zealand"], ["+49", "Germany"], ["+33", "France"],
+  ["+31", "Netherlands"], ["+41", "Switzerland"], ["+39", "Italy"], ["+34", "Spain"], ["+353", "Ireland"],
+  ["+81", "Japan"], ["+82", "South Korea"], ["+86", "China"], ["+852", "Hong Kong"], ["+66", "Thailand"],
+  ["+62", "Indonesia"], ["+63", "Philippines"], ["+84", "Vietnam"], ["+977", "Nepal"], ["+975", "Bhutan"],
+  ["+880", "Bangladesh"], ["+94", "Sri Lanka"], ["+960", "Maldives"], ["+27", "South Africa"], ["+254", "Kenya"],
+  ["+234", "Nigeria"], ["+7", "Russia / Kazakhstan"], ["+55", "Brazil"], ["+52", "Mexico"],
+] as const;
+
+/**
+ * Mobile number with a country-code selector. Only digits can be typed; an Indian
+ * (+91) number must be 10 digits. Posts `<name>Code` and `<name>` (digits only).
+ */
+export function PhoneField({ label, name, hint, required, className }: FieldBase) {
+  const error = useFieldError(name);
+  const id = `${name}-${useId()}`;
+  const [code, setCode] = useState("+91");
+  const [digits, setDigits] = useState("");
+  const india = code === "+91";
+  const max = india ? 10 : 15 - (code.length - 1);
+  const incomplete = india && digits.length > 0 && digits.length < 10;
+  const shownHint = incomplete ? `${10 - digits.length} more digit${digits.length === 9 ? "" : "s"} needed` : hint ?? (india ? "10-digit mobile number" : "Number without the country code");
+  return (
+    <FieldShell {...{ label, id, hint: shownHint, required, className, error }}>
+      <div className="flex gap-2">
+        <select
+          name={`${name}Code`}
+          aria-label="Country code"
+          value={code}
+          onChange={(e) => {
+            setCode(e.target.value);
+            if (e.target.value === "+91") setDigits((d) => d.slice(0, 10));
+          }}
+          className={clsx(inputCls.replace("w-full", "w-32"), "shrink-0 pr-8")}
+        >
+          {COUNTRY_CODES.map(([c, country]) => <option key={c} value={c}>{c} {country}</option>)}
+        </select>
+        <input
+          id={id}
+          name={name}
+          type="tel"
+          inputMode="numeric"
+          autoComplete="tel-national"
+          value={digits}
+          maxLength={max}
+          onChange={(e) => setDigits(e.target.value.replace(/\D/g, "").slice(0, max))}
+          aria-invalid={!!error || incomplete}
+          aria-describedby={error ? `${id}-error` : `${id}-hint`}
+          aria-required={required}
+          className={clsx(inputCls, "min-w-0 flex-1")}
+        />
+      </div>
+    </FieldShell>
+  );
+}
 
 function FieldShell({ label, id, hint, required, className, children, error }: Omit<FieldBase, "name"> & { id: string; children: ReactNode; error?: string }) {
   return (

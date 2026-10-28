@@ -149,14 +149,14 @@ export function Stamp({ top, bottom, center, sub, color = "#c8441c", className, 
         <circle cx="100" cy="100" r="94" fill="none" strokeWidth="5" />
         <circle cx="100" cy="100" r="84" fill="none" strokeWidth="1.5" />
         <circle cx="100" cy="100" r="52" fill="none" strokeWidth="1.5" />
-        <text fontFamily="var(--font-geist-mono), monospace" fontSize="15" fontWeight="700" letterSpacing="3" stroke="none">
+        <text fontFamily="Arial, Helvetica, sans-serif" fontSize="15" fontWeight="700" letterSpacing="3" stroke="none">
           <textPath href={`#${id}-arc-top`} startOffset="50%" textAnchor="middle">{top}</textPath>
         </text>
-        <text fontFamily="var(--font-geist-mono), monospace" fontSize="13" fontWeight="700" letterSpacing="3" stroke="none">
+        <text fontFamily="Arial, Helvetica, sans-serif" fontSize="13" fontWeight="700" letterSpacing="3" stroke="none">
           <textPath href={`#${id}-arc-bot`} startOffset="50%" textAnchor="middle" dominantBaseline="hanging">{bottom}</textPath>
         </text>
-        <text x="100" y={sub ? 104 : 110} textAnchor="middle" fontFamily="var(--font-instrument), serif" fontSize="30" stroke="none">{center}</text>
-        {sub && <text x="100" y="124" textAnchor="middle" fontFamily="var(--font-geist-mono), monospace" fontSize="10" fontWeight="700" letterSpacing="2" stroke="none">{sub}</text>}
+        <text x="100" y={sub ? 104 : 110} textAnchor="middle" fontFamily="Arial, Helvetica, sans-serif" fontSize="30" stroke="none">{center}</text>
+        {sub && <text x="100" y="124" textAnchor="middle" fontFamily="Arial, Helvetica, sans-serif" fontSize="10" fontWeight="700" letterSpacing="2" stroke="none">{sub}</text>}
         <path d="M18 100h10M172 100h10" strokeWidth="2" />
       </g>
     </svg>
@@ -216,13 +216,13 @@ export function OfficeMap({ className }: { className?: string }) {
       </g>
       <path d="M-10 236C80 220 150 250 230 232s120-28 190-18" stroke="#fff" strokeWidth="18" fill="none" />
       <path d="M-10 236C80 220 150 250 230 232s120-28 190-18" stroke="#e3a21a" strokeWidth="2" strokeDasharray="10 8" fill="none" />
-      <text x="20" y="226" fontFamily="var(--font-geist-mono), monospace" fontSize="9" fill="#8a5a00">RING ROAD SIDE</text>
+      <text x="20" y="226" fontFamily="Arial, Helvetica, sans-serif" fontSize="9" fill="#8a5a00">RING ROAD SIDE</text>
       <rect x="174" y="76" width="56" height="42" rx="4" fill="#dcece2" stroke="#2f6b4f" strokeWidth="1.2" />
-      <text x="202" y="101" textAnchor="middle" fontFamily="var(--font-geist-mono), monospace" fontSize="8" fill="#245640">PHASE-I</text>
+      <text x="202" y="101" textAnchor="middle" fontFamily="Arial, Helvetica, sans-serif" fontSize="8" fill="#245640">PHASE-I</text>
       <g transform="translate(262 140)">
         <rect width="52" height="26" rx="3" fill="#fbeccb" stroke="#8a5a00" strokeWidth="1" />
-        <text x="26" y="11" textAnchor="middle" fontFamily="var(--font-geist-mono), monospace" fontSize="6.5" fill="#8a5a00">BIKANERWALA</text>
-        <text x="26" y="20" textAnchor="middle" fontFamily="var(--font-geist-mono), monospace" fontSize="6.5" fill="#8a5a00">SWEETS</text>
+        <text x="26" y="11" textAnchor="middle" fontFamily="Arial, Helvetica, sans-serif" fontSize="6.5" fill="#8a5a00">BIKANERWALA</text>
+        <text x="26" y="20" textAnchor="middle" fontFamily="Arial, Helvetica, sans-serif" fontSize="6.5" fill="#8a5a00">SWEETS</text>
       </g>
       <path d="M248 112c4 12 10 20 18 28" stroke="#0f1d33" strokeWidth="1.5" strokeDasharray="3 4" fill="none" />
       <g transform="translate(236 104)">
@@ -234,9 +234,9 @@ export function OfficeMap({ className }: { className?: string }) {
       </g>
       <g transform="translate(150 22)">
         <rect width="104" height="22" rx="11" fill="#0f1d33" />
-        <text x="52" y="15" textAnchor="middle" fontFamily="var(--font-geist-mono), monospace" fontSize="9.5" fill="#f5f1e8">B-191 · 2nd floor</text>
+        <text x="52" y="15" textAnchor="middle" fontFamily="Arial, Helvetica, sans-serif" fontSize="9.5" fill="#f5f1e8">B-191 · 2nd floor</text>
       </g>
-      <g transform="translate(372 30)" fontFamily="var(--font-geist-mono), monospace" fontSize="9" fill="#5d6470">
+      <g transform="translate(372 30)" fontFamily="Arial, Helvetica, sans-serif" fontSize="9" fill="#5d6470">
         <path d="M0 10V-6M-5 0l5-7 5 7" stroke="#5d6470" strokeWidth="1.4" fill="none" />
         <text x="0" y="22" textAnchor="middle">N</text>
       </g>

@@ -3,7 +3,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, Phone } from "lucide-react";
+import { ArrowUpRight, LayoutDashboard, Phone } from "lucide-react";
 import { clsx } from "clsx";
 import { PUBLIC_NAV } from "./nav";
 
@@ -27,8 +27,28 @@ export function Wordmark({ light }: { light?: boolean }) {
   );
 }
 
+/**
+ * Whether the visitor is signed in. Checked in the browser so public pages stay
+ * statically cached; /app sends each signed-in user to their own dashboard.
+ */
+function useSignedIn() {
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/session/status", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { state?: string } | null) => live && setSignedIn(!!d?.state && d.state !== "signed_out" && d.state !== "inactive"))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  return signedIn;
+}
+
 export function SiteHeader({ phone, tel }: { phone: string; tel: string }) {
   const path = usePathname();
+  const signedIn = useSignedIn();
   // The sheet remembers the path it was opened on, so navigating closes it.
   const [openOn, setOpenOn] = useState<string | null>(null);
   const open = openOn === path;
@@ -70,10 +90,18 @@ export function SiteHeader({ phone, tel }: { phone: string; tel: string }) {
           })}
         </nav>
         <div className="hidden items-center gap-2 md:flex">
-          <Link href="/login" className="pub-link px-2 py-1 text-sm font-medium text-ink">Sign in</Link>
-          <Link href="/register" className="pub-btn pub-btn-sm">
-            Create account <ArrowUpRight className="arrow size-4" aria-hidden />
-          </Link>
+          {signedIn ? (
+            <Link href="/app" className="pub-btn pub-btn-sm">
+              <LayoutDashboard className="size-4" aria-hidden /> Dashboard
+            </Link>
+          ) : (
+            <>
+              <Link href="/login" className="pub-link px-2 py-1 text-sm font-medium text-ink">Sign in</Link>
+              <Link href="/register" className="pub-btn pub-btn-sm">
+                Create account <ArrowUpRight className="arrow size-4" aria-hidden />
+              </Link>
+            </>
+          )}
         </div>
         <button
           type="button"
@@ -113,8 +141,14 @@ export function SiteHeader({ phone, tel }: { phone: string; tel: string }) {
             ))}
           </ul>
           <div className="pub-sheet-item mt-8 grid gap-3" style={{ "--i": 5 } as CSSProperties}>
-            <Link href="/register" className="pub-btn pub-btn-block">Create account</Link>
-            <Link href="/login" className="pub-btn pub-btn-ghost pub-btn-block">Sign in</Link>
+            {signedIn ? (
+              <Link href="/app" className="pub-btn pub-btn-block"><LayoutDashboard className="size-4" aria-hidden /> Dashboard</Link>
+            ) : (
+              <>
+                <Link href="/register" className="pub-btn pub-btn-block">Create account</Link>
+                <Link href="/login" className="pub-btn pub-btn-ghost pub-btn-block">Sign in</Link>
+              </>
+            )}
             <a href={tel} className="mt-3 flex items-center gap-2 text-sm text-muted"><Phone className="size-4" aria-hidden /> {phone}</a>
           </div>
         </nav>
