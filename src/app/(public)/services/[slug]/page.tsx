@@ -61,7 +61,7 @@ export default async function ServiceDetail({ params }: PageProps<"/services/[sl
               <DeptIcon name={s.department} className="pub-float size-[62%]" style={{ "--t": "8s" } as CSSProperties} />
             </div>
             <Stamp id="detail" className="pub-stamp absolute -bottom-2 -right-2 w-[46%]" style={{ "--d": "900ms" } as CSSProperties} color={tone.fill}
-              top={s.department.toUpperCase()} bottom="S S DIMRI & ASSOCIATES" center={s.code?.replace("SRV-", "№ ") ?? "№"} />
+              top={s.department.toUpperCase()} bottom="OFFICE ERP" center={s.code?.replace("SRV-", "№ ") ?? "№"} />
           </div>
         </div>
       </section>

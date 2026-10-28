@@ -32,7 +32,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/login">) 
         <SignInForm />
       </AuthCard>
       <p className="mt-6 text-sm text-muted">
-        New to S S Dimri &amp; Associates? <Link href="/register" className="pub-link font-medium text-stamp">Create an account</Link>
+        New to Office ERP? <Link href="/register" className="pub-link font-medium text-stamp">Create an account</Link>
       </p>
     </AuthShell>
   );

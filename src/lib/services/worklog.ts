@@ -262,7 +262,7 @@ export async function createPendingItem(ctx: AppContext, v: z.infer<typeof pendi
       },
     });
     if (item.clientVisible && item.clientId) {
-      await notifyClientUsers(tx, ctx.organization.id, item.clientId, { type: "request.new", title: "New request from S S Dimri & Associates", body: v.requestDescription.slice(0, 140), link: `/client/requests/${item.id}` });
+      await notifyClientUsers(tx, ctx.organization.id, item.clientId, { type: "request.new", title: "New request from Office ERP", body: v.requestDescription.slice(0, 140), link: `/client/requests/${item.id}` });
     }
     if (withEmployee && withEmployee !== ctx.employee?.id) {
       await notifyEmployees(tx, ctx.organization.id, [withEmployee], { type: "pending.assigned", title: "New pending item for you", body: v.requestDescription.slice(0, 140), link: "/app/pending" });

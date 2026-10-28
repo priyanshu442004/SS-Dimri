@@ -23,11 +23,11 @@ export default async function ClientLayout({ children }: LayoutProps<"/client">)
           <Link href="/client" className="flex min-w-0 items-center gap-2.5">
             <span aria-hidden className="relative grid size-9 shrink-0 place-items-center">
               <svg viewBox="0 0 40 40" className="absolute inset-0 size-full"><circle cx="20" cy="20" r="18.5" fill="none" stroke="#0f1d33" strokeWidth="1.5" strokeDasharray="2 2.6" /><circle cx="20" cy="20" r="15" fill="#0f1d33" /></svg>
-              <span className="relative font-editorial text-sm text-paper">SD</span>
+              <span className="relative font-editorial text-sm text-paper">OE</span>
             </span>
             <span className="min-w-0">
               <span className="block truncate font-editorial text-lg leading-tight">{ctx?.client?.tradeName ?? "Client portal"}</span>
-              <span className="block font-mono text-[10px] text-muted">CLIENT PORTAL · S S DIMRI &amp; ASSOCIATES</span>
+              <span className="block font-mono text-[10px] text-muted">CLIENT PORTAL · OFFICE ERP</span>
             </span>
           </Link>
           <span className="ml-auto flex items-center gap-1">

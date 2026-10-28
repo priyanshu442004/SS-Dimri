@@ -30,7 +30,7 @@ export default async function ClientWorkDetail({ params }: PageProps<"/client/wo
             <ol className="space-y-3">
               {t.activities.map((a) => (
                 <li key={a.id} className="rounded-md border border-line p-3 text-sm">
-                  <p className="text-xs text-muted">{a.actor?.name ?? "S S Dimri & Associates"} · {formatDateTime(a.createdAt)}</p>
+                  <p className="text-xs text-muted">{a.actor?.name ?? "Office ERP"} · {formatDateTime(a.createdAt)}</p>
                   <p className="mt-1 whitespace-pre-wrap">{a.note}</p>
                 </li>
               ))}

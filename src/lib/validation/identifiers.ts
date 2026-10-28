@@ -32,7 +32,7 @@ export const mobileSchema = z
 export const intlMobileSchema = z
   .string()
   .transform((s) => s.replace(/[\s-]/g, ""))
-  .pipe(z.string().regex(/^((\+91)?[6-9][0-9]{9}|\+(?!91)[1-9][0-9]{5,14})$/, "Invalid mobile number"));
+  .pipe(z.string().regex(/^((\+91)?[6-9][0-9]{9}|\+(?!91)[1-9][0-9]{5,14})$/, "Enter a valid mobile number (10 digits for India)"));
 
 /** Combine a country code (e.g. "+91") and the digits typed after it into one stored value. */
 export function joinMobile(code: string | undefined, digits: string | undefined) {

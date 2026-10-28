@@ -360,7 +360,7 @@ export function BusinessWizard({ constitutions, natures, services }: {
           </dl>
           <label className="mt-4 flex items-start gap-2 text-sm">
             <input type="checkbox" name="consent" className="mt-0.5 size-4 accent-brand-700" />
-            I confirm the information is correct and agree that S S Dimri &amp; Associates may use it to process this registration.
+            I confirm the information is correct and agree that Office ERP may use it to process this registration.
           </label>
           {err("consent") && <p className="text-xs text-danger">{err("consent")}</p>}
           <div aria-hidden className="hidden"><input name="website" tabIndex={-1} autoComplete="off" /></div>

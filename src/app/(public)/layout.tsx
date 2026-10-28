@@ -63,7 +63,7 @@ export default function PublicLayout({ children }: LayoutProps<"/">) {
         {/* Oversized wordmark that drifts sideways as it scrolls through view */}
         <div aria-hidden className="mt-16 overflow-hidden border-y border-paper/10 py-4">
           <p className="pub-scroll-x flex items-center gap-8 whitespace-nowrap font-editorial text-[clamp(4rem,13vw,11rem)] leading-none text-paper/[0.09]" style={{ "--from": "4%", "--to": "-22%" } as CSSProperties}>
-            S S Dimri <Star className="size-[0.35em] text-stamp-bright/60" /> <span className="italic">&amp; Associates</span> <Star className="size-[0.35em] text-marigold/60" /> Since {FIRM.established}
+            Office <Star className="size-[0.35em] text-stamp-bright/60" /> <span className="italic">ERP</span> <Star className="size-[0.35em] text-marigold/60" /> Since {FIRM.established}
           </p>
         </div>
 

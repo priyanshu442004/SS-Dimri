@@ -3,7 +3,7 @@ import master from "../../prisma/data/ssda-master-data.json";
 // Verified firm details, taken from the firm's own documents (letterheads and
 // the ERP master data pack, sheet "5. Firm Details"). Nothing here is invented.
 export const FIRM = {
-  name: "S S Dimri & Associates",
+  name: "Office ERP",
   address: "2nd Floor, B-191, Phase-I, Naraina Industrial Area, New Delhi – 110028",
   landmark: "Near Bikanerwala Sweets, Naraina Industrial Area Phase-1",
   phone: "011-47094120",

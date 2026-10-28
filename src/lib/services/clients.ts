@@ -9,7 +9,7 @@ import { dateOnly } from "@/lib/dates";
 import { clientTransition, type ClientAction, type ClientStatus } from "@/lib/domain/client-workflow";
 import { can } from "@/lib/permissions";
 import { encryptWithLast4 } from "@/lib/security/encryption";
-import { aadhaarSchema, gstinSchema, mobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
+import { aadhaarSchema, gstinSchema, intlMobileSchema, mobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
 import type { AppContext } from "@/lib/session";
 import { createCredentialUser } from "./accounts";
 import { audit } from "./audit";
@@ -51,7 +51,7 @@ export const quickRegistrationSchema = z.object({
   gstins: gstinList,
   natureOfClient: z.enum(["ONE_TIME", "RETAINER"]).optional(),
   contactName: zOptionalText(120),
-  contactMobile: mobileSchema.optional(),
+  contactMobile: intlMobileSchema.optional(),
   contactEmail: z.email().optional(),
   "serviceIds[]": z.array(z.uuid()).default([]),
 });
@@ -196,7 +196,7 @@ export async function transitionClient(ctx: AppContext, clientId: string, action
     }
     // Tell the client's portal users about approval decisions.
     if (action === "approve" || action === "reactivate") {
-      await notifyClientUsers(tx, ctx.organization.id, client.id, { type: "client.approved", title: "Your account is active", body: "Welcome to the S S Dimri & Associates client portal.", link: "/client" });
+      await notifyClientUsers(tx, ctx.organization.id, client.id, { type: "client.approved", title: "Your account is active", body: "Welcome to the Office ERP client portal.", link: "/client" });
     }
     if (action === "reject") {
       await notifyClientUsers(tx, ctx.organization.id, client.id, { type: "client.rejected", title: "Your registration needs attention", body: reason, link: "/account/pending" });

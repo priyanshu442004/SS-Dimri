@@ -73,7 +73,7 @@ export default async function PricingPage() {
           {/* Receipt illustration */}
           <div aria-hidden className="relative mx-auto w-full max-w-[360px]">
             <div className="pub-in pub-float relative rotate-[-2.5deg] bg-surface px-6 pb-10 pt-6 font-mono text-xs shadow-[0_30px_60px_-30px_rgb(15_29_51/.5)]" style={{ "--d": "200ms", "--t": "9s" } as CSSProperties}>
-              <p className="text-center font-editorial text-2xl">S S Dimri &amp; Associates</p>
+              <p className="text-center font-editorial text-2xl">Office ERP</p>
               <p className="mt-1 text-center text-[10px] text-muted">PROPOSAL · DRAFT</p>
               <div className="my-4 border-t border-dashed border-ink/30" />
               {[["Scope", "agreed with you"], ["Frequency", "as required"], ["Billing", "your choice"], ["Visits", "if needed"]].map(([k, v], i) => (
@@ -86,7 +86,7 @@ export default async function PricingPage() {
               {/* torn, scalloped bottom edge */}
               <span className="absolute inset-x-0 -bottom-[7px] h-4 bg-[radial-gradient(circle_at_8px_100%,var(--color-paper)_7px,transparent_7.5px)] bg-[length:16px_16px]" />
             </div>
-            <Stamp id="price" className="pub-stamp absolute -bottom-6 -right-4 w-36" style={{ "--d": "1100ms" } as CSSProperties} top="QUOTED PER ENGAGEMENT" bottom="S S DIMRI & ASSOCIATES" center="Quote" />
+            <Stamp id="price" className="pub-stamp absolute -bottom-6 -right-4 w-36" style={{ "--d": "1100ms" } as CSSProperties} top="QUOTED PER ENGAGEMENT" bottom="OFFICE ERP" center="Quote" />
           </div>
         </div>
       </section>

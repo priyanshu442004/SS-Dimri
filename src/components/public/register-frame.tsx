@@ -36,7 +36,7 @@ export function RegisterFrame({ back, eyebrow, title, em, description, next, chi
           <aside className="hidden lg:block">
             <div className="sticky top-28 pt-24">
               <div className="pub-in relative rounded-2xl border border-ink/10 bg-surface/80 p-5" style={{ "--d": "500ms" } as CSSProperties}>
-                <Stamp id="frame" className="pub-stamp absolute -right-8 -top-12 w-24" style={{ "--d": "1100ms" } as CSSProperties} top="REGISTRATION" bottom="S S DIMRI & ASSOCIATES" center="New" />
+                <Stamp id="frame" className="pub-stamp absolute -right-8 -top-12 w-24" style={{ "--d": "1100ms" } as CSSProperties} top="REGISTRATION" bottom="OFFICE ERP" center="New" />
                 <p className="font-mono text-xs text-muted">What happens next</p>
                 <ol className="mt-4 space-y-4">
                   {next.map((n, i) => (

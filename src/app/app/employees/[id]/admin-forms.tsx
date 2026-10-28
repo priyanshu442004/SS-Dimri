@@ -9,7 +9,7 @@ type Option = { value: string; label: string };
 export function DecisionForm({ action, canHold }: { action: Act; canHold: boolean }) {
   return (
     <ActionForm action={action}>
-      <TextField label="Permanent employee ID" name="permanentEmployeeCode" hint="Required to approve, e.g. SSDA-031" />
+      <TextField label="Permanent employee ID" name="permanentEmployeeCode" hint="Required to approve, e.g. OERP-031" />
       <TextArea label="Note to the staff member" name="note" rows={2} hint="Required when rejecting; included in the email" />
       <div className="flex flex-wrap gap-2">
         <SubmitButton name="decision" value="APPROVE" confirm="Approve this staff member? They can sign in and use the portal, and are emailed now. The employee ID cannot be reused.">

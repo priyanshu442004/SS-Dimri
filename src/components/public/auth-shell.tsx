@@ -55,7 +55,7 @@ export function AuthShell({ eyebrow, title, em, description, icon, children, ton
                 <p className="font-mono text-[10px] text-muted">NEXT DUE · {formatDue(next.date).toUpperCase()}</p>
                 <p className="mt-1.5 text-sm font-medium leading-snug">{next.title}</p>
               </div>
-              <Stamp id="auth" className="pub-stamp absolute -right-6 -top-10 w-32" style={{ "--d": "1000ms" } as CSSProperties} color="#e3a21a" top="CLIENT PORTAL" bottom="S S DIMRI & ASSOCIATES" center="SSDA" />
+              <Stamp id="auth" className="pub-stamp absolute -right-6 -top-10 w-32" style={{ "--d": "1000ms" } as CSSProperties} color="#e3a21a" top="CLIENT PORTAL" bottom="OFFICE ERP" center="ERP" />
             </div>
             <p className="flex max-w-sm items-start gap-3 text-sm text-paper/60">
               <ShieldCheck className="mt-0.5 size-5 shrink-0 text-marigold" />

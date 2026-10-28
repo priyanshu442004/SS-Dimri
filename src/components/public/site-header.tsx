@@ -12,16 +12,16 @@ const isActive = (path: string, href: string) => (href === "/" ? path === "/" : 
 
 export function Wordmark({ light }: { light?: boolean }) {
   return (
-    <Link href="/" className="group flex items-center gap-2.5" aria-label="S S Dimri & Associates — home">
+    <Link href="/" className="group flex items-center gap-2.5" aria-label="Office ERP — home">
       <span aria-hidden className="relative grid size-9 place-items-center">
         <svg viewBox="0 0 40 40" className="absolute inset-0 size-full transition-transform duration-700 ease-[var(--ease-spring)] group-hover:rotate-[22deg]">
           <circle cx="20" cy="20" r="18.5" fill="none" stroke={light ? "#f5f1e8" : "#0f1d33"} strokeWidth="1.5" strokeDasharray="2 2.6" />
           <circle cx="20" cy="20" r="15" fill={light ? "#f5f1e8" : "#0f1d33"} />
         </svg>
-        <span className={clsx("relative font-editorial text-[15px] leading-none", light ? "text-night" : "text-paper")}>SD</span>
+        <span className={clsx("relative font-editorial text-[15px] leading-none", light ? "text-night" : "text-paper")}>OE</span>
       </span>
       <span className={clsx("font-editorial text-[1.35rem] leading-none tracking-[-0.01em]", light ? "text-paper" : "text-ink")}>
-        S S Dimri <span className={clsx("italic", light ? "text-paper/60" : "text-muted")}>&amp; Associates</span>
+        Office <span className={clsx("italic", light ? "text-paper/60" : "text-muted")}>ERP</span>
       </span>
     </Link>
   );

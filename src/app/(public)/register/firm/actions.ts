@@ -12,7 +12,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { createCredentialUser } from "@/lib/services/accounts";
 import { hasFile, storeUpload, validateUpload } from "@/lib/services/files";
 import { isFirmRegistrationOpen } from "@/lib/services/firm-registration";
-import { gstinSchema, intlMobileSchema, joinMobile, panSchema, tanSchema } from "@/lib/validation/identifiers";
+import { gstinSchema, intlMobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
 import { setFlash } from "@/lib/flash";
 
 const schema = z
@@ -28,8 +28,7 @@ const schema = z
     gstin: gstinSchema.optional(),
     tan: tanSchema.optional(),
     address: zOptionalText(1000),
-    contactMobileCode: z.string().regex(/^\+[1-9][0-9]{0,3}$/, "Select a country code").optional(),
-    contactMobile: z.string().regex(/^[0-9]+$/, "Use digits only").optional(),
+    contactMobile: intlMobileSchema.optional(),
     accessMode: z.enum(["SINGLE_USER", "MULTI_USER"]),
     declaredEmployeeCount: zInt(0, 100000).optional(),
     declaredClientCount: zInt(0, 1000000).optional(),
@@ -39,16 +38,7 @@ const schema = z
     certificateExpiresOn: zIsoDate.optional(),
     website: z.string().max(0).optional(), // honeypot: must stay empty
   })
-  .refine((v) => v.password === v.confirmPassword, { message: "Passwords do not match", path: ["confirmPassword"] })
-  .refine((v) => !v.contactMobile || (v.contactMobileCode ?? "+91") !== "+91" || /^[6-9][0-9]{9}$/.test(v.contactMobile), {
-    message: "Enter a 10-digit mobile number",
-    path: ["contactMobile"],
-  })
-  .refine((v) => !v.contactMobile || intlMobileSchema.safeParse(joinMobile(v.contactMobileCode, v.contactMobile)).success, {
-    message: "Invalid mobile number",
-    path: ["contactMobile"],
-  })
-  .transform(({ contactMobileCode, contactMobile, ...v }) => ({ ...v, contactMobile: joinMobile(contactMobileCode, contactMobile) }));
+  .refine((v) => v.password === v.confirmPassword, { message: "Passwords do not match", path: ["confirmPassword"] });
 
 export async function createAccount(_prev: ActionState, fd: FormData): Promise<ActionState> {
   if (!(await isFirmRegistrationOpen())) return { ok: false, message: "Firm registration is closed." };

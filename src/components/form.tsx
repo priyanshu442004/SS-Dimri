@@ -6,6 +6,7 @@ import { clsx } from "clsx";
 import { Copy } from "lucide-react";
 import { buttonClass } from "@/components/ui";
 import { toast } from "@/components/toaster";
+import { joinMobile } from "@/lib/validation/identifiers";
 
 // Forms post to server actions. Validation runs on the server (Zod); this
 // layer only displays the returned field errors and status message.
@@ -124,7 +125,11 @@ export function SubmitButton({
         if (confirm && !window.confirm(confirm)) e.preventDefault();
       }}
     >
-      {pending ? <><span aria-hidden className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" /> Saving…</> : children}
+      {/* Both states keep the same elements (only hidden/shown), so browser extensions or page
+          translation that rewrite the button's text cannot break React's update and crash the page. */}
+      <span aria-hidden className={clsx("size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent", !pending && "hidden")} />
+      <span className={clsx(!pending && "hidden")}>Saving…</span>
+      <span className={clsx("inline-flex items-center gap-2", pending && "hidden")}>{children}</span>
     </button>
   );
 }
@@ -163,7 +168,8 @@ const COUNTRY_CODES = [
 
 /**
  * Mobile number with a country-code selector. Only digits can be typed; an Indian
- * (+91) number must be 10 digits. Posts `<name>Code` and `<name>` (digits only).
+ * (+91) number must be 10 digits. Posts one value under `name`: the 10 digits for
+ * India, or +<code><number> otherwise (validate with intlMobileSchema).
  */
 export function PhoneField({ label, name, hint, required, className }: FieldBase) {
   const error = useFieldError(name);
@@ -177,8 +183,8 @@ export function PhoneField({ label, name, hint, required, className }: FieldBase
   return (
     <FieldShell {...{ label, id, hint: shownHint, required, className, error }}>
       <div className="flex gap-2">
+        <input type="hidden" name={name} value={joinMobile(code, digits) ?? ""} />
         <select
-          name={`${name}Code`}
           aria-label="Country code"
           value={code}
           onChange={(e) => {
@@ -191,7 +197,6 @@ export function PhoneField({ label, name, hint, required, className }: FieldBase
         </select>
         <input
           id={id}
-          name={name}
           type="tel"
           inputMode="numeric"
           autoComplete="tel-national"

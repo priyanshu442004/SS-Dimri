@@ -23,7 +23,7 @@ export default async function ClientProfile() {
   });
   return (
     <>
-      <PageHeader icon={<Building2 />} title="Business profile" description="The details registered with S S Dimri & Associates. To change them, contact the office or reply to a request." />
+      <PageHeader icon={<Building2 />} title="Business profile" description="The details registered with Office ERP. To change them, contact the office or reply to a request." />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Business">
           <DetailList items={[

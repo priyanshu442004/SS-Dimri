@@ -106,7 +106,7 @@ export default async function HomePage() {
               </div>
             </div>
             <div className="pub-parallax absolute bottom-[22%] right-[2%] w-[38%]" style={{ "--speed": "0.5" } as CSSProperties}>
-              <Stamp id="hero" className="pub-stamp w-full drop-shadow-sm" style={{ "--d": "1300ms" } as CSSProperties} top="S S DIMRI & ASSOCIATES" bottom="NEW DELHI · 110028" center="Filed" sub={`SINCE ${FIRM.established}`} />
+              <Stamp id="hero" className="pub-stamp w-full drop-shadow-sm" style={{ "--d": "1300ms" } as CSSProperties} top="OFFICE ERP" bottom="NEW DELHI · 110028" center="Filed" sub={`SINCE ${FIRM.established}`} />
             </div>
             <div className="absolute -bottom-14 left-[47%] hidden w-[48%] text-ink/70 sm:block">
               <DoodleArrow className="h-10 w-16 rotate-180" />
@@ -342,7 +342,7 @@ export default async function HomePage() {
 
       {/* ------------------------------------------------------------ closing CTA */}
       <section className="pub-grain relative overflow-hidden border-t border-ink/10 bg-stamp-soft/60">
-        <Stamp id="cta" className="pub-rotate-scroll pointer-events-none absolute -right-16 -top-16 w-64 opacity-25 sm:w-80" top="ON TIME · EVERY QUARTER" bottom="GST · TDS · ITR · ROC" center="SSDA" />
+        <Stamp id="cta" className="pub-rotate-scroll pointer-events-none absolute -right-16 -top-16 w-64 opacity-25 sm:w-80" top="ON TIME · EVERY QUARTER" bottom="GST · TDS · ITR · ROC" center="ERP" />
         <div className="relative mx-auto max-w-5xl px-4 py-24 text-center sm:px-6">
           <h2 data-reveal="" className="font-editorial text-[clamp(2.6rem,6.5vw,5rem)] leading-[0.98] tracking-[-0.02em]">
             Let&apos;s put your compliance <em className="text-stamp">on a calendar.</em>

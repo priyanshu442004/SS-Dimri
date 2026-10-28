@@ -28,21 +28,6 @@ function SheetsArt() {
   );
 }
 
-/** Quick registration: a single slip with a lightning stripe. */
-function SlipArt() {
-  return (
-    <svg viewBox="0 0 220 140" className="h-36 w-full" aria-hidden>
-      <g className="transition-transform duration-700 ease-[var(--ease-spring)] group-hover:-translate-y-2 group-hover:rotate-[-3deg]" style={{ transformOrigin: "110px 80px" }}>
-        <rect x="48" y="26" width="128" height="88" rx="6" fill="#fbeccb" transform="translate(4 4)" />
-        <rect x="48" y="26" width="128" height="88" rx="6" fill="#fff" stroke="#1b1f24" strokeWidth="1.5" />
-        <path d="M62 50h60M62 64h44M62 78h70" stroke="#1b1f24" strokeOpacity=".3" strokeWidth="5" strokeLinecap="round" />
-        <rect x="62" y="92" width="38" height="12" rx="4" fill="#1b1f24" />
-        <path d="M152 36l-14 24h12l-8 22 20-28h-12l8-18z" fill="#e3a21a" stroke="#1b1f24" strokeWidth="1.5" strokeLinejoin="round" />
-      </g>
-    </svg>
-  );
-}
-
 export default async function RegisterChoice() {
   await connection(); // depends on live database state (which firm exists); never prerender
   const [org, firmOpen] = await Promise.all([getPublicOrganization(), isFirmRegistrationOpen()]);
@@ -55,20 +40,12 @@ export default async function RegisterChoice() {
       text: "Full registration: business identity, constitution and partners/directors, GSTINs, compliance numbers, documents and the services you need.",
       enabled: !!org,
     },
-    {
-      href: "/register/quick" as const,
-      art: <SlipArt />,
-      tag: "A few minutes",
-      title: "Quick registration",
-      text: "Just the essentials — name, contact and GSTIN. You can complete the remaining details after approval.",
-      enabled: !!org,
-    },
   ];
   return (
     <PageTransition>
       <section className="pub-grain relative overflow-hidden">
         <div aria-hidden className="pub-dots absolute inset-0 [mask-image:radial-gradient(ellipse_at_50%_0%,#000,transparent_60%)]" />
-        <Stamp id="reg" className="pub-stamp pointer-events-none absolute -right-10 top-10 hidden w-48 opacity-80 lg:block" style={{ "--d": "900ms" } as CSSProperties} top="NEW CLIENT REGISTRATION" bottom="S S DIMRI & ASSOCIATES" center="Welcome" />
+        <Stamp id="reg" className="pub-stamp pointer-events-none absolute -right-10 top-10 hidden w-48 opacity-80 lg:block" style={{ "--d": "900ms" } as CSSProperties} top="NEW CLIENT REGISTRATION" bottom="OFFICE ERP" center="Welcome" />
         <div className="relative mx-auto max-w-5xl px-4 pb-24 pt-14 sm:px-6">
           <div className="pub-in"><Eyebrow>Get started</Eyebrow></div>
           <h1 className="mt-5 font-editorial text-[clamp(3rem,7.5vw,6rem)] leading-[0.92] tracking-[-0.03em]">
@@ -84,7 +61,7 @@ export default async function RegisterChoice() {
             </p>
           )}
 
-          <ul className="mt-12 grid gap-5 md:grid-cols-2">
+          <ul className="mt-12 grid gap-5 md:max-w-xl">
             {options.map((o, i) => (
               <li key={o.href} {...reveal(i, "scale")}>
                 {o.enabled ? (
@@ -117,7 +94,7 @@ export default async function RegisterChoice() {
             <div {...reveal(0)} className="flex gap-4 rounded-2xl border border-ink/10 bg-surface/70 p-5">
               <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-paper-2"><IdCard className="size-5" aria-hidden /></span>
               <div>
-                <p className="font-medium">Joining S S Dimri &amp; Associates as staff?</p>
+                <p className="font-medium">Joining Office ERP as staff?</p>
                 <p className="mt-1 text-sm text-muted">
                   Staff accounts are created by the firm&apos;s administrator. You will receive a one-time link to set your password, then complete your onboarding details for approval.
                 </p>

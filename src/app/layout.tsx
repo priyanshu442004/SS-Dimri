@@ -9,16 +9,16 @@ import "./globals.css";
 const MOTION_BOOT = `(function(){var d=document.documentElement;if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;d.setAttribute('data-motion','');setTimeout(function(){if(!d.hasAttribute('data-motion-ready'))d.removeAttribute('data-motion')},3000)})();`;
 
 export const metadata: Metadata = {
-  title: { default: "S S Dimri & Associates", template: "%s · S S Dimri & Associates" },
+  title: { default: "Office ERP", template: "%s · Office ERP" },
   description:
-    "S S Dimri & Associates, Naraina Industrial Area, New Delhi — accounting, GST, income tax, TDS, audit and compliance services.",
+    "Office ERP, Naraina Industrial Area, New Delhi — accounting, GST, income tax, TDS, audit and compliance services.",
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#1f3d62" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en-IN" className="h-full antialiased" suppressHydrationWarning>
+    <html lang="en-IN" translate="no" className="h-full antialiased" suppressHydrationWarning>
       <head>
         <InlineScript html={MOTION_BOOT} />
       </head>

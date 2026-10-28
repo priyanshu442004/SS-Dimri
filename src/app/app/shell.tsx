@@ -109,7 +109,7 @@ export function AppShell({
       <div className={clsx("flex h-16 items-center gap-2.5 border-b border-white/10", mini ? "justify-center px-2" : "px-4")}>
         <span aria-hidden className="relative grid size-8 shrink-0 place-items-center">
           <svg viewBox="0 0 40 40" className="absolute inset-0 size-full"><circle cx="20" cy="20" r="18.5" fill="none" stroke="#f5f1e8" strokeOpacity=".6" strokeWidth="1.5" strokeDasharray="2 2.6" /><circle cx="20" cy="20" r="15" fill="#f5f1e8" /></svg>
-          <span className="relative font-editorial text-sm text-night">SD</span>
+          <span className="relative font-editorial text-sm text-night">OE</span>
         </span>
         {!mini && <span className="truncate font-editorial text-lg leading-tight">{orgName}</span>}
       </div>
