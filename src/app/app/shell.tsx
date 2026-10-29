@@ -113,7 +113,7 @@ export function AppShell({
         </span>
         {!mini && <span className="truncate font-editorial text-lg leading-tight">{orgName}</span>}
       </div>
-      <div className={clsx("flex-1 overflow-y-auto py-4 [scrollbar-width:thin]", mini ? "px-2" : "px-3")}>
+      <div className={clsx("app-sidebar-scroll flex-1 overflow-y-auto py-4", mini ? "px-2" : "px-3")}>
         {sections.map((s) => (
           <div key={s} className="mb-5">
             {mini ? <hr className="mx-2 mb-2 border-white/10" /> : <p className="px-2 pb-1.5 font-mono text-[10.5px] text-white/40">{s}</p>}
