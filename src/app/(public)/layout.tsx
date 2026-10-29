@@ -18,7 +18,8 @@ export default function PublicLayout({ children }: LayoutProps<"/">) {
       <MotionDirector />
       <SiteHeader phone={FIRM.phone} tel={TEL} />
 
-      <main id="main" className="flex-1">
+      {/* overflow-x-clip: elements waiting to slide in from the side must not widen the page on phones */}
+      <main id="main" className="flex-1 overflow-x-clip">
         {children}
       </main>
 

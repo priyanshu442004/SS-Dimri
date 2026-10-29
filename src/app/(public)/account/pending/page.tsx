@@ -77,7 +77,7 @@ export default async function RegistrationStatusPage({ searchParams }: PageProps
         <dl className="mt-6 grid grid-cols-[7.5rem_1fr] gap-y-2 border-t border-ink/10 pt-5 text-sm">
           <dt className="text-muted">Business</dt><dd className="font-medium">{c.tradeName}</dd>
           <dt className="text-muted">Submitted</dt><dd>{formatDateTime(c.submittedAt)}</dd>
-          <dt className="text-muted">Registration</dt><dd>{c.registrationChannel === "CLIENT_QUICK" ? "Quick registration" : "Full registration"}</dd>
+          <dt className="text-muted">Registration</dt><dd>{c.registrationChannel === "STAFF" ? "Registered by your firm" : c.registrationChannel === "CLIENT_QUICK" ? "Quick registration" : "Full registration"}</dd>
         </dl>
       </AuthCard>
       <p className="mt-5 text-sm text-muted">Questions? Call <a className="pub-link text-ink" href="tel:+911147094120">{FIRM.phone}</a> or email <a className="pub-link break-all text-ink" href={`mailto:${FIRM.email}`}>{FIRM.email}</a>.</p>

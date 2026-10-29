@@ -11,7 +11,8 @@ import { days, disconnect, expireInvitation, setAccountAge } from "./db";
 test.describe.configure({ mode: "serial" });
 test.afterAll(disconnect);
 
-const run = Date.now().toString(36);
+// E2E_RUN re-targets the data of an earlier run (e.g. to repeat only the last tests with --grep).
+const run = process.env.E2E_RUN ?? Date.now().toString(36);
 const owner = { email: `owner-${run}@e2e.invalid`, password: "Owner-Pass-12345" };
 const secondOwner = { email: `owner2-${run}@e2e.invalid`, password: "Owner2-Pass-12345" };
 const staff = { email: `staff-${run}@e2e.invalid`, temp: "", password: "Staff-Pass-12345" };
@@ -388,7 +389,7 @@ test("staff quick registration stays pending until an admin approves it; duplica
 /** Admin creates the client's portal login from the client page; the client sets a password from the link. */
 async function invitePortalLogin(admin: Page, clientUrl: string, browser: Browser, c: { email: string; password: string }, name: string) {
   await admin.goto(`${clientUrl}?tab=portal`);
-  await admin.getByLabel("Name", { exact: true }).fill(name);
+  await admin.getByRole("textbox", { name: "Name", exact: true }).fill(name);
   await admin.getByLabel("Email (used to sign in)").fill(c.email);
   await admin.getByRole("button", { name: "Create login & setup link" }).click();
   const url = await linkIn(admin);
@@ -437,7 +438,7 @@ test("full client registration by staff: checks on each step, constitution partn
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByText("Select the constitution of the business")).toBeVisible();
   await page.getByRole("radio", { name: "LLP", exact: true }).check();
-  await expect(page.getByText("Partner 1")).toBeHidden(); // no visible per-person legend
+  await expect(page.locator("legend", { hasText: "Partner 1" })).toHaveClass(/sr-only/); // no visible per-person legend
   await page.getByRole("textbox", { name: "Full name", exact: true }).first().fill("Asha Rao");
   await page.getByLabel("Aadhaar").first().fill("1234");
   await page.getByRole("button", { name: "Add partner" }).click();
@@ -701,7 +702,7 @@ test("forgot password never reveals accounts; admin-issued reset link works once
   await client.goto("/forgot-password");
   await client.getByLabel("Login ID or email").fill("nobody-at-all@e2e.invalid");
   await client.getByRole("button", { name: "Request reset link" }).click();
-  const generic = client.getByText("Request received.");
+  const generic = client.getByRole("heading", { name: "Request received." });
   await expect(generic).toBeVisible();
   await client.goto("/forgot-password");
   await client.getByLabel("Login ID or email").fill(portalClient.email);
@@ -816,11 +817,11 @@ test("app and portal pages are usable at phone width (no horizontal page scroll)
 
 // Visual check: screenshots for manual review at desktop, tablet and phone
 // widths (written to test-results/visual; not compared automatically).
-test("visual check screenshots at desktop, tablet and phone widths", async ({ browser }) => {
+test("visual check screenshots at desktop, tablet and phone widths", async ({ browser, baseURL }) => {
   const sizes = [{ name: "desktop", width: 1366, height: 900 }, { name: "tablet", width: 768, height: 1024 }, { name: "phone", width: 375, height: 812 }];
   const pages = ["/", "/register", "/app/admin", "/app/clients", "/app/tasks?view=board", "/app/timesheet?tab=collective", "/app/pending", "/app/observations", "/app/dues", "/app/reports/clients", "/app/settings?tab=lists"];
   for (const size of sizes) {
-    const page = await (await browser.newContext({ viewport: { width: size.width, height: size.height } })).newPage();
+    const page = await (await browser.newContext({ baseURL, viewport: { width: size.width, height: size.height } })).newPage();
     await signIn(page, owner.email, owner.password);
     for (const path of pages) {
       await page.goto(path);

@@ -48,14 +48,17 @@ export function PeopleEditor({ constitution, people, onChange, onAdd, error, onB
 }) {
   const update = (key: number, patch: Partial<Person>) => onChange(people.map((x) => (x.key === key ? { ...x, ...patch } : x)));
   const role = ROLE_LABEL[constitution.representativeRole].toLowerCase();
+  // The error sits outside the <label> (so it never becomes part of the field's name) and is linked with aria-describedby.
+  const errorId = (p: Person, f: PersonField) => `person-${p.key}-${f}-error`;
   const field = (p: Person, f: PersonField) => ({
     "aria-invalid": !!error(p.key, f),
+    "aria-describedby": error(p.key, f) ? errorId(p, f) : undefined,
     onBlur: () => onBlurField?.(p.key, f),
     className: clsx(inputClass, "mt-1"),
   });
   const msg = (p: Person, f: PersonField) => {
     const m = error(p.key, f);
-    return m && <span className="mt-1 block text-xs font-normal text-danger">{m}</span>;
+    return m && <p id={errorId(p, f)} className="mt-1 text-xs text-danger">{m}</p>;
   };
   return (
     <div className="space-y-4">
@@ -66,10 +69,12 @@ export function PeopleEditor({ constitution, people, onChange, onAdd, error, onB
         <fieldset key={p.key} className="rounded-md border border-line p-4">
           <legend className="sr-only">{ROLE_LABEL[p.role]} {i + 1}</legend>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-sm">Full name <span className="text-danger" aria-hidden>*</span>
-              <input value={p.fullName} onChange={(e) => update(p.key, { fullName: e.target.value })} {...field(p, "fullName")} />
+            <div>
+              <label className="block text-sm">Full name <span className="text-danger" aria-hidden>*</span>
+                <input value={p.fullName} onChange={(e) => update(p.key, { fullName: e.target.value })} {...field(p, "fullName")} />
+              </label>
               {msg(p, "fullName")}
-            </label>
+            </div>
             <label className="text-sm">Role
               <select value={p.role} onChange={(e) => update(p.key, { role: e.target.value })} className={clsx(inputClass, "mt-1")}>
                 {Object.entries(ROLE_LABEL)
@@ -77,25 +82,33 @@ export function PeopleEditor({ constitution, people, onChange, onAdd, error, onB
                   .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </label>
-            <label className="text-sm">Mobile
-              <input value={p.mobile} onChange={(e) => update(p.key, { mobile: e.target.value.replace(/\D/g, "").slice(0, 10) })} type="tel" inputMode="numeric" maxLength={10} {...field(p, "mobile")} />
+            <div>
+              <label className="block text-sm">Mobile
+                <input value={p.mobile} onChange={(e) => update(p.key, { mobile: e.target.value.replace(/\D/g, "").slice(0, 10) })} type="tel" inputMode="numeric" maxLength={10} {...field(p, "mobile")} />
+              </label>
               {msg(p, "mobile")}
-            </label>
-            <label className="text-sm">Email
-              <input value={p.email} onChange={(e) => update(p.key, { email: e.target.value })} type="email" {...field(p, "email")} />
+            </div>
+            <div>
+              <label className="block text-sm">Email
+                <input value={p.email} onChange={(e) => update(p.key, { email: e.target.value })} type="email" {...field(p, "email")} />
+              </label>
               {msg(p, "email")}
-            </label>
+            </div>
             <label className="text-sm sm:col-span-2">Address
               <input value={p.address} onChange={(e) => update(p.key, { address: e.target.value })} className={clsx(inputClass, "mt-1")} />
             </label>
-            <label className="text-sm">PAN
-              <input value={p.pan} onChange={(e) => update(p.key, { pan: e.target.value.toUpperCase() })} maxLength={10} autoComplete="off" {...field(p, "pan")} />
+            <div>
+              <label className="block text-sm">PAN
+                <input value={p.pan} onChange={(e) => update(p.key, { pan: e.target.value.toUpperCase() })} maxLength={10} autoComplete="off" {...field(p, "pan")} />
+              </label>
               {msg(p, "pan")}
-            </label>
-            <label className="text-sm">Aadhaar
-              <input value={p.aadhaar} onChange={(e) => update(p.key, { aadhaar: e.target.value.replace(/\D/g, "").slice(0, 12) })} inputMode="numeric" maxLength={12} autoComplete="off" {...field(p, "aadhaar")} />
+            </div>
+            <div>
+              <label className="block text-sm">Aadhaar
+                <input value={p.aadhaar} onChange={(e) => update(p.key, { aadhaar: e.target.value.replace(/\D/g, "").slice(0, 12) })} inputMode="numeric" maxLength={12} autoComplete="off" {...field(p, "aadhaar")} />
+              </label>
               {msg(p, "aadhaar")}
-            </label>
+            </div>
           </div>
           <button
             type="button"

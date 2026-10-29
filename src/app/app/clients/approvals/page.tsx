@@ -19,7 +19,7 @@ export default async function ClientApprovalQueue() {
     select: {
       id: true, tradeName: true, legalName: true, address: true, pan: true, constitutionId: true, registrationChannel: true, submittedAt: true, createdAt: true, status: true,
       contacts: { where: { isPrimary: true }, take: 1, select: { name: true, mobile: true, email: true } },
-      _count: { select: { gstRegistrations: true, documents: true, services: true, constitutionMembers: true } },
+      _count: { select: { gstRegistrations: true, documents: true, services: true, constitutionMembers: true, portalMemberships: true } },
     },
   });
   return (
@@ -46,7 +46,8 @@ export default async function ClientApprovalQueue() {
                   <div className="min-w-0">
                     <p className="font-semibold">{c.tradeName}</p>
                     <p className="text-xs text-muted">{CHANNEL[c.registrationChannel]} · submitted {formatDateTime(c.submittedAt)}</p>
-                    {c.registrationChannel !== "STAFF" && <div className="mt-1"><GraceBadge info={clientAccess(c, approvalGraceDays)} /></div>}
+                    {/* Portal access while pending (grace period) matters only once the client has a portal login. */}
+                    {c._count.portalMemberships > 0 && <div className="mt-1"><GraceBadge info={clientAccess(c, approvalGraceDays)} /></div>}
                     {contact && <p className="mt-1 text-sm">{contact.name}<span className="text-muted"> · {[contact.mobile, contact.email].filter(Boolean).join(" · ")}</span></p>}
                     <p className="mt-2 flex flex-wrap gap-1.5 text-xs">
                       <Badge>{c._count.gstRegistrations} GSTIN</Badge>
