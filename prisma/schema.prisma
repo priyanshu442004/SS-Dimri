@@ -677,7 +677,6 @@ model Organization {
   workCommitments     WorkCommitment[]
   clientReports       ClientReport[]
   clientDues          ClientDue[]
-  purchaseOrders      ClientPurchaseOrder[]
   attendancePolicy    AttendancePolicy?
   workTypes           WorkType[]
   notifications       Notification[]
@@ -814,7 +813,6 @@ model StoredFile {
   clientEsiCertificate       Client?                     @relation("ClientEsiCertificate")
   clientPfCertificate        Client?                     @relation("ClientPfCertificate")
   clientDocument             ClientDocument?             @relation("ClientDocumentFile")
-  clientPurchaseOrder        ClientPurchaseOrder?        @relation("ClientPurchaseOrderFile")
   employeeProfilePicture     Employee?                   @relation("EmployeeProfilePicture")
   employeeAadhaarDocument    Employee?                   @relation("EmployeeAadhaarDocument")
   employeePanDocument        Employee?                   @relation("EmployeePanDocument")
@@ -911,7 +909,6 @@ model Client {
   gstRegistrations          ClientGstRegistration[]
   constitutionMembers       ConstitutionMember[]
   documents                 ClientDocument[]
-  purchaseOrders            ClientPurchaseOrder[]
   services                  ClientService[]
   teamAllocations           TeamAllocation[]
   tasks                     Task[]
@@ -999,32 +996,6 @@ model ClientDocument {
 
   @@index([clientId, type])
   @@map("client_documents")
-}
-
-/// "PO Detail" (Section C). A client may issue several purchase orders.
-model ClientPurchaseOrder {
-  id              String    @id @default(uuid(7)) @db.Uuid
-  organizationId  String    @map("organization_id") @db.Uuid
-  clientId        String    @map("client_id") @db.Uuid
-  clientServiceId String?   @map("client_service_id") @db.Uuid
-  poNumber        String    @map("po_number")
-  poDate          DateTime? @map("po_date") @db.Date
-  amount          Decimal?  @db.Decimal(14, 2)
-  validFrom       DateTime? @map("valid_from") @db.Date
-  validTo         DateTime? @map("valid_to") @db.Date
-  details         String?   @db.Text
-  fileId          String?   @unique @map("file_id") @db.Uuid
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientService ClientService? @relation(fields: [clientServiceId], references: [id], onDelete: SetNull)
-  file          StoredFile?    @relation("ClientPurchaseOrderFile", fields: [fileId], references: [id], onDelete: SetNull)
-
-  @@unique([clientId, poNumber])
-  @@index([organizationId])
-  @@map("client_purchase_orders")
 }
 
 // =============================================================================
@@ -1135,7 +1106,6 @@ model ClientService {
   renewedFrom  ClientService? @relation("ClientServiceRenewal", fields: [renewedFromId], references: [id], onDelete: SetNull)
   renewedBy    ClientService? @relation("ClientServiceRenewal")
 
-  purchaseOrders   ClientPurchaseOrder[]
   teamAllocations  TeamAllocation[]
   tasks            Task[]
   timesheetEntries TimesheetEntry[]

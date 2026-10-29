@@ -65,7 +65,7 @@ Requirement-level classification (§18, as required by the final addendum): **IT
 | Profile Picture | `clients.profile_picture_file_id` → `stored_files` | ✅ |
 | Client classification / checklist | Classification = constitution, nature of user, nature of client, MSME flag, status. A separate checklist was not specified (Q-16) | 🟡 |
 | Status | `clients.status` enum `DRAFT`, `PENDING_APPROVAL`, `ACTIVE`, `REJECTED`, `INACTIVE` | ✅ |
-| PO Detail | `client_purchase_orders` (po_number, po_date, amount, valid_from/to, details, file) | ✅ |
+| PO Detail | Removed by owner decision (2026-10-29): purchase orders are not collected | ➖ |
 | MSME — Yes/No | `clients.is_msme` (nullable = not yet answered) | ✅ |
 | MSME Registration Number | `clients.msme_registration_number` | ✅ |
 | MSME Certificate Upload | `clients.msme_certificate_file_id` → `stored_files` | ✅ |

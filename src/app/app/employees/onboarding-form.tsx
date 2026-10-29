@@ -67,7 +67,7 @@ export function OnboardingForm({
         <TextArea label="Current address" name="currentAddress" rows={2} defaultValue={d.currentAddress} />
         <TextArea label="Permanent address" name="permanentAddress" rows={2} defaultValue={d.permanentAddress} />
         <TextField label="Emergency contact name" name="emergencyContactName" defaultValue={d.emergencyContactName} />
-        <TextField label="Relation" name="emergencyContactRelation" defaultValue={d.emergencyContactRelation} />
+        <TextField label="Relation (Reference)" name="emergencyContactRelation" defaultValue={d.emergencyContactRelation} />
         <TextField label="Emergency contact number" name="emergencyContactPhone" type="tel" defaultValue={d.emergencyContactPhone} />
       </Group>
 

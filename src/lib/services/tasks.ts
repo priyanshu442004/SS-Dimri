@@ -58,6 +58,8 @@ export async function createTask(ctx: AppContext, v: z.infer<typeof taskSchema>,
   }
   const startAt = v.startAt ? localDateTimeToUtc(v.startAt) : null;
   const dueAt = v.dueAt ? localDateTimeToUtc(v.dueAt) : null;
+  // Start cannot be in the past; the 2-minute allowance covers the minute rounding of the input and the round trip.
+  if (startAt && startAt.getTime() < Date.now() - 2 * 60_000) throw new BusinessRuleError("The start date and time cannot be earlier than now.");
   if (startAt && dueAt && dueAt < startAt) throw new BusinessRuleError("The due date must be after the start date.");
   const assignees = v["assigneeIds[]"];
   const maker = v.makerEmployeeId ?? (assignees.length === 1 ? assignees[0] : undefined);

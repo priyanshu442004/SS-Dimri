@@ -5,9 +5,9 @@ import { getSessionCookie } from "better-auth/cookies";
 // the app. Real authorization happens on the server in every page and action.
 export function proxy(request: NextRequest) {
   if (!getSessionCookie(request)) {
-    const url = new URL("/login", request.url);
-    url.searchParams.set("next", request.nextUrl.pathname);
-    return NextResponse.redirect(url);
+    // Relative Location: behind a hosting proxy request.url may be an internal address.
+    const query = new URLSearchParams({ next: request.nextUrl.pathname });
+    return new NextResponse(null, { status: 307, headers: { Location: `/login?${query}` } });
   }
   return NextResponse.next();
 }

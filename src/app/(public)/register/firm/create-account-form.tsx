@@ -1,10 +1,10 @@
 "use client";
 
-import { useId } from "react";
-import { ActionForm, PhoneField, SelectField, SubmitButton, TextArea, TextField, upperCaseInput } from "@/components/form";
+import { useId, useRef, useState } from "react";
+import { ActionForm, PhoneField, SelectField, SubmitButton, TextArea, TextField, inputCls, upperCaseInput } from "@/components/form";
+import { PeopleEditor, emptyPerson, peopleToJson, personErrors, type ConstitutionOption, type Person } from "@/components/representatives";
+import { toast } from "@/components/toaster";
 import { createAccount } from "./actions";
-
-type Option = { value: string; label: string };
 
 function Section({ title, step, children }: { title: string; step: number; children: React.ReactNode }) {
   return (
@@ -30,8 +30,40 @@ function FileField({ label, name, hint, accept = "application/pdf,image/*", clas
   );
 }
 
-export function CreateAccountForm({ constitutions }: { constitutions: Option[] }) {
+export function CreateAccountForm({ constitutions }: { constitutions: ConstitutionOption[] }) {
+  const [constitutionId, setConstitutionId] = useState("");
+  const [people, setPeople] = useState<Person[]>([]);
+  // A person's field error shows once the field is left, or for every field after a submit attempt.
+  const [touched, setTouched] = useState<Set<string>>(new Set());
+  const [submitted, setSubmitted] = useState(false);
+  const nextKey = useRef(1);
+  const peopleRef = useRef<HTMLDivElement>(null);
+  const constitution = constitutions.find((c) => c.id === constitutionId);
+  const peopleErrs: Record<string, string> = Object.assign({}, ...people.map(personErrors));
+
+  function chooseConstitution(id: string) {
+    setConstitutionId(id);
+    const c = constitutions.find((x) => x.id === id);
+    if (!c) return setPeople([]);
+    // Keep entered people, moving roles the new constitution does not have to its own role.
+    setPeople((list) => {
+      const fitted = list.map((p) => (p.role === c.representativeRole || p.role === "MEMBER" || p.role === "OTHER" ? p : { ...p, role: c.representativeRole }));
+      return fitted.length ? fitted : [emptyPerson(nextKey.current++, c.representativeRole)];
+    });
+  }
+
   return (
+    // Capture phase: invalid people details stop the submission before it reaches the server.
+    <div
+      onSubmitCapture={(e) => {
+        if (Object.keys(peopleErrs).length === 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setSubmitted(true);
+        toast("Please correct the highlighted details of the people.", "error");
+        peopleRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }}
+    >
     <ActionForm action={createAccount} className="mt-6">
       <Section title="Your login" step={1}>
         <TextField label="Your full name" name="ownerName" required autoComplete="name" className="sm:col-span-2" />
@@ -43,7 +75,6 @@ export function CreateAccountForm({ constitutions }: { constitutions: Option[] }
       <Section title="Business registration" step={2}>
         <TextField label="Trade name" name="tradeName" required className="sm:col-span-2" />
         <TextField label="Legal name" name="legalName" hint="As per PAN / GST" className="sm:col-span-2" />
-        <SelectField label="Constitution" name="constitutionId" required options={constitutions} />
         <TextField label="PAN" name="pan" maxLength={10} autoCapitalize="characters" spellCheck={false} onInput={upperCaseInput} />
         <TextField label="GSTIN" name="gstin" maxLength={15} autoCapitalize="characters" spellCheck={false} onInput={upperCaseInput} />
         <TextField label="TAN" name="tan" maxLength={10} autoCapitalize="characters" spellCheck={false} onInput={upperCaseInput} />
@@ -51,7 +82,34 @@ export function CreateAccountForm({ constitutions }: { constitutions: Option[] }
         <PhoneField label="Contact mobile" name="contactMobile" />
       </Section>
 
-      <Section title="Certificate & logo (optional)" step={3}>
+      <Section title="Constitution and associated people" step={3}>
+        <SelectField
+          label="Constitution"
+          name="constitutionId"
+          required
+          options={constitutions.map((c) => ({ value: c.id, label: c.name }))}
+          value={constitutionId}
+          onChange={(e) => chooseConstitution(e.target.value)}
+        />
+        <input type="hidden" name="people" value={peopleToJson(people)} />
+        <div ref={peopleRef} className="sm:col-span-2">
+          {constitution ? (
+            <PeopleEditor
+              constitution={constitution}
+              people={people}
+              onChange={setPeople}
+              onAdd={() => setPeople((l) => [...l, emptyPerson(nextKey.current++, constitution.representativeRole)])}
+              error={(key, f) => (submitted || touched.has(`p${key}.${f}`) ? peopleErrs[`p${key}.${f}`] : undefined)}
+              onBlurField={(key, f) => setTouched((t) => new Set(t).add(`p${key}.${f}`))}
+              inputClass={inputCls}
+            />
+          ) : (
+            <p className="text-sm text-muted">Select the constitution to add the proprietor, partners, directors or karta of the firm.</p>
+          )}
+        </div>
+      </Section>
+
+      <Section title="Certificate & logo (optional)" step={4}>
         <FileField label="Firm certificate (registration / GST / incorporation)" name="certificateFile" hint="PDF or image, up to 10 MB. Stored privately." className="sm:col-span-2" />
         <TextField label="Certificate name" name="certificateName" hint="e.g. GST registration certificate" />
         <TextField label="Certificate number" name="certificateNumber" />
@@ -60,7 +118,7 @@ export function CreateAccountForm({ constitutions }: { constitutions: Option[] }
         <FileField label="Firm logo" name="profilePicture" accept="image/*" hint="JPG, PNG or WEBP" className="sm:col-span-2" />
       </Section>
 
-      <Section title="Users" step={4}>
+      <Section title="Users" step={5}>
         <SelectField
           label="Access"
           name="accessMode"
@@ -84,5 +142,6 @@ export function CreateAccountForm({ constitutions }: { constitutions: Option[] }
       </div>
       <SubmitButton>Create account</SubmitButton>
     </ActionForm>
+    </div>
   );
 }

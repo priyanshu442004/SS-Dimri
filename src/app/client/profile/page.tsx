@@ -18,7 +18,6 @@ export default async function ClientProfile() {
       contacts: { select: { id: true, name: true, designation: true, mobile: true, email: true, isPrimary: true } },
       // Representatives: names and roles only — PAN/Aadhaar are never shown back in the portal.
       constitutionMembers: { select: { id: true, fullName: true, role: true } },
-      purchaseOrders: { select: { id: true, poNumber: true, poDate: true } },
     },
   });
   return (
@@ -37,7 +36,6 @@ export default async function ClientProfile() {
             ["GSTIN", c.gstRegistrations.map((g) => g.gstin).join(", ")],
             ["MSME", c.isMsme === null ? null : c.isMsme ? `Yes ${c.msmeRegistrationNumber ?? ""}` : "No"],
             ["ESI number", c.esiNumber], ["PF number", c.pfNumber],
-            ["Purchase orders", c.purchaseOrders.map((p) => `${p.poNumber}${p.poDate ? ` (${formatDate(p.poDate)})` : ""}`).join(", ")],
           ]} />
         </Card>
         <Card title="Contacts">

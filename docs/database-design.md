@@ -113,7 +113,6 @@ Field-level detail for every table (all 61) is in [database-schema-reference.md]
 | `client_gst_registrations` | Multiple GSTINs per client (ID, client ID, GSTIN only — as confirmed). |
 | `constitution_members` | Representatives (proprietor, partners, directors, trustees, karta) with contact, PAN, encrypted Aadhaar, picture. `client_id` NULL means the representative belongs to the organization itself. |
 | `client_documents` | Client “Certificates” (multiple) and other documents. |
-| `client_purchase_orders` | “PO Detail”: purchase orders (number, date, amount, validity, file). *Separate table because a client can issue several POs.* |
 
 ### Services (Sections E, F)
 | Table | Purpose |

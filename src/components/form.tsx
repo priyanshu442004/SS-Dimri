@@ -3,7 +3,7 @@
 import { createContext, useActionState, useContext, useEffect, useId, useRef, useState, useTransition, type ComponentProps, type FormEvent, type ReactNode } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { clsx } from "clsx";
-import { Copy } from "lucide-react";
+import { Copy, Eye, EyeOff } from "lucide-react";
 import { buttonClass } from "@/components/ui";
 import { toast } from "@/components/toaster";
 import { joinMobile } from "@/lib/validation/identifiers";
@@ -134,7 +134,8 @@ export function SubmitButton({
   );
 }
 
-const inputCls =
+/** Class of the standard text input; for custom inputs that must match the form fields. */
+export const inputCls =
   "block w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/70 transition-[border-color,box-shadow] duration-200 hover:border-ink/25 focus:border-ink focus:outline-none focus:ring-4 focus:ring-marigold-soft aria-[invalid=true]:border-danger aria-[invalid=true]:focus:ring-danger-bg";
 
 function useFieldError(name: string) {
@@ -227,21 +228,34 @@ function FieldShell({ label, id, hint, required, className, children, error }: O
   );
 }
 
-export function TextField({ label, name, hint, required, className, ...props }: FieldBase & Omit<ComponentProps<"input">, "name">) {
+/** Password input with a show/hide (eye) toggle. Pass the same props as a plain input. */
+export function PasswordInput({ className, ...props }: Omit<ComponentProps<"input">, "type">) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input {...props} type={show ? "text" : "password"} className={clsx(className ?? inputCls, "pr-11")} />
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        aria-label={show ? "Hide password" : "Show password"}
+        aria-pressed={show}
+        title={show ? "Hide password" : "Show password"}
+        className="absolute inset-y-0 right-0 grid w-10 place-items-center rounded-r-lg text-muted transition-colors hover:text-ink focus-visible:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-marigold-soft active:scale-90"
+      >
+        {show ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
+      </button>
+    </div>
+  );
+}
+
+export function TextField({ label, name, hint, required, className, type, ...props }: FieldBase & Omit<ComponentProps<"input">, "name">) {
   const error = useFieldError(name);
   const id = `${name}-${useId()}`;
   const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
+  const inputProps = { id, name, "aria-invalid": !!error, "aria-describedby": describedBy, "aria-required": required, className: inputCls, ...props };
   return (
     <FieldShell {...{ label, id, hint, required, className, error }}>
-      <input
-        id={id}
-        name={name}
-        aria-invalid={!!error}
-        aria-describedby={describedBy}
-        aria-required={required}
-        className={inputCls}
-        {...props}
-      />
+      {type === "password" ? <PasswordInput {...inputProps} /> : <input type={type} {...inputProps} />}
     </FieldShell>
   );
 }

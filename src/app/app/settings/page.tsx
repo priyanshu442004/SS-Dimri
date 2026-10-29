@@ -36,11 +36,17 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/set
   );
 
   async function OrgTab() {
-    const [org, cert, docs, users] = await Promise.all([
+    const [org, cert, docs, users, people] = await Promise.all([
       prisma.organization.findUniqueOrThrow({ where: { id: ctx.organization.id }, include: { constitution: true } }),
       prisma.organizationCertificate.findUnique({ where: { organizationId: ctx.organization.id }, include: { file: { select: { id: true, originalFileName: true } } } }),
       prisma.organizationDocument.findMany({ where: { organizationId: ctx.organization.id }, orderBy: { createdAt: "desc" }, include: { file: { select: { id: true, originalFileName: true } } } }),
       prisma.organizationMembership.count({ where: { organizationId: ctx.organization.id, status: { not: "DISABLED" } } }),
+      // The firm's own people (members without a client). PAN/Aadhaar are not shown here.
+      prisma.constitutionMember.findMany({
+        where: { organizationId: ctx.organization.id, clientId: null },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        select: { id: true, fullName: true, role: true, mobile: true, email: true },
+      }),
     ]);
     const s = (v: string | null) => v ?? "";
     return (
@@ -65,6 +71,18 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/set
               ["GSTIN verification", org.gstVerificationStatus === "VERIFIED" ? `Verified ${formatDateTime(org.gstVerifiedAt)}` : "Not verified (GST portal integration pending)"],
               ["Profile picture", org.profilePictureFileId ? <a key="p" href={`/api/files/${org.profilePictureFileId}`} className="text-brand-700 hover:underline" target="_blank" rel="noopener noreferrer">View</a> : null],
             ]} />
+          </Card>
+          <Card title={`${org.constitution?.name ?? "Constitution"}: associated people`}>
+            {people.length === 0 ? <p className="text-sm text-muted">None recorded.</p> : (
+              <ul className="space-y-2 text-sm">
+                {people.map((m) => (
+                  <li key={m.id}>
+                    <span className="font-medium">{m.fullName}</span> <span className="text-muted">· {humanize(m.role)}</span>
+                    {(m.mobile || m.email) && <span className="block text-xs text-muted">{[m.mobile, m.email].filter(Boolean).join(" · ")}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
           <Card title="Certificate (one per organization)">
             {cert && (

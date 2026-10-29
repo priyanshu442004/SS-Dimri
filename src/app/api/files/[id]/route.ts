@@ -31,7 +31,6 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/files/[i
       clientMsmeCertificate: { select: { id: true } },
       clientEsiCertificate: { select: { id: true } },
       clientPfCertificate: { select: { id: true } },
-      clientPurchaseOrder: { select: { clientId: true } },
       followUp: { select: { clientVisible: true, pendingItem: { select: { clientId: true, clientVisible: true } } } },
     },
   });
@@ -46,7 +45,7 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/files/[i
 
   const clientOwner =
     file.clientDocument?.clientId ?? file.clientProfilePicture?.id ?? file.clientMsmeCertificate?.id ?? file.clientEsiCertificate?.id ??
-    file.clientPfCertificate?.id ?? file.clientPurchaseOrder?.clientId ?? (file.followUp?.clientVisible && file.followUp.pendingItem?.clientVisible ? file.followUp.pendingItem.clientId : null);
+    file.clientPfCertificate?.id ?? (file.followUp?.clientVisible && file.followUp.pendingItem?.clientVisible ? file.followUp.pendingItem.clientId : null);
 
   let allowed: boolean;
   if (ctx.access.state === "locked") {

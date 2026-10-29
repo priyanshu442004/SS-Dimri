@@ -50,7 +50,6 @@ async function main() {
       prisma.clientDue.deleteMany({ where: org }),
       prisma.teamAllocation.updateMany({ where: org, data: { replacesAllocationId: null } }),
       prisma.teamAllocation.deleteMany({ where: org }),
-      prisma.clientPurchaseOrder.deleteMany({ where: org }),
       prisma.clientService.updateMany({ where: org, data: { renewedFromId: null } }),
       prisma.clientService.deleteMany({ where: org }),
       prisma.clientDocument.deleteMany({ where: byClient }),

@@ -2,8 +2,7 @@ import "server-only";
 import { exceedsSingleHolder, isRepresentativeRoleAllowed } from "@/lib/domain/constitution";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { BusinessRuleError, zCheckbox, zIsoDate, zMoney, zOptionalText, zRequiredText } from "@/lib/actions";
-import { dateOnly } from "@/lib/dates";
+import { BusinessRuleError, zCheckbox, zOptionalText, zRequiredText } from "@/lib/actions";
 import { encryptWithLast4 } from "@/lib/security/encryption";
 import { aadhaarSchema, gstinSchema, mobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
 import { createCredentialUser } from "./accounts";
@@ -52,6 +51,50 @@ const personSchema = z.object({
   pan: panSchema.optional().or(z.literal("").transform(() => undefined)),
   aadhaar: aadhaarSchema.optional().or(z.literal("").transform(() => undefined)),
 });
+type PersonInput = z.infer<typeof personSchema>;
+
+/** The constitution's people (proprietor, partners, directors…), posted as a JSON array. */
+export const peopleField = z
+  .string()
+  .optional()
+  .transform((s, c) => {
+    try {
+      return s ? (JSON.parse(s) as unknown) : [];
+    } catch {
+      c.addIssue({ code: "custom", message: "Invalid people data" });
+      return z.NEVER;
+    }
+  })
+  .pipe(z.array(personSchema).max(30));
+
+/** Checks the people's roles against the constitution; throws a BusinessRuleError when they do not fit. */
+export async function assertRepresentatives(constitutionId: string, people: PersonInput[]) {
+  const c = await prisma.constitution.findUnique({ where: { id: constitutionId }, select: { id: true, name: true, representativeRole: true, allowsMultiple: true } });
+  if (!c) throw new BusinessRuleError("Select a valid constitution.");
+  const wrong = people.find((p) => !isRepresentativeRoleAllowed(c.representativeRole, p.role));
+  if (wrong) throw new BusinessRuleError(`${wrong.fullName} cannot be recorded as ${wrong.role.toLowerCase()} for a ${c.name}.`);
+  if (exceedsSingleHolder(c, people.map((p) => p.role))) throw new BusinessRuleError(`A ${c.name} has only one ${c.representativeRole.toLowerCase()}.`);
+}
+
+/** Rows for constitution_members; `clientId` null records the firm's own people. Aadhaar is encrypted. */
+export function representativeRows(organizationId: string, clientId: string | null, people: PersonInput[]) {
+  return people.map((p, i) => {
+    const a = p.aadhaar ? encryptWithLast4(p.aadhaar) : null;
+    return {
+      organizationId,
+      clientId,
+      role: p.role,
+      fullName: p.fullName,
+      mobile: p.mobile,
+      email: p.email,
+      address: p.address,
+      pan: p.pan,
+      aadhaarEncrypted: a?.encrypted,
+      aadhaarLast4: a?.last4,
+      sortOrder: i,
+    };
+  });
+}
 
 /** Full registration (multi-step form). People are sent as a JSON array. */
 export const fullRegistrationSchema = z
@@ -67,27 +110,13 @@ export const fullRegistrationSchema = z
     contactName: zRequiredText(120),
     contactMobile: mobileSchema,
     contactDesignation: zOptionalText(120),
-    people: z
-      .string()
-      .optional()
-      .transform((s, c) => {
-        try {
-          return s ? (JSON.parse(s) as unknown) : [];
-        } catch {
-          c.addIssue({ code: "custom", message: "Invalid people data" });
-          return z.NEVER;
-        }
-      })
-      .pipe(z.array(personSchema).max(30)),
+    people: peopleField,
     gstins: gstinList,
     "serviceIds[]": z.array(z.uuid()).default([]),
     isMsme: z.enum(["yes", "no"]).optional(),
     msmeRegistrationNumber: zOptionalText(40),
     esiNumber: zOptionalText(40),
     pfNumber: zOptionalText(40),
-    poNumber: zOptionalText(60),
-    poDate: zIsoDate.optional(),
-    poAmount: zMoney.optional(),
     ...account,
   })
   .refine(passwordsMatch, { path: ["confirmPassword"], message: "Passwords do not match" });
@@ -110,13 +139,7 @@ export async function registerClient(organizationId: string, channel: "CLIENT_QU
     select: { id: true },
   });
   const full = channel === "CLIENT_FULL" ? (v as Full) : null;
-  if (full) {
-    const c = await prisma.constitution.findUnique({ where: { id: full.constitutionId }, select: { id: true, name: true, representativeRole: true, allowsMultiple: true } });
-    if (!c) throw new BusinessRuleError("Select a valid constitution.");
-    const wrong = full.people.find((p) => !isRepresentativeRoleAllowed(c.representativeRole, p.role));
-    if (wrong) throw new BusinessRuleError(`${wrong.fullName} cannot be recorded as ${wrong.role.toLowerCase()} for a ${c.name}.`);
-    if (exceedsSingleHolder(c, full.people.map((p) => p.role))) throw new BusinessRuleError(`A ${c.name} has only one ${c.representativeRole.toLowerCase()}.`);
-  }
+  if (full) await assertRepresentatives(full.constitutionId, full.people);
 
   const { user, client } = await prisma.$transaction(
     async (tx) => {
@@ -156,30 +179,7 @@ export async function registerClient(organizationId: string, channel: "CLIENT_QU
           services: { create: services.map((s) => ({ organizationId, serviceId: s.id, engagementNature: v.natureOfClient })) },
         },
       });
-      if (full) {
-        for (const p of full.people) {
-          const a = p.aadhaar ? encryptWithLast4(p.aadhaar) : null;
-          await tx.constitutionMember.create({
-            data: {
-              organizationId,
-              clientId: client.id,
-              role: p.role,
-              fullName: p.fullName,
-              mobile: p.mobile,
-              email: p.email,
-              address: p.address,
-              pan: p.pan,
-              aadhaarEncrypted: a?.encrypted,
-              aadhaarLast4: a?.last4,
-            },
-          });
-        }
-        if (full.poNumber) {
-          await tx.clientPurchaseOrder.create({
-            data: { organizationId, clientId: client.id, poNumber: full.poNumber, poDate: full.poDate ? dateOnly(full.poDate) : null, amount: full.poAmount },
-          });
-        }
-      }
+      if (full?.people.length) await tx.constitutionMember.createMany({ data: representativeRows(organizationId, client.id, full.people) });
       await tx.organizationMembership.create({ data: { organizationId, userId: user.id, role: "CLIENT", clientId: client.id } });
       await tx.auditLog.create({
         data: { organizationId, actorUserId: user.id, action: `client.self_registered_${channel === "CLIENT_QUICK" ? "quick" : "full"}`, entityType: "client", entityId: client.id },
@@ -209,11 +209,6 @@ export async function registerClient(organizationId: string, channel: "CLIENT_QU
       if (!hasFile(f)) continue;
       const stored = await storeUpload(owner, f, { area: "clients", ownerId: client.id });
       await prisma.clientDocument.create({ data: { clientId: client.id, fileId: stored.id, type: "REGISTRATION_CERTIFICATE", title: f.name.slice(0, 200) } });
-    }
-    const po = fd.get("poFile");
-    if (hasFile(po) && full.poNumber) {
-      const stored = await storeUpload(owner, po, { area: "clients", ownerId: client.id });
-      await prisma.clientPurchaseOrder.updateMany({ where: { clientId: client.id, poNumber: full.poNumber }, data: { fileId: stored.id } });
     }
   }
   return client;

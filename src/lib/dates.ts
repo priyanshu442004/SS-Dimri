@@ -18,6 +18,13 @@ function parts(date: Date, tz: string) {
   return { y: +p.year, m: +p.month, d: +p.day, hh: +p.hour, mm: +p.minute };
 }
 
+/** "YYYY-MM-DDTHH:mm" (a datetime-local input value) for `date` in `tz`. */
+export function dateTimeLocalInTz(date: Date, tz = DEFAULT_TZ): string {
+  const { y, m, d, hh, mm } = parts(date, tz);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${y}-${p(m)}-${p(d)}T${p(hh)}:${p(mm)}`;
+}
+
 /** "YYYY-MM-DD" for the calendar day of `date` in `tz`. */
 export function isoDateInTz(date: Date, tz = DEFAULT_TZ): string {
   const { y, m, d } = parts(date, tz);

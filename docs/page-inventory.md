@@ -15,7 +15,7 @@ Roles: **O** Owner · **A** Administrator · **M** Manager · **S** Senior · **
 | `/help` | P | Searchable FAQ with categories | static, verified answers |
 | `/login` | P | Sign in with login ID (staff) or email (client); show/hide password; forgot link | Better Auth (`users`, `accounts`, `sessions`) |
 | `/register` | P | Choose: full business registration, quick registration, staff info, firm registration | — |
-| `/register/business` | P | Six-step registration wizard → client `PENDING_APPROVAL` + client login | `clients`, `client_gst_registrations`, `constitution_members`, `client_contacts`, `client_services`, `client_purchase_orders`, `client_documents`, `stored_files`, `organization_memberships` (CLIENT) |
+| `/register/business` | P | Six-step registration wizard → client `PENDING_APPROVAL` + client login | `clients`, `client_gst_registrations`, `constitution_members`, `client_contacts`, `client_services`, `client_documents`, `stored_files`, `organization_memberships` (CLIENT) |
 | `/register/quick` | P | Minimal registration → client `PENDING_APPROVAL` + client login | as above (subset) |
 | `/register/firm` | P (only until the firm exists) | Owner registers the practice (organization + owner) | `organizations`, master data per organization |
 | `/forgot-password` | P | Reset request; identical response for any input; notifies administrators | `notifications` |

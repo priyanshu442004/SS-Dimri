@@ -1,7 +1,7 @@
 # Database Schema Reference (generated)
 
 > **Generated from the live PostgreSQL catalog by `npm run docs:schema`. Do not edit by hand.**
-> Generated: 2026-10-26T16:20:57.304Z · Tables: 61 · Enums: 57
+> Generated: 2026-10-29T18:19:28.712Z · Tables: 61 · Enums: 60
 >
 > Purpose of each table, design rationale and requirement mapping: see `database-design.md`,
 > `database-erd.md` and `requirements-traceability.md`.
@@ -23,7 +23,6 @@ Legend: **PK** primary key · **FK** foreign key · **UQ** single-column unique 
 - [client_dues](#client_dues)
 - [client_gst_registrations](#client_gst_registrations)
 - [client_observations](#client_observations)
-- [client_purchase_orders](#client_purchase_orders)
 - [client_reports](#client_reports)
 - [client_services](#client_services)
 - [clients](#clients)
@@ -34,6 +33,7 @@ Legend: **PK** primary key · **FK** foreign key · **UQ** single-column unique 
 - [day_reports](#day_reports)
 - [departments](#departments)
 - [designations](#designations)
+- [email_outbox](#email_outbox)
 - [employee_addresses](#employee_addresses)
 - [employee_bank_accounts](#employee_bank_accounts)
 - [employee_documents](#employee_documents)
@@ -353,34 +353,6 @@ Legend: **PK** primary key · **FK** foreign key · **UQ** single-column unique 
 - `client_observations_organization_id_status_idx` (organization_id, status)
 - `client_observations_task_id_idx` (task_id)
 
-## client_purchase_orders
-
-| Column | Type | Null | Default | Keys / references |
-|---|---|---|---|---|
-| id | uuid | NOT NULL |  | **PK** |
-| organization_id | uuid | NOT NULL |  | **FK** → organizations.id (on delete restrict) |
-| client_id | uuid | NOT NULL |  | **FK** → clients.id (on delete cascade) |
-| client_service_id | uuid | NULL |  | **FK** → client_services.id (on delete set null) |
-| po_number | text | NOT NULL |  |  |
-| po_date | date | NULL |  |  |
-| amount | numeric(14,2) | NULL |  |  |
-| valid_from | date | NULL |  |  |
-| valid_to | date | NULL |  |  |
-| details | text | NULL |  |  |
-| file_id | uuid | NULL |  | **UQ** **FK** → stored_files.id (on delete set null) |
-| created_at | timestamptz | NOT NULL | `CURRENT_TIMESTAMP` |  |
-| updated_at | timestamptz | NOT NULL |  |  |
-
-**Indexes / unique constraints**
-
-- UNIQUE `client_purchase_orders_client_id_po_number_key` (client_id, po_number)
-- UNIQUE `client_purchase_orders_file_id_key` (file_id)
-- `client_purchase_orders_organization_id_idx` (organization_id)
-
-**Check constraints**
-
-- `client_purchase_orders_amount_check`: `CHECK (((amount IS NULL) OR (amount >= (0)::numeric)))`
-
 ## client_reports
 
 | Column | Type | Null | Default | Keys / references |
@@ -643,6 +615,25 @@ Legend: **PK** primary key · **FK** foreign key · **UQ** single-column unique 
 **Indexes / unique constraints**
 
 - UNIQUE `designations_organization_id_name_key` (organization_id, name)
+
+## email_outbox
+
+| Column | Type | Null | Default | Keys / references |
+|---|---|---|---|---|
+| id | uuid | NOT NULL |  | **PK** |
+| organization_id | uuid | NULL |  | **FK** → organizations.id (on delete cascade) |
+| to_email | text | NOT NULL |  |  |
+| template | text | NOT NULL |  |  |
+| subject | text | NOT NULL |  |  |
+| status | EmailStatus | NOT NULL |  |  |
+| error | text | NULL |  |  |
+| related_user_id | uuid | NULL |  |  |
+| created_at | timestamptz | NOT NULL | `CURRENT_TIMESTAMP` |  |
+
+**Indexes / unique constraints**
+
+- `email_outbox_organization_id_created_at_idx` (organization_id, created_at)
+- `email_outbox_related_user_id_idx` (related_user_id)
 
 ## employee_addresses
 
@@ -1085,6 +1076,7 @@ Legend: **PK** primary key · **FK** foreign key · **UQ** single-column unique 
 | updated_at | timestamptz | NOT NULL |  |  |
 | must_change_password | boolean | NOT NULL | `false` |  |
 | client_id | uuid | NULL |  | **FK** → clients.id (on delete restrict) |
+| temp_password_expires_at | timestamptz | NULL |  |  |
 
 **Indexes / unique constraints**
 
@@ -1142,12 +1134,19 @@ Legend: **PK** primary key · **FK** foreign key · **UQ** single-column unique 
 | updated_at | timestamptz | NOT NULL |  |  |
 | pending_days_basis | PendingDaysBasis | NOT NULL | `'CALENDAR'::"PendingDaysBasis"` |  |
 | approval_grace_days | integer | NOT NULL | `7` |  |
+| approval_decided_at | timestamptz | NULL |  |  |
+| approval_decided_by_id | uuid | NULL |  | **FK** → users.id (on delete set null) |
+| approval_status | FirmApprovalStatus | NOT NULL | `'APPROVED'::"FirmApprovalStatus"` |  |
+| registration_channel | FirmRegistrationChannel | NOT NULL | `'SELF'::"FirmRegistrationChannel"` |  |
+| rejection_reason | text | NULL |  |  |
+| signup_code | varchar(40) | NULL |  | **UQ** |
 
 **Indexes / unique constraints**
 
 - `organizations_gstin_idx` (gstin)
 - `organizations_pan_idx` (pan)
 - UNIQUE `organizations_profile_picture_file_id_key` (profile_picture_file_id)
+- UNIQUE `organizations_signup_code_key` (signup_code)
 
 **Check constraints**
 
@@ -1488,6 +1487,7 @@ Legend: **PK** primary key · **FK** foreign key · **UQ** single-column unique 
 | updated_at | timestamptz | NOT NULL |  |  |
 | display_username | text | NULL |  |  |
 | username | text | NULL |  | **UQ** |
+| is_platform_admin | boolean | NOT NULL | `false` |  |
 
 **Indexes / unique constraints**
 
@@ -1576,12 +1576,15 @@ Legend: **PK** primary key · **FK** foreign key · **UQ** single-column unique 
 | ConstitutionType | PROPRIETOR, FIRM, COMPANY, TRUST, HUF, INDIVIDUAL, LLP, PUBLIC_COMPANY, OPC, AOP_BOI, GOVERNMENT |
 | DayReportStatus | DRAFT, SUBMITTED, ACKNOWLEDGED |
 | DueStatus | OPEN, SETTLED, WRITTEN_OFF |
-| EmployeeApprovalStatus | PENDING, APPROVED, REJECTED, UNDER_REVIEW |
+| EmailStatus | SENT, FAILED, SKIPPED |
+| EmployeeApprovalStatus | PENDING, APPROVED, REJECTED, UNDER_REVIEW, ON_HOLD |
 | EmployeeDocumentType | JOINING_LETTER, OFFER_LETTER, EXPERIENCE_CERTIFICATE, OTHER, PHOTOGRAPH, ADDRESS_PROOF, MARKSHEET_10, MARKSHEET_12, DEGREE, PROFESSIONAL_CERTIFICATE, RELIEVING_LETTER, SALARY_SLIP, APPOINTMENT_LETTER, POLICY_ACKNOWLEDGEMENT, JOINING_FORM, CANCELLED_CHEQUE |
 | EmployeeIdType | TEMPORARY, PERMANENT |
 | EmploymentStatus | PROBATION, ACTIVE, EXITED |
 | EmploymentType | EMPLOYEE, TRAINEE |
 | FileStorageProvider | S3 |
+| FirmApprovalStatus | PENDING_APPROVAL, APPROVED, REJECTED |
+| FirmRegistrationChannel | SELF, PLATFORM_ADMIN |
 | Gender | MALE, FEMALE, OTHER, PREFER_NOT_TO_SAY |
 | GstVerificationStatus | NOT_VERIFIED, VERIFIED, FAILED |
 | LeaveRequestStatus | PENDING, APPROVED, REJECTED, CANCELLED |

@@ -2,15 +2,17 @@
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
-import { Check, Plus, Trash2 } from "lucide-react";
+import { z } from "zod";
+import { Check } from "lucide-react";
 import { buttonClass } from "@/components/ui";
-import { useSubmitWithoutReset, type FormState } from "@/components/form";
+import { PasswordInput, upperCaseInput, useSubmitWithoutReset, type FormState } from "@/components/form";
 import { toast } from "@/components/toaster";
+import { PeopleEditor, ROLE_LABEL, emptyPerson, peopleToJson, personErrors, type ConstitutionOption, type Person } from "@/components/representatives";
+import { mobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
 import { fullRegisterClientAction } from "../actions";
 
-type Constitution = { id: string; name: string; representativeRole: string; allowsMultiple: boolean };
 type Option = { value: string; label: string };
-type Person = { key: number; role: string; fullName: string; mobile: string; email: string; address: string; pan: string; aadhaar: string };
+type Errors = Record<string, string>;
 
 const STEPS = ["Business identity", "Constitution & people", "GST registrations", "Compliance & documents", "Services", "Account & review"] as const;
 
@@ -18,14 +20,14 @@ const STEPS = ["Business identity", "Constitution & people", "GST registrations"
 const FIELD_STEP: Record<string, number> = {
   tradeName: 0, legalName: 0, address: 0, pan: 0, tan: 0, primaryBusinessNatureId: 0, contactName: 0, contactMobile: 0, contactDesignation: 0,
   constitutionId: 1, people: 1, gstins: 2,
-  isMsme: 3, msmeRegistrationNumber: 3, esiNumber: 3, pfNumber: 3, poNumber: 3, poDate: 3, poAmount: 3,
+  isMsme: 3, msmeRegistrationNumber: 3, esiNumber: 3, pfNumber: 3,
   "serviceIds[]": 4, natureOfClient: 4,
   email: 5, password: 5, confirmPassword: 5, consent: 5,
 };
 
-const ROLE_LABEL: Record<string, string> = { PROPRIETOR: "Proprietor", PARTNER: "Partner", DIRECTOR: "Director", TRUSTEE: "Trustee", KARTA: "Karta", MEMBER: "Member", OTHER: "Person" };
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const input = "block w-full rounded-md border border-line bg-surface px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-100 aria-[invalid=true]:border-danger";
+const valid = (schema: z.ZodType, value: string) => schema.safeParse(value).success;
 
 function Field({ label, name, required, hint, error, children }: { label: string; name: string; required?: boolean; hint?: string; error?: string; children?: React.ReactNode }) {
   return (
@@ -39,8 +41,25 @@ function Field({ label, name, required, hint, error, children }: { label: string
   );
 }
 
+/** "Select all" checkbox for a set of services; shows a dash when only some are chosen. */
+function SelectAll({ ids, chosen, onToggle, label, className }: { ids: string[]; chosen: Set<string>; onToggle: (ids: string[], on: boolean) => void; label: string; className?: string }) {
+  const count = ids.filter((id) => chosen.has(id)).length;
+  return (
+    <label className={clsx("inline-flex cursor-pointer items-center gap-2 text-sm", className)}>
+      <input
+        type="checkbox"
+        ref={(el) => { if (el) el.indeterminate = count > 0 && count < ids.length; }}
+        checked={ids.length > 0 && count === ids.length}
+        onChange={(e) => onToggle(ids, e.target.checked)}
+        className="size-4 accent-brand-700"
+      />
+      {label}
+    </label>
+  );
+}
+
 export function BusinessWizard({ constitutions, natures, services }: {
-  constitutions: Constitution[];
+  constitutions: ConstitutionOption[];
   natures: Option[];
   services: (Option & { group: string; description: string })[];
 }) {
@@ -59,12 +78,49 @@ export function BusinessWizard({ constitutions, natures, services }: {
   const [gstins, setGstins] = useState<string[]>([]);
   const [gstDraft, setGstDraft] = useState("");
   const [gstError, setGstError] = useState<string | null>(null);
-  const [review, setReview] = useState<[string, string][]>([]);
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [review, setReview] = useState<[string, string, number][]>([]);
+  // Steps the applicant tried to leave: their errors are shown and re-checked as they type.
+  const [attempted, setAttempted] = useState<Set<number>>(new Set());
+  const [fieldErrs, setFieldErrs] = useState<Errors>({});
   const nextKey = useRef(1);
+  const gstRef = useRef<HTMLInputElement>(null);
 
   const constitution = constitutions.find((c) => c.id === constitutionId);
-  const errors = state.fieldErrors ?? {};
-  const err = (n: string) => errors[n]?.[0];
+  const serverErrors = state.fieldErrors ?? {};
+
+  /** Checks the form fields of step `s` (people and constitution are checked from state). */
+  function formErrors(s: number): Errors {
+    const fd = new FormData(formRef.current!);
+    const v = (n: string) => String(fd.get(n) ?? "").trim();
+    const e: Errors = {};
+    if (s === 0) {
+      if (!v("tradeName")) e.tradeName = "Enter the trade name";
+      if (v("pan") && !valid(panSchema, v("pan"))) e.pan = "Enter a valid PAN, e.g. ABCDE1234F";
+      if (v("tan") && !valid(tanSchema, v("tan"))) e.tan = "Enter a valid TAN, e.g. DELA12345B";
+      if (!v("contactName")) e.contactName = "Enter the contact person's name";
+      if (!v("contactMobile")) e.contactMobile = "Enter the contact mobile number";
+      else if (!valid(mobileSchema, v("contactMobile"))) e.contactMobile = "Enter a valid 10-digit mobile number";
+    }
+    if (s === 2 && gstRef.current?.value.trim()) e.gstins = "Click “Add GSTIN” for the number you typed, or clear the box.";
+    if (s === 5) {
+      if (!v("email")) e.email = "Enter your email";
+      else if (!valid(z.email(), v("email"))) e.email = "Enter a valid email";
+      if (v("password").length < 10) e.password = "Use at least 10 characters";
+      if (v("confirmPassword") !== v("password")) e.confirmPassword = "Passwords do not match";
+      if (!fd.get("consent")) e.consent = "Please confirm to continue";
+    }
+    return e;
+  }
+  function stateErrors(s: number): Errors {
+    if (s !== 1) return {};
+    const e: Errors = constitutionId ? {} : { constitutionId: "Select the constitution of the business" };
+    for (const p of people) Object.assign(e, personErrors(p));
+    return e;
+  }
+
+  const errs: Errors = { ...fieldErrs, ...(attempted.has(step) ? stateErrors(step) : {}) };
+  const err = (n: string) => errs[n] ?? serverErrors[n]?.[0];
 
   // After a server-side rejection, open the first step that has an error
   // (adjusting state when the action result changes, without an effect).
@@ -81,9 +137,8 @@ export function BusinessWizard({ constitutions, natures, services }: {
     if (c && people.length === 0) addPerson(c.representativeRole);
   }
   function addPerson(role = constitution?.representativeRole ?? "OTHER") {
-    setPeople((p) => [...p, { key: nextKey.current++, role, fullName: "", mobile: "", email: "", address: "", pan: "", aadhaar: "" }]);
+    setPeople((p) => [...p, emptyPerson(nextKey.current++, role)]);
   }
-  const updatePerson = (key: number, patch: Partial<Person>) => setPeople((p) => p.map((x) => (x.key === key ? { ...x, ...patch } : x)));
 
   function addGstin() {
     const g = gstDraft.trim().toUpperCase();
@@ -92,69 +147,85 @@ export function BusinessWizard({ constitutions, natures, services }: {
     setGstins((l) => [...l, g]);
     setGstDraft("");
     setGstError(null);
+    setFieldErrs((e) => { const { gstins: _g, ...rest } = e; return rest; });
   }
 
-  const peopleJson = useMemo(
-    () => JSON.stringify(people.filter((p) => p.fullName.trim()).map(({ key: _k, ...p }) => p)),
-    [people],
-  );
+  const toggleServices = (ids: string[], on: boolean) =>
+    setChosen((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) if (on) next.add(id); else next.delete(id);
+      return next;
+    });
 
-  /** Minimal client-side checks per step; the server validates everything again. */
-  function validateStep(s: number): string | null {
-    const fd = new FormData(formRef.current!);
-    const v = (n: string) => String(fd.get(n) ?? "").trim();
-    if (s === 0 && (!v("tradeName") || !v("contactName") || !v("contactMobile"))) return "Trade name, contact person and mobile are required.";
-    if (s === 1 && !constitutionId) return "Select the constitution of the business.";
-    if (s === 1 && people.some((p) => !p.fullName.trim())) return "Enter a name for each person or remove the empty entry.";
-    if (s === 5 && (!v("email") || v("password").length < 10 || v("password") !== v("confirmPassword"))) return "Enter your email and a password of at least 10 characters (both password fields must match).";
-    return null;
+  const peopleJson = useMemo(() => peopleToJson(people), [people]);
+
+  /** Re-check the current step as the applicant types, once they have tried to leave it. */
+  function recheck() {
+    if (attempted.has(step)) setFieldErrs(formErrors(step));
   }
 
   function go(to: number) {
     if (to > step) {
       for (let s = step; s < to; s++) {
-        const e = validateStep(s);
-        if (e) {
+        const e = { ...formErrors(s), ...stateErrors(s) };
+        if (Object.keys(e).length) {
+          setAttempted((a) => new Set(a).add(s));
+          setFieldErrs(formErrors(s));
           setStep(s);
-          setStepError(e);
+          setStepError("Please correct the highlighted fields before continuing.");
+          formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
           return;
         }
       }
     }
     setStepError(null);
+    setFieldErrs(attempted.has(to) ? formErrors(to) : {});
     if (to === 5) buildReview();
     setStep(to);
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function submit(e: React.FormEvent<HTMLFormElement>) {
+    const errors = formErrors(5);
+    if (Object.keys(errors).length) {
+      e.preventDefault();
+      setAttempted((a) => new Set(a).add(5));
+      setFieldErrs(errors);
+      setStepError("Please correct the highlighted fields before submitting.");
+      return;
+    }
+    setStepError(null);
+    onSubmit(e);
+  }
+
   function buildReview() {
     const fd = new FormData(formRef.current!);
     const v = (n: string) => String(fd.get(n) ?? "").trim();
-    const files = ["certificates", "msmeCertificate", "esiCertificate", "pfCertificate", "poFile", "profilePicture"]
+    const files = ["certificates", "msmeCertificate", "esiCertificate", "pfCertificate", "profilePicture"]
       .flatMap((n) => fd.getAll(n).filter((f): f is File => f instanceof File && f.size > 0).map((f) => f.name));
-    const chosen = services.filter((s) => fd.getAll("serviceIds[]").includes(s.value)).map((s) => s.label);
+    const chosenNames = services.filter((s) => chosen.has(s.value)).map((s) => s.label);
     setReview([
-      ["Trade name", v("tradeName")],
-      ["Legal name", v("legalName")],
-      ["Address", v("address")],
-      ["PAN / TAN", [v("pan"), v("tan")].filter(Boolean).join(" / ")],
-      ["Contact", [v("contactName"), v("contactMobile")].filter(Boolean).join(" · ")],
-      ["Constitution", constitution?.name ?? ""],
-      ["People", people.filter((p) => p.fullName).map((p) => `${p.fullName} (${ROLE_LABEL[p.role]})`).join(", ")],
-      ["GSTINs", gstins.join(", ")],
-      ["MSME", v("isMsme") === "yes" ? `Yes ${v("msmeRegistrationNumber")}` : v("isMsme") === "no" ? "No" : ""],
-      ["ESI / PF", [v("esiNumber"), v("pfNumber")].filter(Boolean).join(" / ")],
-      ["Purchase order", v("poNumber")],
-      ["Services", chosen.join(", ")],
-      ["Documents", files.join(", ")],
+      ["Trade name", v("tradeName"), 0],
+      ["Legal name", v("legalName"), 0],
+      ["Address", v("address"), 0],
+      ["PAN / TAN", [v("pan"), v("tan")].filter(Boolean).join(" / ").toUpperCase(), 0],
+      ["Contact", [v("contactName"), v("contactMobile")].filter(Boolean).join(" · "), 0],
+      ["Constitution", constitution?.name ?? "", 1],
+      ["People", people.filter((p) => p.fullName).map((p) => `${p.fullName} (${ROLE_LABEL[p.role]})`).join(", "), 1],
+      ["GSTINs", gstins.join(", "), 2],
+      ["MSME", v("isMsme") === "yes" ? `Yes ${v("msmeRegistrationNumber")}` : v("isMsme") === "no" ? "No" : "", 3],
+      ["ESI / PF", [v("esiNumber"), v("pfNumber")].filter(Boolean).join(" / "), 3],
+      ["Documents", files.join(", "), 3],
+      ["Services", chosenNames.join(", "), 4],
     ]);
   }
 
   const missing = review.filter(([k, v]) => ["Trade name", "Contact", "Constitution"].includes(k) && !v).map(([k]) => k);
   const groups = [...new Set(services.map((s) => s.group))];
+  const allServiceIds = services.map((s) => s.value);
 
   return (
-    <form ref={formRef} onSubmit={onSubmit} noValidate className="mt-8 scroll-mt-6">
+    <form ref={formRef} onSubmit={submit} onChange={recheck} noValidate className="mt-8 scroll-mt-6">
       {/* Progress */}
       <ol className="mb-6 grid grid-cols-6 gap-1" aria-label="Registration progress">
         {STEPS.map((label, i) => (
@@ -168,15 +239,15 @@ export function BusinessWizard({ constitutions, natures, services }: {
       </ol>
       <p className="mb-4 text-sm font-medium text-muted sm:hidden">Step {step + 1} of 6 · {STEPS[step]}</p>
 
-      <div className="rounded-2xl border border-ink/10 bg-surface p-5 shadow-[0_20px_40px_-32px_rgb(15_29_51/.45)] sm:p-6 sm:p-6">
+      <div className="rounded-2xl border border-ink/10 bg-surface p-5 shadow-[0_20px_40px_-32px_rgb(15_29_51/.45)] sm:p-6">
         {/* A — Business identity */}
         <section hidden={step !== 0} className="grid gap-4 sm:grid-cols-2">
           <h2 className="text-lg font-semibold sm:col-span-2">A · Business identity</h2>
           <Field label="Trade name" name="tradeName" required error={err("tradeName")}><input id="f-tradeName" name="tradeName" className={input} aria-invalid={!!err("tradeName")} /></Field>
           <Field label="Legal name" name="legalName" hint="As per PAN / GST"><input id="f-legalName" name="legalName" className={input} /></Field>
           <div className="sm:col-span-2"><Field label="Business address" name="address" error={err("address")}><textarea id="f-address" name="address" rows={2} className={input} /></Field></div>
-          <Field label="PAN" name="pan" error={err("pan")}><input id="f-pan" name="pan" maxLength={10} autoCapitalize="characters" className={input} aria-invalid={!!err("pan")} /></Field>
-          <Field label="TAN" name="tan" error={err("tan")}><input id="f-tan" name="tan" maxLength={10} autoCapitalize="characters" className={input} aria-invalid={!!err("tan")} /></Field>
+          <Field label="PAN" name="pan" hint="10 characters, e.g. ABCDE1234F" error={err("pan")}><input id="f-pan" name="pan" maxLength={10} autoCapitalize="characters" autoComplete="off" onInput={upperCaseInput} className={input} aria-invalid={!!err("pan")} /></Field>
+          <Field label="TAN" name="tan" hint="10 characters, e.g. DELA12345B" error={err("tan")}><input id="f-tan" name="tan" maxLength={10} autoCapitalize="characters" autoComplete="off" onInput={upperCaseInput} className={input} aria-invalid={!!err("tan")} /></Field>
           <Field label="Nature of business" name="primaryBusinessNatureId">
             <select id="f-primaryBusinessNatureId" name="primaryBusinessNatureId" className={input} defaultValue="">
               <option value="">Select…</option>
@@ -187,7 +258,7 @@ export function BusinessWizard({ constitutions, natures, services }: {
             <input id="f-profilePicture" name="profilePicture" type="file" accept="image/*" className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5" />
           </Field>
           <Field label="Contact person" name="contactName" required error={err("contactName")}><input id="f-contactName" name="contactName" autoComplete="name" className={input} aria-invalid={!!err("contactName")} /></Field>
-          <Field label="Contact mobile" name="contactMobile" required error={err("contactMobile")}><input id="f-contactMobile" name="contactMobile" type="tel" autoComplete="tel" className={input} aria-invalid={!!err("contactMobile")} /></Field>
+          <Field label="Contact mobile" name="contactMobile" required hint="10-digit mobile number" error={err("contactMobile")}><input id="f-contactMobile" name="contactMobile" type="tel" inputMode="tel" maxLength={13} autoComplete="tel" className={input} aria-invalid={!!err("contactMobile")} /></Field>
           <Field label="Contact's designation" name="contactDesignation"><input id="f-contactDesignation" name="contactDesignation" className={input} /></Field>
         </section>
 
@@ -210,40 +281,15 @@ export function BusinessWizard({ constitutions, natures, services }: {
           </fieldset>
           {constitution && (
             <div className="mt-6 space-y-4">
-              <p className="text-sm text-muted">
-                Add the {ROLE_LABEL[constitution.representativeRole].toLowerCase()}{constitution.allowsMultiple ? "s" : ""}. Mobile, email and address are optional; PAN and Aadhaar are optional, stored securely and visible only to authorised staff.
-              </p>
-              {people.map((p, i) => (
-                <fieldset key={p.key} className="rounded-md border border-line p-4">
-                  <legend className="px-1 text-sm font-medium">{ROLE_LABEL[p.role]} {i + 1}</legend>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="text-sm">Full name <span className="text-danger" aria-hidden>*</span>
-                      <input value={p.fullName} onChange={(e) => updatePerson(p.key, { fullName: e.target.value })} className={`${input} mt-1`} />
-                    </label>
-                    <label className="text-sm">Role
-                      <select value={p.role} onChange={(e) => updatePerson(p.key, { role: e.target.value })} className={`${input} mt-1`}>
-                        {Object.entries(ROLE_LABEL)
-                          .filter(([k]) => !constitution || k === constitution.representativeRole || k === "MEMBER" || k === "OTHER")
-                          .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                      </select>
-                    </label>
-                    <label className="text-sm">Mobile<input value={p.mobile} onChange={(e) => updatePerson(p.key, { mobile: e.target.value })} type="tel" className={`${input} mt-1`} /></label>
-                    <label className="text-sm">Email<input value={p.email} onChange={(e) => updatePerson(p.key, { email: e.target.value })} type="email" className={`${input} mt-1`} /></label>
-                    <label className="text-sm sm:col-span-2">Address<input value={p.address} onChange={(e) => updatePerson(p.key, { address: e.target.value })} className={`${input} mt-1`} /></label>
-                    <label className="text-sm">PAN<input value={p.pan} onChange={(e) => updatePerson(p.key, { pan: e.target.value.toUpperCase() })} maxLength={10} className={`${input} mt-1`} /></label>
-                    <label className="text-sm">Aadhaar<input value={p.aadhaar} onChange={(e) => updatePerson(p.key, { aadhaar: e.target.value })} inputMode="numeric" autoComplete="off" className={`${input} mt-1`} /></label>
-                  </div>
-                  <button type="button" onClick={() => setPeople((l) => l.filter((x) => x.key !== p.key))} className="mt-3 inline-flex items-center gap-1 text-sm text-danger hover:underline">
-                    <Trash2 className="size-4" aria-hidden /> Remove
-                  </button>
-                </fieldset>
-              ))}
-              {(constitution.allowsMultiple || people.length === 0) && (
-                <button type="button" onClick={() => addPerson()} className={buttonClass("secondary", "sm")}>
-                  <Plus className="size-4" aria-hidden /> Add {ROLE_LABEL[constitution.representativeRole].toLowerCase()}
-                </button>
-              )}
-              {err("people") && <p className="text-xs text-danger">Check the details of the people entered: {err("people")}</p>}
+              <PeopleEditor
+                constitution={constitution}
+                people={people}
+                onChange={setPeople}
+                onAdd={() => addPerson()}
+                error={(key, f) => err(`p${key}.${f}`)}
+                inputClass={input}
+              />
+              {serverErrors.people?.[0] && <p className="text-xs text-danger">Check the details of the people entered: {serverErrors.people[0]}</p>}
             </div>
           )}
         </section>
@@ -257,13 +303,14 @@ export function BusinessWizard({ constitutions, natures, services }: {
             <label htmlFor="gst-draft" className="sr-only">GSTIN</label>
             <input
               id="gst-draft"
+              ref={gstRef}
               value={gstDraft}
-              onChange={(e) => setGstDraft(e.target.value.toUpperCase())}
+              onChange={(e) => { setGstDraft(e.target.value.toUpperCase()); setGstError(null); }}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGstin(); } }}
               maxLength={15}
               placeholder="07AAACE1234F1Z5"
               className={`${input} font-mono`}
-              aria-invalid={!!gstError}
+              aria-invalid={!!(gstError || err("gstins"))}
             />
             <button type="button" onClick={addGstin} className={buttonClass("secondary")}>Add GSTIN</button>
           </div>
@@ -288,11 +335,6 @@ export function BusinessWizard({ constitutions, natures, services }: {
           <Field label="MSME registration number" name="msmeRegistrationNumber"><input id="f-msmeRegistrationNumber" name="msmeRegistrationNumber" className={input} /></Field>
           <Field label="ESI number" name="esiNumber"><input id="f-esiNumber" name="esiNumber" className={input} /></Field>
           <Field label="PF number" name="pfNumber"><input id="f-pfNumber" name="pfNumber" className={input} /></Field>
-          <Field label="Purchase order number" name="poNumber" hint="If you have issued a PO to us"><input id="f-poNumber" name="poNumber" className={input} /></Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="PO date" name="poDate"><input id="f-poDate" name="poDate" type="date" className={input} /></Field>
-            <Field label="PO amount (₹)" name="poAmount" error={err("poAmount")}><input id="f-poAmount" name="poAmount" type="number" min={0} step="0.01" className={input} /></Field>
-          </div>
           <div className="space-y-3 sm:col-span-2">
             <p className="text-sm font-medium">Documents <span className="font-normal text-muted">(PDF, JPG, PNG, DOCX · max 10 MB each · stored privately)</span></p>
             {[
@@ -300,7 +342,6 @@ export function BusinessWizard({ constitutions, natures, services }: {
               ["msmeCertificate", "MSME certificate", false],
               ["esiCertificate", "ESI certificate", false],
               ["pfCertificate", "PF certificate", false],
-              ["poFile", "Purchase order copy", false],
             ].map(([name, label, multiple]) => (
               <label key={String(name)} className="block text-sm">
                 {label}
@@ -312,21 +353,39 @@ export function BusinessWizard({ constitutions, natures, services }: {
 
         {/* E — Services */}
         <section hidden={step !== 4}>
-          <h2 className="text-lg font-semibold">E · Services and engagement</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">E · Services and engagement</h2>
+            {services.length > 0 && (
+              <SelectAll
+                ids={allServiceIds}
+                chosen={chosen}
+                onToggle={toggleServices}
+                label={`Select all services${chosen.size ? ` (${chosen.size} selected)` : ""}`}
+                className="rounded-md border border-line px-3 py-1.5 font-medium hover:bg-subtle has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50"
+              />
+            )}
+          </div>
+          {services.length === 0 && <p className="mt-3 text-sm text-muted">No services are listed yet. Our office will confirm the services with you.</p>}
           <div className="mt-4 space-y-5">
-            {groups.map((g) => (
-              <fieldset key={g}>
-                <legend className="text-xs font-semibold uppercase tracking-wide text-muted">{g}</legend>
-                <div className="mt-2 space-y-2">
-                  {services.filter((s) => s.group === g).map((s) => (
-                    <label key={s.value} className="flex items-start gap-3 rounded-md border border-line p-3 text-sm hover:bg-subtle has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50">
-                      <input type="checkbox" name="serviceIds[]" value={s.value} className="mt-0.5 size-4 accent-brand-700" />
-                      <span><span className="font-medium">{s.label}</span><span className="block text-xs text-muted">{s.description}</span></span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            ))}
+            {groups.map((g) => {
+              const ids = services.filter((s) => s.group === g).map((s) => s.value);
+              return (
+                <fieldset key={g}>
+                  <legend className="flex w-full items-center justify-between gap-3">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted">{g}</span>
+                    {groups.length > 1 && <SelectAll ids={ids} chosen={chosen} onToggle={toggleServices} label={`Select all in ${g}`} className="text-xs text-muted hover:text-ink" />}
+                  </legend>
+                  <div className="mt-2 space-y-2">
+                    {services.filter((s) => s.group === g).map((s) => (
+                      <label key={s.value} className="flex cursor-pointer items-start gap-3 rounded-md border border-line p-3 text-sm hover:bg-subtle has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50">
+                        <input type="checkbox" name="serviceIds[]" value={s.value} checked={chosen.has(s.value)} onChange={(e) => toggleServices([s.value], e.target.checked)} className="mt-0.5 size-4 accent-brand-700" />
+                        <span><span className="font-medium">{s.label}</span><span className="block text-xs text-muted">{s.description}</span></span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              );
+            })}
           </div>
           <div className="mt-5 max-w-sm">
             <Field label="Type of engagement" name="natureOfClient" hint="Optional — we will confirm this with you">
@@ -342,24 +401,24 @@ export function BusinessWizard({ constitutions, natures, services }: {
           <h2 className="text-lg font-semibold">F · Your login and review</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2"><Field label="Email (used to sign in)" name="email" required error={err("email")}><input id="f-email" name="email" type="email" autoComplete="email" className={input} aria-invalid={!!err("email")} /></Field></div>
-            <Field label="Password" name="password" required hint="At least 10 characters" error={err("password")}><input id="f-password" name="password" type="password" autoComplete="new-password" className={input} aria-invalid={!!err("password")} /></Field>
-            <Field label="Confirm password" name="confirmPassword" required error={err("confirmPassword")}><input id="f-confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" className={input} aria-invalid={!!err("confirmPassword")} /></Field>
+            <Field label="Password" name="password" required hint="At least 10 characters" error={err("password")}><PasswordInput id="f-password" name="password" autoComplete="new-password" className={input} aria-invalid={!!err("password")} /></Field>
+            <Field label="Confirm password" name="confirmPassword" required error={err("confirmPassword")}><PasswordInput id="f-confirmPassword" name="confirmPassword" autoComplete="new-password" className={input} aria-invalid={!!err("confirmPassword")} /></Field>
           </div>
           <h3 className="mt-6 text-sm font-semibold">Review your registration</h3>
           {missing.length > 0 && <p className="mt-2 text-sm text-danger">Missing: {missing.join(", ")}</p>}
           <dl className="mt-2 divide-y divide-line rounded-md border border-line text-sm">
-            {review.map(([k, v], i) => (
+            {review.map(([k, v, s]) => (
               <div key={k} className="grid gap-1 px-3 py-2 sm:grid-cols-[10rem_1fr]">
                 <dt className="text-muted">{k}</dt>
                 <dd className="flex items-start justify-between gap-2 break-words">
                   <span>{v || <span className="text-muted">—</span>}</span>
-                  <button type="button" onClick={() => go(i <= 4 ? 0 : i === 5 || i === 6 ? 1 : i === 7 ? 2 : i <= 10 ? 3 : i === 11 ? 4 : 3)} className="shrink-0 text-xs text-brand-700 hover:underline">Edit</button>
+                  <button type="button" onClick={() => go(s)} className="shrink-0 text-xs text-brand-700 hover:underline">Edit</button>
                 </dd>
               </div>
             ))}
           </dl>
           <label className="mt-4 flex items-start gap-2 text-sm">
-            <input type="checkbox" name="consent" className="mt-0.5 size-4 accent-brand-700" />
+            <input type="checkbox" name="consent" className="mt-0.5 size-4 accent-brand-700" aria-invalid={!!err("consent")} />
             I confirm the information is correct and agree that Office ERP may use it to process this registration.
           </label>
           {err("consent") && <p className="text-xs text-danger">{err("consent")}</p>}

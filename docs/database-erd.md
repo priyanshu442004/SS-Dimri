@@ -25,11 +25,11 @@ All relationships below are real foreign keys in the deployed database (see the 
 | `organizations` | every tenant-scoped table (`clients`, `employees`, `services`, `departments`, `designations`, `tasks`, `attendance_records`, `timesheet_entries`, `pending_items`, …) | `organization_id` |
 | `organizations` | `organization_documents`, `organization_previous_companies`, `constitution_members` (org’s own representatives when `client_id` is NULL) | `organization_id` |
 | `clients` | `client_gst_registrations` (**multiple GSTINs**) | `client_id` |
-| `clients` | `constitution_members`, `client_documents`, `client_purchase_orders` | `client_id` |
+| `clients` | `constitution_members`, `client_documents` | `client_id` |
 | `clients` | `client_services`, `team_allocations` (**multiple allocations**), `tasks`, `timesheet_entries`, `pending_items`, `work_commitments`, `client_reports`, `client_dues` | `client_id` |
 | `departments` | `services` | `department_id` |
 | `services` | `client_services` | `service_id` |
-| `client_services` | `client_purchase_orders`, `team_allocations`, `tasks`, `timesheet_entries`, `work_commitments`, `client_dues` | `client_service_id` (optional) |
+| `client_services` | `team_allocations`, `tasks`, `timesheet_entries`, `work_commitments`, `client_dues` | `client_service_id` (optional) |
 | `designations` | `employees` | `designation_id` |
 | `employee_nature_options` | `employees` | `nature_id` |
 | `employees` | `employee_addresses`, `employee_bank_accounts`, `employee_qualifications`, `employee_references`, `employee_previous_employments`, `employee_documents`, `employee_salary_records`, `employee_memos` | `employee_id` |
@@ -101,14 +101,12 @@ erDiagram
   clients ||--o{ constitution_members : "represented by"
   organizations ||--o{ constitution_members : scopes
   clients ||--o{ client_documents : has
-  clients ||--o{ client_purchase_orders : issues
   organizations ||--o{ departments : has
   departments |o--o{ services : groups
   organizations ||--o{ services : offers
   clients ||--o{ client_services : engages
   services ||--o{ client_services : "engaged as"
   client_services |o--o| client_services : "renewed from"
-  client_services |o--o{ client_purchase_orders : "covered by"
   employees |o--o{ services : "default POC"
   employees |o--o{ client_services : "POC"
 ```

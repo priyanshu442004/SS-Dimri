@@ -32,7 +32,7 @@ export default async function CreateAccountPage() {
       </AuthShell>
     );
   }
-  const constitutions = await prisma.constitution.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true } });
+  const constitutions = await prisma.constitution.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true, representativeRole: true, allowsMultiple: true } });
   return (
     <RegisterFrame
       eyebrow="Firm owner"
@@ -41,7 +41,7 @@ export default async function CreateAccountPage() {
       description="For the firm owner or administrator setting up the practice portal. Register the firm, then create login IDs for your employees from the admin portal."
       next={["Your owner login is created", "Departments, services and work types are set up from the master data", "Add employees and send their setup links"]}
     >
-      <CreateAccountForm constitutions={constitutions.map((c) => ({ value: c.id, label: c.name }))} />
+      <CreateAccountForm constitutions={constitutions} />
       <p className="mt-6 text-sm text-muted">
         Already registered? <Link href="/login" className="pub-link font-medium text-stamp">Sign in</Link>
       </p>

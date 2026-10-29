@@ -10,6 +10,7 @@ import { dateOnly } from "@/lib/dates";
 import { createOrganizationDefaults } from "@/lib/domain/organization-defaults";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { createCredentialUser } from "@/lib/services/accounts";
+import { assertRepresentatives, peopleField, representativeRows } from "@/lib/services/client-registration";
 import { hasFile, storeUpload, validateUpload } from "@/lib/services/files";
 import { isFirmRegistrationOpen } from "@/lib/services/firm-registration";
 import { gstinSchema, intlMobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
@@ -24,6 +25,7 @@ const schema = z
     tradeName: zRequiredText(200),
     legalName: zOptionalText(200),
     constitutionId: z.uuid("Select a constitution"),
+    people: peopleField,
     pan: panSchema.optional(),
     gstin: gstinSchema.optional(),
     tan: tanSchema.optional(),
@@ -54,6 +56,7 @@ export async function createAccount(_prev: ActionState, fd: FormData): Promise<A
     if (await prisma.user.findUnique({ where: { email: v.email }, select: { id: true } })) {
       throw new BusinessRuleError("An account with this email already exists. Please sign in instead.");
     }
+    await assertRepresentatives(v.constitutionId, v.people);
     // Check the documents before anything is created, so a bad file never leaves a half-registered firm.
     if (hasFile(certificate)) await validateUpload(certificate);
     if (hasFile(logo)) await validateUpload(logo, { imagesOnly: true });
@@ -79,6 +82,8 @@ export async function createAccount(_prev: ActionState, fd: FormData): Promise<A
           },
         });
         await tx.organizationMembership.create({ data: { organizationId: org.id, userId: user.id, role: "OWNER" } });
+        // The firm's own proprietor/partners/directors: constitution members without a client.
+        if (v.people.length) await tx.constitutionMember.createMany({ data: representativeRows(org.id, null, v.people) });
         await createOrganizationDefaults(tx, org.id);
         await tx.auditLog.create({
           data: { organizationId: org.id, actorUserId: user.id, action: "organization.registered", entityType: "organization", entityId: org.id },

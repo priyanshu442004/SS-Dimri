@@ -1,14 +1,49 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { ActionForm, Checkbox, FormError, SelectField, SubmitButton, TextArea, TextField } from "@/components/form";
+import { toast } from "@/components/toaster";
+import { dateTimeLocalInTz } from "@/lib/dates";
 import { createTaskAction } from "../actions";
 
 type Option = { value: string; label: string; level?: string | null };
 
 const LEVEL: Record<string, string> = { JUNIOR: "Junior", MID_LEVEL: "Mid-level", SENIOR: "Senior" };
 
-export function TaskForm({ employees, clients, defaultClient }: { employees: Option[]; clients: Option[]; defaultClient: string }) {
+/**
+ * Start defaults to the current date and time and may not be earlier than now.
+ * While the start is left at its default it keeps moving with the clock.
+ */
+function useStart(initialNow: string, timezone: string) {
+  const [now, setNow] = useState(initialNow);
+  const [start, setStart] = useState(initialNow);
+  const [edited, setEdited] = useState(false);
+  useEffect(() => {
+    const tick = () => {
+      const n = dateTimeLocalInTz(new Date(), timezone);
+      setNow(n);
+      if (!edited) setStart(n);
+    };
+    const id = setInterval(tick, 15_000);
+    return () => clearInterval(id);
+  }, [edited, timezone]);
+  // datetime-local values compare correctly as strings (same fixed format).
+  const tooEarly = !!start && start < now;
+  return { now, start, tooEarly, change: (v: string) => { setStart(v); setEdited(true); } };
+}
+
+export function TaskForm({ employees, clients, defaultClient, now: initialNow, timezone = "Asia/Kolkata" }: { employees: Option[]; clients: Option[]; defaultClient: string; now: string; timezone?: string }) {
+  const start = useStart(initialNow, timezone);
   return (
+    // Capture phase: a start in the past stops the submission before it reaches the server.
+    <div
+      onSubmitCapture={(e) => {
+        if (!start.tooEarly) return;
+        e.preventDefault();
+        e.stopPropagation();
+        toast("The start date and time cannot be earlier than now.", "error");
+      }}
+    >
     <ActionForm action={createTaskAction}>
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField label="Task" name="title" required className="sm:col-span-2" placeholder="e.g. GSTR-3B for September" />
@@ -19,7 +54,19 @@ export function TaskForm({ employees, clients, defaultClient }: { employees: Opt
           ]} />
           <div className="pt-7"><Checkbox name="isAsap" label="ASAP" /></div>
         </div>
-        <TextField label="Start" name="startAt" type="datetime-local" />
+        <div>
+          <TextField
+            label="Start"
+            name="startAt"
+            type="datetime-local"
+            value={start.start}
+            min={start.now}
+            onChange={(e) => start.change(e.target.value)}
+            aria-invalid={start.tooEarly || undefined}
+            hint={start.tooEarly ? undefined : "Defaults to now; cannot be earlier than now"}
+          />
+          {start.tooEarly && <p role="alert" className="app-rise mt-1 text-xs text-danger">The start cannot be earlier than now ({start.now.replace("T", " ")}).</p>}
+        </div>
         <TextField label="Due by" name="dueAt" type="datetime-local" />
         <TextArea label="Details / written work" name="description" rows={4} className="sm:col-span-2" />
       </div>
@@ -52,5 +99,6 @@ export function TaskForm({ employees, clients, defaultClient }: { employees: Opt
       <Checkbox name="clientVisible" label="Share with the client in their portal (title, status, due date and client-visible remarks only)" />
       <SubmitButton>Create task</SubmitButton>
     </ActionForm>
+    </div>
   );
 }
