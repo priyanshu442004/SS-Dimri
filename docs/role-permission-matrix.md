@@ -52,7 +52,7 @@ Additional rules enforced in services:
 
 ## Client role (`CLIENT`)
 
-Client logins are created by public registration (`/register/quick`, `/register/business`) or by staff ("Invite a client user" on the client's Portal access tab). They hold **no internal capability** — every `/app` page and staff action rejects them — and use the separate portal at `/client`:
+Client logins are created only by the firm's staff ("Invite a client user" on the client's Portal access tab); there is no public client registration. They hold **no internal capability** — every `/app` page and staff action rejects them — and use the separate portal at `/client`:
 
 | Client can | Scope |
 |---|---|

@@ -24,7 +24,7 @@ export default async function ClientRequestDetail({ params }: PageProps<"/client
             <ol className="space-y-3">
               {r.followUps.map((f) => (
                 <li key={f.id} className="rounded-md border border-line p-3 text-sm">
-                  <p className="text-xs text-muted">{f.actor?.name ?? "Office ERP"} · {formatDateTime(f.createdAt)}</p>
+                  <p className="text-xs text-muted">{f.actor?.name ?? ctx.organization.tradeName} · {formatDateTime(f.createdAt)}</p>
                   <p className="mt-1 whitespace-pre-wrap">{f.note}</p>
                 </li>
               ))}

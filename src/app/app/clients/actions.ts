@@ -26,6 +26,7 @@ import {
   transitionClient,
   transitionSchema,
 } from "@/lib/services/clients";
+import { fullRegistrationSchema, registerClient } from "@/lib/services/client-registration";
 import { hasFile, storeUpload } from "@/lib/services/files";
 
 export async function quickRegisterAction(_p: ActionState, fd: FormData): Promise<ActionState> {
@@ -35,6 +36,19 @@ export async function quickRegisterAction(_p: ActionState, fd: FormData): Promis
   const r = await safeAction(async () => {
     const ctx = await actionContext("clients.register");
     id = (await quickRegisterClient(ctx, parsed.data)).id;
+  });
+  if (r.ok === false) return r;
+  redirect(`/app/clients/${id}?registered=1`);
+}
+
+/** Full registration from the six-section form (Clients → New client). */
+export async function fullRegisterClientAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(fullRegistrationSchema, fd);
+  if (!parsed.success) return parsed.state;
+  let id = "";
+  const r = await safeAction(async () => {
+    const ctx = await actionContext("clients.register");
+    id = (await registerClient(ctx, parsed.data, fd)).id;
   });
   if (r.ok === false) return r;
   redirect(`/app/clients/${id}?registered=1`);

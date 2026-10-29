@@ -5,24 +5,25 @@ import { clsx } from "clsx";
 import { z } from "zod";
 import { Check } from "lucide-react";
 import { buttonClass } from "@/components/ui";
-import { PasswordInput, upperCaseInput, useSubmitWithoutReset, type FormState } from "@/components/form";
+import { upperCaseInput, useSubmitWithoutReset, type FormState } from "@/components/form";
 import { toast } from "@/components/toaster";
 import { PeopleEditor, ROLE_LABEL, emptyPerson, peopleToJson, personErrors, type ConstitutionOption, type Person } from "@/components/representatives";
 import { mobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
 import { fullRegisterClientAction } from "../actions";
 
+// Full client registration by the firm's staff (Clients → New client).
+
 type Option = { value: string; label: string };
 type Errors = Record<string, string>;
 
-const STEPS = ["Business identity", "Constitution & people", "GST registrations", "Compliance & documents", "Services", "Account & review"] as const;
+const STEPS = ["Business identity", "Constitution & people", "GST registrations", "Compliance & documents", "Services", "Review"] as const;
 
 // Which step owns each server-side field (to jump back on validation errors).
 const FIELD_STEP: Record<string, number> = {
-  tradeName: 0, legalName: 0, address: 0, pan: 0, tan: 0, primaryBusinessNatureId: 0, contactName: 0, contactMobile: 0, contactDesignation: 0,
+  tradeName: 0, legalName: 0, address: 0, pan: 0, tan: 0, primaryBusinessNatureId: 0, contactName: 0, contactMobile: 0, contactEmail: 0, contactDesignation: 0,
   constitutionId: 1, people: 1, gstins: 2,
   isMsme: 3, msmeRegistrationNumber: 3, esiNumber: 3, pfNumber: 3,
   "serviceIds[]": 4, natureOfClient: 4,
-  email: 5, password: 5, confirmPassword: 5, consent: 5,
 };
 
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
@@ -101,15 +102,9 @@ export function BusinessWizard({ constitutions, natures, services }: {
       if (!v("contactName")) e.contactName = "Enter the contact person's name";
       if (!v("contactMobile")) e.contactMobile = "Enter the contact mobile number";
       else if (!valid(mobileSchema, v("contactMobile"))) e.contactMobile = "Enter a valid 10-digit mobile number";
+      if (v("contactEmail") && !valid(z.email(), v("contactEmail"))) e.contactEmail = "Enter a valid email";
     }
     if (s === 2 && gstRef.current?.value.trim()) e.gstins = "Click “Add GSTIN” for the number you typed, or clear the box.";
-    if (s === 5) {
-      if (!v("email")) e.email = "Enter your email";
-      else if (!valid(z.email(), v("email"))) e.email = "Enter a valid email";
-      if (v("password").length < 10) e.password = "Use at least 10 characters";
-      if (v("confirmPassword") !== v("password")) e.confirmPassword = "Passwords do not match";
-      if (!fd.get("consent")) e.consent = "Please confirm to continue";
-    }
     return e;
   }
   function stateErrors(s: number): Errors {
@@ -186,13 +181,16 @@ export function BusinessWizard({ constitutions, natures, services }: {
   }
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
-    const errors = formErrors(5);
-    if (Object.keys(errors).length) {
-      e.preventDefault();
-      setAttempted((a) => new Set(a).add(5));
-      setFieldErrs(errors);
-      setStepError("Please correct the highlighted fields before submitting.");
-      return;
+    // Re-check every step (it may have been edited from the review) before sending.
+    for (let s = 0; s < 5; s++) {
+      if (Object.keys({ ...formErrors(s), ...stateErrors(s) }).length) {
+        e.preventDefault();
+        go(s);
+        setAttempted((a) => new Set(a).add(s));
+        setFieldErrs(formErrors(s));
+        setStepError("Please correct the highlighted fields before submitting.");
+        return;
+      }
     }
     setStepError(null);
     onSubmit(e);
@@ -209,7 +207,7 @@ export function BusinessWizard({ constitutions, natures, services }: {
       ["Legal name", v("legalName"), 0],
       ["Address", v("address"), 0],
       ["PAN / TAN", [v("pan"), v("tan")].filter(Boolean).join(" / ").toUpperCase(), 0],
-      ["Contact", [v("contactName"), v("contactMobile")].filter(Boolean).join(" · "), 0],
+      ["Contact", [v("contactName"), v("contactMobile"), v("contactEmail")].filter(Boolean).join(" · "), 0],
       ["Constitution", constitution?.name ?? "", 1],
       ["People", people.filter((p) => p.fullName).map((p) => `${p.fullName} (${ROLE_LABEL[p.role]})`).join(", "), 1],
       ["GSTINs", gstins.join(", "), 2],
@@ -225,7 +223,7 @@ export function BusinessWizard({ constitutions, natures, services }: {
   const allServiceIds = services.map((s) => s.value);
 
   return (
-    <form ref={formRef} onSubmit={submit} onChange={recheck} noValidate className="mt-8 scroll-mt-6">
+    <form ref={formRef} onSubmit={submit} onChange={recheck} noValidate className="mt-2 scroll-mt-6">
       {/* Progress */}
       <ol className="mb-6 grid grid-cols-6 gap-1" aria-label="Registration progress">
         {STEPS.map((label, i) => (
@@ -259,6 +257,7 @@ export function BusinessWizard({ constitutions, natures, services }: {
           </Field>
           <Field label="Contact person" name="contactName" required error={err("contactName")}><input id="f-contactName" name="contactName" autoComplete="name" className={input} aria-invalid={!!err("contactName")} /></Field>
           <Field label="Contact mobile" name="contactMobile" required hint="10-digit mobile number" error={err("contactMobile")}><input id="f-contactMobile" name="contactMobile" type="tel" inputMode="tel" maxLength={13} autoComplete="tel" className={input} aria-invalid={!!err("contactMobile")} /></Field>
+          <Field label="Contact email" name="contactEmail" hint="Used later to invite the client to the portal" error={err("contactEmail")}><input id="f-contactEmail" name="contactEmail" type="email" autoComplete="off" className={input} aria-invalid={!!err("contactEmail")} /></Field>
           <Field label="Contact's designation" name="contactDesignation"><input id="f-contactDesignation" name="contactDesignation" className={input} /></Field>
         </section>
 
@@ -365,7 +364,7 @@ export function BusinessWizard({ constitutions, natures, services }: {
               />
             )}
           </div>
-          {services.length === 0 && <p className="mt-3 text-sm text-muted">No services are listed yet. Our office will confirm the services with you.</p>}
+          {services.length === 0 && <p className="mt-3 text-sm text-muted">No active services yet. Add them under Services, or confirm the services with the client later.</p>}
           <div className="mt-4 space-y-5">
             {groups.map((g) => {
               const ids = services.filter((s) => s.group === g).map((s) => s.value);
@@ -388,7 +387,7 @@ export function BusinessWizard({ constitutions, natures, services }: {
             })}
           </div>
           <div className="mt-5 max-w-sm">
-            <Field label="Type of engagement" name="natureOfClient" hint="Optional — we will confirm this with you">
+            <Field label="Type of engagement" name="natureOfClient" hint="Optional — can be confirmed later">
               <select id="f-natureOfClient" name="natureOfClient" defaultValue="" className={input}>
                 <option value="">Not sure yet</option><option value="ONE_TIME">One-time work</option><option value="RETAINER">Ongoing (retainer)</option>
               </select>
@@ -398,13 +397,8 @@ export function BusinessWizard({ constitutions, natures, services }: {
 
         {/* F — Account & review */}
         <section hidden={step !== 5}>
-          <h2 className="text-lg font-semibold">F · Your login and review</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2"><Field label="Email (used to sign in)" name="email" required error={err("email")}><input id="f-email" name="email" type="email" autoComplete="email" className={input} aria-invalid={!!err("email")} /></Field></div>
-            <Field label="Password" name="password" required hint="At least 10 characters" error={err("password")}><PasswordInput id="f-password" name="password" autoComplete="new-password" className={input} aria-invalid={!!err("password")} /></Field>
-            <Field label="Confirm password" name="confirmPassword" required error={err("confirmPassword")}><PasswordInput id="f-confirmPassword" name="confirmPassword" autoComplete="new-password" className={input} aria-invalid={!!err("confirmPassword")} /></Field>
-          </div>
-          <h3 className="mt-6 text-sm font-semibold">Review your registration</h3>
+          <h2 className="text-lg font-semibold">F · Review</h2>
+          <p className="mt-1 text-sm text-muted">Check the details, then register the client. It is created as “pending approval”.</p>
           {missing.length > 0 && <p className="mt-2 text-sm text-danger">Missing: {missing.join(", ")}</p>}
           <dl className="mt-2 divide-y divide-line rounded-md border border-line text-sm">
             {review.map(([k, v, s]) => (
@@ -417,12 +411,6 @@ export function BusinessWizard({ constitutions, natures, services }: {
               </div>
             ))}
           </dl>
-          <label className="mt-4 flex items-start gap-2 text-sm">
-            <input type="checkbox" name="consent" className="mt-0.5 size-4 accent-brand-700" aria-invalid={!!err("consent")} />
-            I confirm the information is correct and agree that Office ERP may use it to process this registration.
-          </label>
-          {err("consent") && <p className="text-xs text-danger">{err("consent")}</p>}
-          <div aria-hidden className="hidden"><input name="website" tabIndex={-1} autoComplete="off" /></div>
         </section>
       </div>
 
@@ -435,7 +423,7 @@ export function BusinessWizard({ constitutions, natures, services }: {
           <button key="continue" type="button" onClick={() => go(step + 1)} className={buttonClass("primary")}>Continue</button>
         ) : (
           <button key="submit" type="submit" disabled={pending} className={buttonClass("primary")}>
-            {pending ? "Submitting…" : <><Check className="size-4" aria-hidden /> Submit registration</>}
+            {pending ? "Registering…" : <><Check className="size-4" aria-hidden /> Register client</>}
           </button>
         )}
       </div>

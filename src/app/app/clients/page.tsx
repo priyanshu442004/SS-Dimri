@@ -80,7 +80,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
         actions={
           <>
             {can(ctx.role, "clients.approve") && <LinkButton variant="secondary" href="/app/clients/approvals">Approval queue{pendingCount ? ` (${pendingCount})` : ""}</LinkButton>}
-            {can(ctx.role, "clients.register") && <LinkButton href="/app/clients/new">Quick registration</LinkButton>}
+            {can(ctx.role, "clients.register") && <LinkButton href="/app/clients/new">Register a client</LinkButton>}
           </>
         }
       />

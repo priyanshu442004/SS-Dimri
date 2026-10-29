@@ -196,7 +196,7 @@ export async function transitionClient(ctx: AppContext, clientId: string, action
     }
     // Tell the client's portal users about approval decisions.
     if (action === "approve" || action === "reactivate") {
-      await notifyClientUsers(tx, ctx.organization.id, client.id, { type: "client.approved", title: "Your account is active", body: "Welcome to the Office ERP client portal.", link: "/client" });
+      await notifyClientUsers(tx, ctx.organization.id, client.id, { type: "client.approved", title: "Your account is active", body: `Welcome to the ${ctx.organization.tradeName} client portal.`, link: "/client" });
     }
     if (action === "reject") {
       await notifyClientUsers(tx, ctx.organization.id, client.id, { type: "client.rejected", title: "Your registration needs attention", body: reason, link: "/account/pending" });

@@ -25,7 +25,7 @@ export default async function CreateAccountPage() {
         title="Firm registration is closed"
         em={["closed"]}
         description={
-          <>The practice portal has already been set up. Businesses can <Link href="/register" className="pub-link font-medium text-stamp">register as a client</Link>; staff receive their login from the administrator.</>
+          <>New firm sign-ups are paused for now. Existing firms can sign in as usual; clients and staff receive their login from their firm.</>
         }
       >
         <Link href="/login" className="pub-btn">Sign in</Link>
@@ -38,8 +38,8 @@ export default async function CreateAccountPage() {
       eyebrow="Firm owner"
       title="Register the firm"
       em={["firm"]}
-      description="For the firm owner or administrator setting up the practice portal. Register the firm, then create login IDs for your employees from the admin portal."
-      next={["Your owner login is created", "Departments, services and work types are set up from the master data", "Add employees and send their setup links"]}
+      description="For the firm owner or administrator. Each firm gets its own private portal: its clients, staff, tasks and documents are visible only to that firm."
+      next={["Your owner login and your firm's private portal are created", "Departments, services and work types are set up from the master data", "Add employees and register your clients from the admin portal"]}
     >
       <CreateAccountForm constitutions={constitutions} />
       <p className="mt-6 text-sm text-muted">

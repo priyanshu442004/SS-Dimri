@@ -14,7 +14,7 @@ const TEL = "tel:+911147094120";
 const CTA_SPAN: Record<number, string> = { 1: "lg:col-span-1", 2: "lg:col-span-2", 3: "lg:col-span-3", 4: "lg:col-span-4" };
 
 const STEPS = [
-  { title: "Register", text: "Tell us about your business online — a quick registration takes a few minutes; the full form covers constitution, GSTINs and documents." },
+  { title: "Register", text: "Get in touch and our office registers your business — constitution, GSTINs and documents — then invites you to the client portal." },
   { title: "We review", text: "Our office checks the details and confirms the services and engagement with you before activating your account." },
   { title: "Work together", text: "Your client portal shows what we need from you, work in progress, items for your review and outstanding dues." },
 ];
@@ -68,9 +68,9 @@ export default async function HomePage() {
               Accounts, GST, income tax, TDS and audit — handled by one team. {FIRM.name} has worked with businesses from Naraina Industrial Area since {FIRM.established}, at our office and on-site at clients&apos; premises.
             </p>
             <div className="pub-in mt-9 flex flex-wrap items-center gap-3" style={{ "--d": "600ms" } as CSSProperties}>
-              <Link href="/register" className="pub-btn">
-                Register your business <ArrowRight className="arrow size-4" aria-hidden />
-              </Link>
+              <a href="tel:+911147094120" className="pub-btn">
+                Call {FIRM.phone} <ArrowRight className="arrow size-4" aria-hidden />
+              </a>
               <Link href="/services" className="pub-btn pub-btn-ghost">Explore services</Link>
             </div>
             <dl className="pub-in mt-12 grid max-w-lg grid-cols-3 divide-x divide-ink/10 border-y border-ink/10 py-4" style={{ "--d": "750ms" } as CSSProperties}>
@@ -348,10 +348,10 @@ export default async function HomePage() {
             Let&apos;s put your compliance <em className="text-stamp">on a calendar.</em>
           </h2>
           <p data-reveal="" style={{ "--i": 1 } as CSSProperties} className="mx-auto mt-6 max-w-xl text-lg text-ink/70">
-            Register online in a few minutes. Our office reviews it and confirms the engagement with you.
+            Get in touch. Our office registers your business, confirms the engagement with you and opens your client portal.
           </p>
           <div data-reveal="" style={{ "--i": 2 } as CSSProperties} className="mt-10 flex flex-wrap justify-center gap-3">
-            <Link href="/register" className="pub-btn">Register your business <ArrowRight className="arrow size-4" aria-hidden /></Link>
+            <a href="tel:+911147094120" className="pub-btn">Call {FIRM.phone} <ArrowRight className="arrow size-4" aria-hidden /></a>
             <Link href="/pricing" className="pub-btn pub-btn-ghost">How we bill</Link>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { days, disconnect, expireInvitation, setAccountAge } from "./db";
@@ -13,6 +13,7 @@ test.afterAll(disconnect);
 
 const run = Date.now().toString(36);
 const owner = { email: `owner-${run}@e2e.invalid`, password: "Owner-Pass-12345" };
+const secondOwner = { email: `owner2-${run}@e2e.invalid`, password: "Owner2-Pass-12345" };
 const staff = { email: `staff-${run}@e2e.invalid`, temp: "", password: "Staff-Pass-12345" };
 const senior = { email: `senior-${run}@e2e.invalid`, temp: "", password: "Senior-Pass-12345" };
 const ravi = { email: `ravi-${run}@e2e.invalid`, temp: "", password: "Ravi-Pass-12345" };
@@ -91,15 +92,36 @@ test("unauthenticated users cannot reach the app or the client portal", async ({
   await expect(page).toHaveURL(/\/login\?next=%2Fclient/);
 });
 
-test("owner registers the firm and lands on the admin dashboard; firm registration then closes", async ({ page }) => {
+/** Firm registration: login, business details and the constitution's person (a proprietor). */
+async function registerFirm(page: Page, o: { email: string; password: string }, tradeName: string) {
+  await page.goto("/register/firm");
+  await page.getByLabel("Your full name").fill("E2E Owner");
+  await page.getByLabel("Email").fill(o.email);
+  await page.getByRole("textbox", { name: "Password", exact: true }).fill(o.password);
+  await page.getByLabel("Confirm password").fill(o.password);
+  await page.getByLabel("Trade name").fill(tradeName);
+  await page.getByLabel("Constitution").selectOption({ label: "Proprietorship" });
+  await page.getByRole("textbox", { name: "Full name", exact: true }).fill("E2E Owner");
+}
+
+test("owner registers the firm with its proprietor and lands on the admin dashboard; registration stays open", async ({ page }) => {
+  await page.goto("/register");
+  await expect(page.getByRole("link", { name: /Register your firm/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Register your business/ })).toHaveCount(0);
   await page.goto("/register/firm");
   await page.getByLabel("Your full name").fill("E2E Owner");
   await page.getByLabel("Email").fill(owner.email);
   await page.getByRole("textbox", { name: "Password", exact: true }).fill(owner.password);
   await page.getByLabel("Confirm password").fill(owner.password);
   await page.getByLabel("Trade name").fill(`E2E Firm ${run}`);
+  await page.getByLabel("PAN").first().fill("AGBPD7743C");
   await page.getByLabel("Constitution").selectOption({ label: "Proprietorship" });
-  await page.getByLabel("PAN").fill("AGBPD7743C");
+  // The proprietor's details are checked as soon as a field is left.
+  await page.getByLabel("Aadhaar").fill("1234");
+  await page.getByLabel("Aadhaar").blur();
+  await expect(page.getByText("Enter a valid 12-digit Aadhaar number")).toBeVisible();
+  await page.getByLabel("Aadhaar").fill("");
+  await page.getByRole("textbox", { name: "Full name", exact: true }).fill("E2E Owner");
   await page.getByLabel("Number of employees").fill("5");
   await page.getByLabel(/Firm certificate/).setInputFiles(pdf("gst-certificate.pdf"));
   await page.getByLabel("Certificate name").fill("GST registration certificate");
@@ -115,9 +137,13 @@ test("owner registers the firm and lands on the admin dashboard; firm registrati
   // The uploaded certificate is stored privately and listed in Settings.
   await page.goto("/app/settings");
   await expect(page.getByRole("link", { name: "GST registration certificate" })).toBeVisible();
+  await expect(page.getByText("E2E Owner · Proprietor")).toBeVisible();
   await signOut(page);
+  // Many firms: registration stays open for the next firm.
   await page.goto("/register/firm");
-  await expect(page.getByRole("heading", { name: "Firm registration is closed" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Register the firm/ })).toBeVisible();
+  await page.goto("/register/business");
+  await expect(page).toHaveURL(/\/register$/); // clients do not register themselves
 });
 
 test("admin invites staff with name, email, mobile and role; each gets an email with a temporary password", async ({ page }) => {
@@ -341,7 +367,7 @@ test("admin reviews with filters: hold, reject, resubmit, approve; staff are ema
 
 test("staff quick registration stays pending until an admin approves it; duplicate GSTIN rejected", async ({ page }) => {
   await signIn(page, owner.email, owner.password);
-  await page.goto("/app/clients/new");
+  await page.goto("/app/clients/new/quick");
   await page.getByLabel("Trade name").fill(clientName);
   await page.getByLabel("Constitution").selectOption({ label: "Partnership Firm" });
   await page.getByLabel("GSTIN(s)").fill("07AAACE1234F1Z5\n07AAACE1234F2Z4");
@@ -359,40 +385,66 @@ test("staff quick registration stays pending until an admin approves it; duplica
   await expect(page.getByText(/already registered/)).toBeVisible();
 });
 
-test("a business registers itself (quick): portal usable during the 7-day period; staff pages never", async ({ page }) => {
-  await page.goto("/register");
-  await page.getByRole("link", { name: /Quick registration/ }).click();
-  await page.getByLabel("Trade name").fill(portalClient.name);
-  await page.getByLabel("Contact person").fill("Ms Mehta");
-  await page.getByLabel("Mobile").fill("9811122233");
-  await page.getByLabel("Email").fill(portalClient.email);
-  await page.getByRole("textbox", { name: "Password", exact: true }).fill(portalClient.password);
-  await page.getByLabel("Confirm password").fill(portalClient.password);
-  await page.getByLabel("GST Return Filing").check();
-  await page.getByLabel(/I confirm the information is correct/).check();
-  await page.getByRole("button", { name: "Submit registration" }).click();
-  await page.waitForURL(/\/account\/pending\?registered=1/);
-  await expect(page.getByRole("heading", { name: "Your registration is awaiting approval" })).toBeVisible();
-  await page.getByRole("link", { name: "Open the client portal" }).click();
+/** Admin creates the client's portal login from the client page; the client sets a password from the link. */
+async function invitePortalLogin(admin: Page, clientUrl: string, browser: Browser, c: { email: string; password: string }, name: string) {
+  await admin.goto(`${clientUrl}?tab=portal`);
+  await admin.getByLabel("Name", { exact: true }).fill(name);
+  await admin.getByLabel("Email (used to sign in)").fill(c.email);
+  await admin.getByRole("button", { name: "Create login & setup link" }).click();
+  const url = await linkIn(admin);
+  const page = await (await browser.newContext()).newPage();
+  await setPasswordFromLink(page, url, c.password);
+  return page;
+}
+
+test("staff registers a client and invites it: portal usable while approval is pending; staff pages never", async ({ browser }) => {
+  const admin = await (await browser.newContext()).newPage();
+  await signIn(admin, owner.email, owner.password);
+  await admin.goto("/app/clients/new/quick");
+  await admin.getByLabel("Trade name").fill(portalClient.name);
+  await admin.getByLabel("Point of contact").fill("Ms Mehta");
+  await admin.getByLabel("GST Return Filing").check();
+  await admin.getByRole("button", { name: "Submit for approval" }).click();
+  await admin.waitForURL(/\/app\/clients\/[0-9a-f-]+\?registered=1/);
+  const page = await invitePortalLogin(admin, admin.url().split("?")[0], browser, portalClient, "Ms Mehta");
+  await signIn(page, portalClient.email, portalClient.password);
   await expect(page).toHaveURL(/\/client$/);
   await expect(page.getByText(/Your registration is awaiting approval\. You can use the portal until/)).toBeVisible();
   await page.goto("/app/clients");
   await expect(page).toHaveURL(/\/client$/); // client logins never reach staff pages
 });
 
-test("full business registration wizard: constitution partners, GSTIN checks, review", async ({ page }) => {
-  await page.goto("/register/business");
+test("full client registration by staff: checks on each step, constitution partners, GSTINs, select all, review", async ({ browser }) => {
+  const page = await (await browser.newContext()).newPage();
+  await signIn(page, owner.email, owner.password);
+  await page.goto("/app/clients");
+  await page.getByRole("link", { name: "Register a client" }).first().click();
+  await page.waitForURL(/\/app\/clients\/new$/);
+  // Step A: errors show on this step, before moving on
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText("Enter the trade name")).toBeVisible();
   await page.getByLabel("Trade name").fill(wizardClient.name);
+  await page.getByLabel("PAN", { exact: true }).fill("BADPAN");
   await page.getByLabel("Contact person").fill("Mr Rao");
+  await page.getByLabel("Contact mobile").fill("12345");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText("Enter a valid PAN, e.g. ABCDE1234F")).toBeVisible();
+  await expect(page.getByText("Enter a valid 10-digit mobile number")).toBeVisible();
+  await page.getByLabel("PAN", { exact: true }).fill("");
   await page.getByLabel("Contact mobile").fill("9822233344");
   await page.getByRole("button", { name: "Continue" }).click();
   // Step B: constitution and partners
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByText("Select the constitution of the business.")).toBeVisible();
+  await expect(page.getByText("Select the constitution of the business")).toBeVisible();
   await page.getByRole("radio", { name: "LLP", exact: true }).check();
-  await page.getByLabel("Full name").first().fill("Asha Rao");
+  await expect(page.getByText("Partner 1")).toBeHidden(); // no visible per-person legend
+  await page.getByRole("textbox", { name: "Full name", exact: true }).first().fill("Asha Rao");
+  await page.getByLabel("Aadhaar").first().fill("1234");
   await page.getByRole("button", { name: "Add partner" }).click();
-  await page.getByLabel("Full name").nth(1).fill("Vikram Rao");
+  await page.getByRole("textbox", { name: "Full name", exact: true }).nth(1).fill("Vikram Rao");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText("Enter a valid 12-digit Aadhaar number")).toBeVisible();
+  await page.getByLabel("Aadhaar").first().fill("");
   await page.getByRole("button", { name: "Continue" }).click();
   // Step C: GSTINs
   await page.getByLabel("GSTIN", { exact: true }).fill("07ABCDE1234F1Z5");
@@ -403,20 +455,21 @@ test("full business registration wizard: constitution partners, GSTIN checks, re
   await page.getByLabel("GSTIN", { exact: true }).fill("NOTAGSTIN");
   await page.getByRole("button", { name: "Add GSTIN" }).click();
   await expect(page.getByText(/Enter a valid 15-character GSTIN/)).toBeVisible();
+  await page.getByLabel("GSTIN", { exact: true }).fill("");
   await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByLabel(/Purchase order/)).toHaveCount(0); // purchase orders are not collected
   await page.getByRole("button", { name: "Continue" }).click(); // compliance & documents (optional)
-  await page.getByLabel(/GST Return Filing/).check();
+  // Step E: select all services
+  await page.getByLabel(/Select all services/).check();
+  await expect(page.getByLabel(/GST Return Filing/)).toBeChecked();
   await page.getByRole("button", { name: "Continue" }).click();
-  // Step F: account and review
+  // Step F: review
   await expect(page.getByText("Asha Rao (Partner), Vikram Rao (Partner)")).toBeVisible();
   await expect(page.locator("dl").getByText("07ABCDE1234F1Z5")).toBeVisible();
-  await page.getByLabel("Email (used to sign in)").fill(wizardClient.email);
-  await page.getByRole("textbox", { name: "Password", exact: true }).fill(wizardClient.password);
-  await page.getByLabel("Confirm password").fill(wizardClient.password);
-  await page.getByLabel(/I confirm the information is correct/).check();
-  await page.getByRole("button", { name: "Submit registration" }).click();
-  await page.waitForURL(/\/account\/pending\?registered=1/);
-  await expect(page.getByText("Full registration")).toBeVisible();
+  await page.getByRole("button", { name: "Register client" }).click();
+  await page.waitForURL(/\/app\/clients\/[0-9a-f-]+\?registered=1/);
+  const other = await invitePortalLogin(page, page.url().split("?")[0], browser, wizardClient, "Mr Rao");
+  await other.close();
 });
 
 test("day 8: a business still awaiting approval cannot use any service and is told why", async ({ page }) => {
@@ -433,13 +486,13 @@ test("day 8: a business still awaiting approval cannot use any service and is to
   expect(status.state).toBe("locked");
 });
 
-test("admin approval queue lists self-registrations; approving opens the client portal", async ({ browser }) => {
+test("admin approval queue lists pending clients; approving opens the client portal", async ({ browser }) => {
   const admin = await (await browser.newContext()).newPage();
   await signIn(admin, owner.email, owner.password);
   await admin.goto("/app/clients/approvals");
   await expect(admin.getByText(wizardClient.name)).toBeVisible();
   const card = admin.locator("li", { hasText: portalClient.name });
-  await expect(card.getByText("Client — quick registration")).toBeVisible();
+  await expect(card.getByText("Registered by staff")).toBeVisible();
   await expect(card.getByText(/Access until/)).toBeVisible();
   await expect(admin.locator("li", { hasText: wizardClient.name }).getByText(/Access paused since/)).toBeVisible();
   await card.getByRole("link", { name: "Review" }).click();
@@ -714,6 +767,21 @@ test("a client cannot open another client's request; a disabled login loses acce
   await other.goto("/client");
   await expect(other).not.toHaveURL(/\/client$/);
   await expect(other.getByRole("heading", { name: /not active|Sign in/ })).toBeVisible();
+});
+
+test("a second firm registers separately and never sees the first firm's clients, staff or tasks", async ({ page }) => {
+  await registerFirm(page, secondOwner, `E2E Second Firm ${run}`);
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL(/\/app\/admin/);
+  await page.goto("/app/clients?status=all");
+  await expect(page.getByText(portalClient.name)).toHaveCount(0);
+  await expect(page.getByText(wizardClient.name)).toHaveCount(0);
+  await page.goto("/app/employees");
+  await expect(page.getByText(staff.email)).toHaveCount(0);
+  await page.goto(`/app/search?q=${encodeURIComponent("E2E")}`);
+  await expect(page.getByText(portalClient.name)).toHaveCount(0);
+  await page.goto("/app/tasks?scope=all");
+  await expect(page.getByText(clientName)).toHaveCount(0);
 });
 
 test("key pages fit a tablet viewport (768px) without horizontal scroll", async ({ browser }) => {

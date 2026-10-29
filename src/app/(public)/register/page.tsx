@@ -2,15 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import type { CSSProperties } from "react";
-import { ArrowRight, IdCard, Landmark } from "lucide-react";
-import { getPublicOrganization } from "@/lib/services/public-org";
+import { ArrowRight, Building2, IdCard } from "lucide-react";
 import { isFirmRegistrationOpen } from "@/lib/services/firm-registration";
 import { Stamp } from "@/components/public/art";
 import { Eyebrow, PageTransition, SplitWords, reveal } from "@/components/public/motion";
 
 export const metadata: Metadata = { title: "Create an account" };
 
-/** Full registration: a stack of six form sheets. */
+/** Firm registration: a stack of form sheets. */
 function SheetsArt() {
   return (
     <svg viewBox="0 0 220 140" className="h-36 w-full" aria-hidden>
@@ -20,7 +19,7 @@ function SheetsArt() {
         </g>
       ))}
       <g>
-        <text x="54" y="44" fontFamily="Arial, Helvetica, sans-serif" fontSize="9" fill="#5d6470">STEP 1 OF 6</text>
+        <text x="54" y="44" fontFamily="Arial, Helvetica, sans-serif" fontSize="9" fill="#5d6470">STEP 1 OF 5</text>
         <path d="M54 58h80M54 72h80M54 86h52" stroke="#1b1f24" strokeOpacity=".3" strokeWidth="5" strokeLinecap="round" />
         <rect x="54" y="98" width="44" height="14" rx="4" fill="#1b1f24" />
       </g>
@@ -29,35 +28,35 @@ function SheetsArt() {
 }
 
 export default async function RegisterChoice() {
-  await connection(); // depends on live database state (which firm exists); never prerender
-  const [org, firmOpen] = await Promise.all([getPublicOrganization(), isFirmRegistrationOpen()]);
+  await connection(); // depends on runtime configuration; never prerender
+  const firmOpen = await isFirmRegistrationOpen();
   const options = [
     {
-      href: "/register/business" as const,
+      href: "/register/firm" as const,
       art: <SheetsArt />,
-      tag: "6 short sections",
-      title: "Register your business",
-      text: "Full registration: business identity, constitution and partners/directors, GSTINs, compliance numbers, documents and the services you need.",
-      enabled: !!org,
+      tag: "5 short sections",
+      title: "Register your firm",
+      text: "For the firm owner or administrator: your login, the firm's registration details, constitution and partners/directors, certificate and logo, and users. Your firm gets its own private portal.",
+      enabled: firmOpen,
     },
   ];
   return (
     <PageTransition>
       <section className="pub-grain relative overflow-hidden">
         <div aria-hidden className="pub-dots absolute inset-0 [mask-image:radial-gradient(ellipse_at_50%_0%,#000,transparent_60%)]" />
-        <Stamp id="reg" className="pub-stamp pointer-events-none absolute -right-10 top-10 hidden w-48 opacity-80 lg:block" style={{ "--d": "900ms" } as CSSProperties} top="NEW CLIENT REGISTRATION" bottom="OFFICE ERP" center="Welcome" />
+        <Stamp id="reg" className="pub-stamp pointer-events-none absolute -right-10 top-10 hidden w-48 opacity-80 lg:block" style={{ "--d": "900ms" } as CSSProperties} top="NEW FIRM REGISTRATION" bottom="OFFICE ERP" center="Welcome" />
         <div className="relative mx-auto max-w-5xl px-4 pb-24 pt-14 sm:px-6">
           <div className="pub-in"><Eyebrow>Get started</Eyebrow></div>
           <h1 className="mt-5 font-editorial text-[clamp(3rem,7.5vw,6rem)] leading-[0.92] tracking-[-0.03em]">
             <SplitWords text="Create an account" em={["account"]} />
           </h1>
           <p className="pub-in mt-5 max-w-2xl text-lg text-ink/70" style={{ "--d": "250ms" } as CSSProperties}>
-            Choose the option that describes you. Business registrations are reviewed by our office before the account is activated.
+            Register your firm to get its own practice portal. Clients and staff do not sign up here: the firm registers them and sends their login.
           </p>
 
-          {!org && (
+          {!firmOpen && (
             <p role="status" className="pub-swap mt-8 rounded-xl border border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn">
-              Online business registration is not open yet. Please contact the office to register.
+              New firm sign-ups are paused for now. Existing firms can sign in as usual.
             </p>
           )}
 
@@ -94,23 +93,21 @@ export default async function RegisterChoice() {
             <div {...reveal(0)} className="flex gap-4 rounded-2xl border border-ink/10 bg-surface/70 p-5">
               <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-paper-2"><IdCard className="size-5" aria-hidden /></span>
               <div>
-                <p className="font-medium">Joining Office ERP as staff?</p>
+                <p className="font-medium">Joining a firm as staff?</p>
                 <p className="mt-1 text-sm text-muted">
-                  Staff accounts are created by the firm&apos;s administrator. You will receive a one-time link to set your password, then complete your onboarding details for approval.
+                  Staff accounts are created by your firm&apos;s administrator. You will receive your login by email, set your own password, then complete your onboarding details for approval.
                 </p>
               </div>
             </div>
-            {firmOpen && (
-              <div {...reveal(1)} className="flex gap-4 rounded-2xl border border-ink/10 bg-surface/70 p-5">
-                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-paper-2"><Landmark className="size-5" aria-hidden /></span>
-                <div>
-                  <p className="font-medium">Setting up the practice portal for a firm?</p>
-                  <p className="mt-1 text-sm text-muted">
-                    The firm owner registers the practice once. <Link href="/register/firm" className="pub-link font-medium text-stamp">Register a firm (owner)</Link>
-                  </p>
-                </div>
+            <div {...reveal(1)} className="flex gap-4 rounded-2xl border border-ink/10 bg-surface/70 p-5">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-paper-2"><Building2 className="size-5" aria-hidden /></span>
+              <div>
+                <p className="font-medium">A client of a firm?</p>
+                <p className="mt-1 text-sm text-muted">
+                  Your firm registers your business from its admin portal and invites you to the client portal. Ask your firm for an invitation, then sign in.
+                </p>
               </div>
-            )}
+            </div>
           </div>
           <p className="mt-8 text-sm text-muted">Already have an account? <Link href="/login" className="pub-link font-medium text-stamp">Sign in</Link></p>
         </div>

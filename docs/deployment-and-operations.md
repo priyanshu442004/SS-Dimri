@@ -25,11 +25,11 @@ Set these in the hosting provider's secret store. Do **not** commit them or put 
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | ✔ | IAM user limited to `s3:GetObject`, `s3:PutObject`, `s3:ListBucket` on the bucket/prefix |
 | `AWS_REGION`, `AWS_BUCKET_NAME` | ✔ | Bucket location |
 | `S3_KEY_PREFIX` | | Folder inside the bucket (default `ss-dimri`) |
-| `PUBLIC_ORGANIZATION_ID` | | Firm that public registrations belong to (default: the only organization) |
-| `ALLOW_FIRM_REGISTRATION` | | `true` keeps `/register/firm` open after the first firm (default closed) |
+| `PUBLIC_ORGANIZATION_ID` | | Firm whose confirmed services the public website lists (default: the standard service list) |
+| `ALLOW_FIRM_REGISTRATION` | | `false` pauses new firm registrations at `/register/firm` (default open: many firms) |
 | `AUTH_SIGNIN_LIMIT_PER_MINUTE` | | Per-IP sign-in attempts per minute (default 5). Raise only for automated tests |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | ✔ (for email) | Outgoing mail (staff invitations and decisions). Port 465 uses TLS. Without them, invitations are created but the email is logged as failed |
-| `MAIL_FROM` | | Sender, e.g. `Firm name <info@example.com>` (default: `SMTP_USER`) |
+| `MAIL_FROM` | | Sending address, e.g. `Office ERP <info@example.com>` (default: `SMTP_USER`). A firm's emails show the firm's trade name as the sender on this address, with Reply-To set to the firm's contact email |
 | `MAIL_CAPTURE_DIR` | | Tests only: messages to `*.invalid` addresses are written here instead of being sent |
 
 Generate secrets with:

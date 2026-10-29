@@ -1,7 +1,7 @@
 "use client";
 
 import { ActionForm, FormError, PhoneField, SelectField, SubmitButton, TextArea, TextField, upperCaseInput } from "@/components/form";
-import { quickRegisterAction } from "../actions";
+import { quickRegisterAction } from "../../actions";
 
 type Option = { value: string; label: string };
 

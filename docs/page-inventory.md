@@ -15,8 +15,8 @@ Roles: **O** Owner · **A** Administrator · **M** Manager · **S** Senior · **
 | `/help` | P | Searchable FAQ with categories | static, verified answers |
 | `/login` | P | Sign in with login ID (staff) or email (client); show/hide password; forgot link | Better Auth (`users`, `accounts`, `sessions`) |
 | `/register` | P | Choose: full business registration, quick registration, staff info, firm registration | — |
-| `/register/business` | P | Six-step registration wizard → client `PENDING_APPROVAL` + client login | `clients`, `client_gst_registrations`, `constitution_members`, `client_contacts`, `client_services`, `client_documents`, `stored_files`, `organization_memberships` (CLIENT) |
-| `/register/quick` | P | Minimal registration → client `PENDING_APPROVAL` + client login | as above (subset) |
+| `/register/business` | P | Redirects to `/register` (clients are registered by their firm) | — |
+| `/register/quick` | P | Redirects to `/register` | — |
 | `/register/firm` | P (only until the firm exists) | Owner registers the practice (organization + owner) | `organizations`, master data per organization |
 | `/forgot-password` | P | Reset request; identical response for any input; notifies administrators | `notifications` |
 | `/reset-password?token=` | P | Set password from a single-use link (setup or reset) | `verifications` (hashed token) |
@@ -75,7 +75,7 @@ Roles: **O** Owner · **A** Administrator · **M** Manager · **S** Senior · **
 |---|---|---|
 | Firm setup | `/register/firm` → owner + organization + master data → `/app/admin` | One transaction; page closes after the first firm |
 | Staff onboarding | Admin creates login → one-time setup link (72 h) → staff sets password → completes onboarding → admin approves (temporary → permanent ID) / review / reject | Licence limit; link single-use and hashed; staff locked to onboarding until approved |
-| Client self-registration | `/register/quick` or `/register/business` → `PENDING_APPROVAL` + client login → `/account/pending` → admin approves in queue → client notified → `/client` | One transaction for records; documents stored after; rate-limited; duplicate GSTIN check |
+| Client registration (by the firm) | `/app/clients/new` (wizard) or `/app/clients/new/quick` → `PENDING_APPROVAL` → portal login invited from the client's Portal access tab → admin approves in queue → client notified → `/client` | One transaction for records; documents stored after; rate-limited; duplicate GSTIN check |
 | Staff-registered client | `/app/clients/new` → pending → approve → optional portal invite (setup link) | — |
 | Client approval | Approve / reject (reason) / hold / discontinue / reactivate / resubmit | Optimistic concurrency on status; audit; notifications |
 | Client requests | Staff creates pending item "pending with client", shown in portal → client replies (+ document) → staff sees "Client reply" → staff closes | Only `client_visible` items/notes reach the portal |

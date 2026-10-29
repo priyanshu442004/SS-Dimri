@@ -65,7 +65,7 @@ export default async function ClientDashboard() {
               </ul>
             </Card>
           )}
-          <Card title="Work being done by Office ERP">
+          <Card title={`Work being done by ${ctx.organization.tradeName}`}>
             {o.openWork.length === 0 ? <p className="text-sm text-muted">No open work items shared with you.</p> : (
               <ul className="divide-y divide-line text-sm">
                 {o.openWork.map((t) => (
@@ -113,7 +113,7 @@ export default async function ClientDashboard() {
               ]}
             />
           </Card>
-          <Card title="Your team at Office ERP" icon={<Users />}>
+          <Card title={`Your team at ${ctx.organization.tradeName}`} icon={<Users />}>
             {o.team.length === 0 ? <p className="text-sm text-muted">Your team will be shown once assigned.</p> : (
               <ul className="space-y-2.5 text-sm">
                 {o.team.map((a) => (

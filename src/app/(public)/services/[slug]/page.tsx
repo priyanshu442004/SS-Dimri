@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: PageProps<"/services/[slug]">
 }
 
 const ENGAGEMENT = [
-  { t: "Register", d: "Register your business online — quick or full registration." },
+  { t: "Register", d: "Our office registers your business and invites you to the client portal." },
   { t: "Scope confirmed", d: "Our office reviews the details and agrees scope, frequency and fees with you." },
   { t: "Prepared & checked", d: "Work is prepared by one team member and reviewed by another before it goes out." },
   { t: "Shared in your portal", d: "Requests, documents and completed work are tracked in your client portal." },
@@ -52,7 +52,7 @@ export default async function ServiceDetail({ params }: PageProps<"/services/[sl
               <p className="pub-in mt-6 max-w-2xl text-lg leading-relaxed text-ink/75" style={{ "--d": "350ms" } as CSSProperties}>{s.description}</p>
             )}
             <div className="pub-in mt-8 flex flex-wrap gap-3" style={{ "--d": "500ms" } as CSSProperties}>
-              <Link href="/register" className="pub-btn">Request this service <ArrowRight className="arrow size-4" aria-hidden /></Link>
+              <a href="tel:+911147094120" className="pub-btn">Request this service <ArrowRight className="arrow size-4" aria-hidden /></a>
               <a href="tel:+911147094120" className="pub-btn pub-btn-ghost"><Phone className="size-4" aria-hidden /> {FIRM.phone}</a>
             </div>
           </div>
@@ -136,14 +136,14 @@ export default async function ServiceDetail({ params }: PageProps<"/services/[sl
             <div>
               <h2 className="font-editorial text-[clamp(2.2rem,4.5vw,3.5rem)] leading-[1.02]">Request this service</h2>
               <ul className="mt-6 space-y-3 text-paper/75">
-                {["Register your business online (takes a few minutes)", "Our office reviews and confirms the engagement", "Track requests, documents and progress in your client portal"].map((t, i) => (
+                {["Call or visit our office: we register your business for you", "Our office confirms the engagement with you", "Track requests, documents and progress in your client portal"].map((t, i) => (
                   <li key={t} {...reveal(i)} className="flex gap-3"><CheckCircle2 className="mt-0.5 size-5 shrink-0 text-marigold" aria-hidden />{t}</li>
                 ))}
               </ul>
             </div>
             <div className="flex flex-wrap gap-3 lg:justify-end">
-              <Link href="/register" className="pub-btn pub-btn-light">Register your business <ArrowRight className="arrow size-4" aria-hidden /></Link>
-              <a href="tel:+911147094120" className="pub-btn pub-btn-outline-light">Call {FIRM.phone}</a>
+              <a href="tel:+911147094120" className="pub-btn pub-btn-light">Call {FIRM.phone} <ArrowRight className="arrow size-4" aria-hidden /></a>
+              <Link href="/login" className="pub-btn pub-btn-outline-light">Client sign in</Link>
             </div>
           </div>
         </section>

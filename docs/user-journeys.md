@@ -12,9 +12,9 @@ Status per journey uses the five classes from the addendum: **Implemented and te
 
 ```mermaid
 flowchart TD
-  V[Visitor: / , /services, /pricing, /help] --> R{/register}
-  R -->|Quick| Q[/register/quick: required fields only/]
-  R -->|Full| W[/register/business: 6-step wizard + review/]
+  V[Staff with clients.register] --> R{/app/clients/new}
+  R -->|Quick| Q[/app/clients/new/quick: required fields only/]
+  R -->|Full| W[/app/clients/new: 6-step wizard + review/]
   Q --> VAL{Server validation<br/>Zod + duplicate email / GSTIN}
   W --> VAL
   VAL -->|invalid| ERR[Field errors, input preserved] --> R
@@ -49,9 +49,9 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-  F[/register/firm/] --> C{Any firm exists?}
-  C -->|yes, and ALLOW_FIRM_REGISTRATION unset| CL[Page closed]
-  C -->|no| O[(organization + OWNER membership + master data<br/>one transaction)] --> AD[/app/admin/]
+  F[/register/firm/] --> C{ALLOW_FIRM_REGISTRATION=false?}
+  C -->|yes| CL[Page closed]
+  C -->|no| O[(new organization + OWNER membership + constitution people + master data<br/>one transaction)] --> AD[/app/admin/]
   AD --> S[Settings: organization, certificate, policy, lists]
   AD --> E[Employees: create logins → one-time setup links]
 ```

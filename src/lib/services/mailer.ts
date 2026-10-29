@@ -9,8 +9,25 @@ import { prisma } from "@/lib/db";
 // triggered it. Every attempt is logged in email_outbox (never the body or a password).
 // Addresses ending in ".invalid" (end-to-end tests) are never sent; when
 // MAIL_CAPTURE_DIR is set, their messages are written there for the tests to read.
+// Mail sent for a firm shows that firm's name as the sender (on the server's own
+// address, so SPF/DKIM still pass) and replies go to the firm's contact email.
 
 export type MailResult = { status: "SENT" | "FAILED" | "SKIPPED"; error?: string };
+
+/** The sending address: the address part of MAIL_FROM ("Name <addr>" or "addr"), else SMTP_USER. */
+function senderAddress() {
+  const raw = process.env.MAIL_FROM ?? process.env.SMTP_USER ?? "";
+  return /<([^>]+)>/.exec(raw)?.[1]?.trim() ?? raw.trim();
+}
+
+/** From/Reply-To for a firm's mail; platform mail keeps MAIL_FROM as configured. */
+async function senderFor(organizationId: string | null) {
+  const fallback = { from: process.env.MAIL_FROM ?? process.env.SMTP_USER, replyTo: undefined as string | undefined };
+  if (!organizationId) return fallback;
+  const org = await prisma.organization.findUnique({ where: { id: organizationId }, select: { tradeName: true, contactEmail: true } }).catch(() => null);
+  if (!org) return fallback;
+  return { from: { name: org.tradeName, address: senderAddress() }, replyTo: org.contactEmail ?? undefined };
+}
 
 let transport: Transporter | null = null;
 function smtp(): Transporter | null {
@@ -53,7 +70,8 @@ export async function sendMail(m: {
       result = { status: "FAILED", error: "Email is not configured on the server (SMTP settings missing)." };
     } else {
       try {
-        await t.sendMail({ from: process.env.MAIL_FROM ?? process.env.SMTP_USER, to: m.to, subject: m.subject, text: m.text, html: m.html });
+        const { from, replyTo } = await senderFor(m.organizationId);
+        await t.sendMail({ from, replyTo, to: m.to, subject: m.subject, text: m.text, html: m.html });
         result = { status: "SENT" };
       } catch (e) {
         // Keep the reason short and free of credentials.

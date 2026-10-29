@@ -39,7 +39,7 @@ Open `/register/firm` to register the firm (owner login + business registration)
 | Module | Route | Who |
 |---|---|---|
 | Public site: Home, Services (+ detail), Pricing, searchable Help Centre | `/`, `/services`, `/services/[slug]`, `/pricing`, `/help` | Everyone |
-| Sign in, registration choice, business registration (6-step), quick registration, forgot / reset password, account status | `/login`, `/register`, `/register/business`, `/register/quick`, `/forgot-password`, `/reset-password`, `/account/pending` | Everyone |
+| Sign in, firm registration, forgot / reset password, account status | `/login`, `/register`, `/register/firm`, `/forgot-password`, `/reset-password`, `/account/pending` | Everyone |
 | Client portal — requests, shared work, documents, profile, dues | `/client` | Approved clients |
 | Dashboards (automatic redirect by role) | `/app/admin`, `/app/manager`, `/app/senior`, `/app/workspace` | By role |
 | ① Staff onboarding — admin creates ID & password, employee fills details, admin approves | `/app/employees`, `/app/onboarding` | Admin / employee |
