@@ -196,4 +196,11 @@ test("signed-out visitors are sent to the live sign-in page; public sign-up is f
   }
   await page.goto("/register/business");
   await expect(page).toHaveURL(`${ORIGIN}/register`);
+  // No sideways scrolling at phone width.
+  await page.setViewportSize({ width: 360, height: 800 });
+  for (const p of ["/", "/services", "/register", "/register/firm", "/login"]) {
+    await page.goto(p);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, `horizontal overflow on ${p}`).toBeLessThanOrEqual(0);
+  }
 });
