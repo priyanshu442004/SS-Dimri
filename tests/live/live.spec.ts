@@ -171,9 +171,9 @@ test("admin timesheet shows Tracker, Pending and Dashboard", async ({ browser })
 test("home page shows the new headline and Sunil Dimri's number", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Simplify daily operations, empower your team, and keep everything organized with one integrated ERP solution\./);
-  await expect(page.locator('a[href="tel:+919312254545"]').first()).toBeVisible();
+  await expect(page.locator('a[href="tel:+919312254545"]').filter({ visible: true }).first()).toBeVisible(); // the header's copy sits in the closed mobile menu
   await expect(page.locator('a[href*="47094120"]')).toHaveCount(0);
-  await expect(page.getByText("+91 93122 54545").first()).toBeVisible();
+  await expect(page.getByText("+91 93122 54545").filter({ visible: true }).first()).toBeVisible();
 });
 
 test("notification link stays on the live site", async ({ browser }) => {
