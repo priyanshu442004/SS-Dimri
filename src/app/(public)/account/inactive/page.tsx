@@ -17,7 +17,7 @@ export default function InactiveAccountPage() {
       em={["not"]}
       description={
         <>Your login exists but access has been disabled or has not been set up yet. If you think this is a mistake, contact your administrator or the office at{" "}
-          <a className="pub-link font-medium text-ink" href="tel:+911147094120">{FIRM.phone}</a>.</>
+          <a className="pub-link font-medium text-ink" href={FIRM.tel}>{FIRM.phone}</a>.</>
       }
     >
       <div className="flex flex-wrap gap-3">

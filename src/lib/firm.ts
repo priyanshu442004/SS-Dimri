@@ -6,7 +6,8 @@ export const FIRM = {
   name: "Office ERP",
   address: "2nd Floor, B-191, Phase-I, Naraina Industrial Area, New Delhi – 110028",
   landmark: "Near Bikanerwala Sweets, Naraina Industrial Area Phase-1",
-  phone: "011-47094120",
+  phone: "+91 93122 54545", // Sunil Dimri's mobile (sheet 5, Udyog Aadhaar / Aadhaar)
+  tel: "tel:+919312254545",
   email: "sunildimri@ssdimri.com",
   website: "www.ssdimri.com",
   mapsUrl: "https://goo.gl/maps/tHBEVwCK9Cs2Yrw76",

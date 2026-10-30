@@ -57,7 +57,7 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
     <>
       <PageHeader
         title={`${e.clientNameText ?? "Internal work"} — ${formatDate(e.workDate)}`}
-        back={{ href: own ? `/app/timesheet?date=${toIsoDate(e.workDate)}` : "/app/timesheet?tab=collective", label: "Timesheet" }}
+        back={{ href: own ? `/app/timesheet?date=${toIsoDate(e.workDate)}` : "/app/timesheet?tab=tracker", label: "Timesheet" }}
         description={
           <span className="flex flex-wrap items-center gap-2">
             {e.employee.firstName} {e.employee.lastName} · entry #{e.serialNumber} <StatusBadge status={e.status} />

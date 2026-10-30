@@ -10,8 +10,12 @@ import { PortalPreview } from "@/components/public/portal-preview";
 
 export const revalidate = 300;
 
-const TEL = "tel:+911147094120";
-const CTA_SPAN: Record<number, string> = { 1: "lg:col-span-1", 2: "lg:col-span-2", 3: "lg:col-span-3", 4: "lg:col-span-4" };
+const TEL = FIRM.tel;
+const HERO = "Simplify daily operations, empower your team, and keep everything organized with one integrated ERP solution.";
+const HERO_WORDS = HERO.split(" ");
+// "one integrated ERP solution." is set in the accent style.
+const HERO_ACCENT = HERO_WORDS.length - 4;
+const CTA_SPAN:Record<number, string> = { 1: "lg:col-span-1", 2: "lg:col-span-2", 3: "lg:col-span-3", 4: "lg:col-span-4" };
 
 const STEPS = [
   { title: "Register", text: "Get in touch and our office registers your business — constitution, GSTINs and documents — then invites you to the client portal." },
@@ -48,27 +52,28 @@ export default async function HomePage() {
             <p className="pub-in inline-flex items-center gap-2 rounded-full border border-ink/15 bg-surface/70 px-3 py-1.5 text-xs text-ink/80" style={{ "--d": "0ms" } as CSSProperties}>
               <MapPin className="size-3.5 text-stamp" aria-hidden /> Accounting, tax &amp; compliance · Naraina, New Delhi
             </p>
-            <h1 className="mt-6 font-editorial text-[clamp(2.9rem,7.4vw,5.9rem)] leading-[0.95] tracking-[-0.02em] text-ink">
-              <span className="sr-only">Books balanced. Returns filed. Deadlines met.</span>
+            <h1 className="mt-6 font-editorial text-[clamp(2.1rem,4.4vw,3.75rem)] leading-[1.05] tracking-[-0.02em] text-ink">
+              <span className="sr-only">{HERO}</span>
               <span aria-hidden>
-                <span className="pub-word"><span style={{ "--w": 0 } as CSSProperties}>Books</span></span>{" "}
-                <span className="pub-word"><span style={{ "--w": 1 } as CSSProperties} className="italic">balanced.</span></span>
-                <br />
-                <span className="pub-word"><span style={{ "--w": 2 } as CSSProperties}>Returns</span></span>{" "}
-                <span className="pub-word"><span style={{ "--w": 3 } as CSSProperties} className="italic">filed.</span></span>
-                <br />
-                <span className="pub-word"><span style={{ "--w": 4 } as CSSProperties}>Deadlines</span></span>{" "}
-                <span className="relative inline-block">
-                  <span className="pub-word"><span style={{ "--w": 5 } as CSSProperties} className="italic text-stamp">met.</span></span>
-                  <Scribble className="text-marigold" delay={1000} />
-                </span>
+                {HERO_WORDS.map((word, i) =>
+                  i < HERO_ACCENT ? (
+                    <span key={i}><span className="pub-word"><span style={{ "--w": i } as CSSProperties}>{word}</span></span>{" "}</span>
+                  ) : i < HERO_WORDS.length - 1 ? (
+                    <span key={i}><span className="pub-word"><span style={{ "--w": i } as CSSProperties} className="italic text-stamp">{word}</span></span>{" "}</span>
+                  ) : (
+                    <span key={i} className="relative inline-block">
+                      <span className="pub-word"><span style={{ "--w": i } as CSSProperties} className="italic text-stamp">{word}</span></span>
+                      <Scribble className="text-marigold" delay={1400} />
+                    </span>
+                  ),
+                )}
               </span>
             </h1>
             <p className="pub-in mt-7 max-w-xl text-lg leading-relaxed text-ink/70" style={{ "--d": "450ms" } as CSSProperties}>
               Accounts, GST, income tax, TDS and audit — handled by one team. {FIRM.name} has worked with businesses from Naraina Industrial Area since {FIRM.established}, at our office and on-site at clients&apos; premises.
             </p>
             <div className="pub-in mt-9 flex flex-wrap items-center gap-3" style={{ "--d": "600ms" } as CSSProperties}>
-              <a href="tel:+911147094120" className="pub-btn">
+              <a href={FIRM.tel} className="pub-btn">
                 Call {FIRM.phone} <ArrowRight className="arrow size-4" aria-hidden />
               </a>
               <Link href="/services" className="pub-btn pub-btn-ghost">Explore services</Link>
@@ -351,7 +356,7 @@ export default async function HomePage() {
             Get in touch. Our office registers your business, confirms the engagement with you and opens your client portal.
           </p>
           <div data-reveal="" style={{ "--i": 2 } as CSSProperties} className="mt-10 flex flex-wrap justify-center gap-3">
-            <a href="tel:+911147094120" className="pub-btn">Call {FIRM.phone} <ArrowRight className="arrow size-4" aria-hidden /></a>
+            <a href={FIRM.tel} className="pub-btn">Call {FIRM.phone} <ArrowRight className="arrow size-4" aria-hidden /></a>
             <Link href="/pricing" className="pub-btn pub-btn-ghost">How we bill</Link>
           </div>
         </div>

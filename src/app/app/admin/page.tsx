@@ -29,7 +29,7 @@ export default async function AdminDashboard() {
       <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Active clients" value={c.ACTIVE ?? 0} hint={`${c.ON_HOLD ?? 0} on hold · ${c.INACTIVE ?? 0} discontinued`} href="/app/clients?status=ACTIVE" icon={<Building2 />} />
         <Stat label="Present today" value={`${o.presentToday} / ${o.employees}`} hint={`${o.leaveToday} on leave`} href="/app/attendance?tab=team" icon={<CalendarCheck2 />} />
-        <Stat label="Time logged today" value={minutesToHhmm(o.timesheetMinutesToday)} hint={`${o.timesheetEntriesToday} timesheet entries`} href="/app/timesheet?tab=collective" icon={<Clock />} spark={charts.hoursPerDay.map((p) => p.values[0])} />
+        <Stat label="Time logged today" value={minutesToHhmm(o.timesheetMinutesToday)} hint={`${o.timesheetEntriesToday} timesheet entries`} href="/app/timesheet?tab=tracker" icon={<Clock />} spark={charts.hoursPerDay.map((p) => p.values[0])} />
         <Stat label="Outstanding dues" value={inr(o.duesAmount)} hint={`${o.duesCount} open`} href="/app/reports/clients" icon={<Wallet />} />
       </div>
       <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">

@@ -80,7 +80,7 @@ export default async function RegistrationStatusPage({ searchParams }: PageProps
           <dt className="text-muted">Registration</dt><dd>{c.registrationChannel === "STAFF" ? "Registered by your firm" : c.registrationChannel === "CLIENT_QUICK" ? "Quick registration" : "Full registration"}</dd>
         </dl>
       </AuthCard>
-      <p className="mt-5 text-sm text-muted">Questions? Call <a className="pub-link text-ink" href="tel:+911147094120">{FIRM.phone}</a> or email <a className="pub-link break-all text-ink" href={`mailto:${FIRM.email}`}>{FIRM.email}</a>.</p>
+      <p className="mt-5 text-sm text-muted">Questions? Call <a className="pub-link text-ink" href={FIRM.tel}>{FIRM.phone}</a> or email <a className="pub-link break-all text-ink" href={`mailto:${FIRM.email}`}>{FIRM.email}</a>.</p>
       <div className="mt-6 flex flex-wrap gap-3">
         {grace && <Link href="/client" className="pub-btn">Open the client portal</Link>}
         <Link href="/" transitionTypes={["nav-back"]} className={grace ? "pub-btn pub-btn-ghost" : "pub-btn"}>Back to website</Link>

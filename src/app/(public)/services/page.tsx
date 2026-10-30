@@ -94,7 +94,7 @@ export default async function ServicesPage() {
             <p className="relative font-editorial text-4xl leading-tight">Need a service not listed here?</p>
             <p className="relative mt-2 text-paper/65">Call or email us to discuss your requirements.</p>
             <div className="relative mt-6 flex flex-wrap gap-3">
-              <a href="tel:+911147094120" className="pub-btn pub-btn-light"><Phone className="size-4" aria-hidden /> Call {FIRM.phone}</a>
+              <a href={FIRM.tel} className="pub-btn pub-btn-light"><Phone className="size-4" aria-hidden /> Call {FIRM.phone}</a>
               <a href={`mailto:${FIRM.email}`} className="pub-btn pub-btn-outline-light">{FIRM.email}</a>
             </div>
           </div>

@@ -600,6 +600,10 @@ test("team member: attendance with location, timesheet, pending item and day rep
   await expect(page.getByText(/Marked in/)).toBeVisible();
 
   await page.goto("/app/timesheet");
+  // Staff see only their own daily log, without the team views or the old Communication tab.
+  await expect(page.getByRole("navigation", { name: "Sections" })).toHaveCount(0);
+  await page.goto("/app/timesheet?tab=dashboard"); // a staff member asking for a team view still gets the daily log
+  await expect(page.getByRole("heading", { name: "Team member scorecard" })).toHaveCount(0);
   await page.getByRole("combobox", { name: "Client", exact: true }).first().selectOption({ label: clientName });
   await page.getByLabel("Place of work").fill("Client Office (Onsite)");
   await page.getByLabel("Type of work").selectOption({ label: "Bank Statement Posting" });
@@ -629,7 +633,18 @@ let dayReportUrl = "";
 test("senior returns a timesheet entry, the team member corrects it, and the senior reviews it with history", async ({ browser }) => {
   const seniorPage = await (await browser.newContext()).newPage();
   await signIn(seniorPage, senior.email, senior.password);
-  await seniorPage.goto("/app/timesheet?tab=collective");
+  // Leads get the three team views; the staff member's entry shows in each.
+  await seniorPage.goto("/app/timesheet");
+  const sections = seniorPage.getByRole("navigation", { name: "Sections" });
+  for (const name of ["Tracker", "Pending", "Dashboard", "My daily log"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
+  await expect(sections.getByRole("link", { name: /Communication/ })).toHaveCount(0);
+  await seniorPage.goto("/app/timesheet?tab=pending");
+  await expect(seniorPage.getByRole("heading", { name: /Waiting for review \([1-9]/ })).toBeVisible();
+  await expect(seniorPage.getByText("Within 24 h").first()).toBeVisible();
+  await seniorPage.goto("/app/timesheet?tab=dashboard");
+  await expect(seniorPage.getByRole("heading", { name: "Team member scorecard" })).toBeVisible();
+  await expect(seniorPage.getByText("3h 30m").first()).toBeVisible();
+  await seniorPage.goto("/app/timesheet?tab=tracker");
   await seniorPage.locator('a[href^="/app/timesheet/"]').first().click();
   await seniorPage.waitForURL(/\/app\/timesheet\/[0-9a-f-]+$/);
   const entryUrl = seniorPage.url();
@@ -788,7 +803,7 @@ test("a second firm registers separately and never sees the first firm's clients
 test("key pages fit a tablet viewport (768px) without horizontal scroll", async ({ browser }) => {
   const page = await (await browser.newContext({ viewport: { width: 768, height: 1024 } })).newPage();
   await signIn(page, owner.email, owner.password);
-  for (const path of ["/app/admin", "/app/clients", "/app/tasks", "/app/timesheet?tab=collective", "/app/pending", "/app/reports/clients", "/app/dues", "/app/observations", "/app/profile", "/app/settings?tab=lists"]) {
+  for (const path of ["/app/admin", "/app/clients", "/app/tasks", "/app/timesheet?tab=tracker", "/app/pending", "/app/reports/clients", "/app/dues", "/app/observations", "/app/profile", "/app/settings?tab=lists"]) {
     await page.goto(path);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow, `horizontal overflow on ${path}`).toBeLessThanOrEqual(0);
@@ -819,7 +834,7 @@ test("app and portal pages are usable at phone width (no horizontal page scroll)
 // widths (written to test-results/visual; not compared automatically).
 test("visual check screenshots at desktop, tablet and phone widths", async ({ browser, baseURL }) => {
   const sizes = [{ name: "desktop", width: 1366, height: 900 }, { name: "tablet", width: 768, height: 1024 }, { name: "phone", width: 375, height: 812 }];
-  const pages = ["/", "/register", "/app/admin", "/app/clients", "/app/tasks?view=board", "/app/timesheet?tab=collective", "/app/pending", "/app/observations", "/app/dues", "/app/reports/clients", "/app/settings?tab=lists"];
+  const pages = ["/", "/register", "/app/admin", "/app/clients", "/app/tasks?view=board", "/app/timesheet?tab=tracker", "/app/pending", "/app/observations", "/app/dues", "/app/reports/clients", "/app/settings?tab=lists"];
   for (const size of sizes) {
     const page = await (await browser.newContext({ baseURL, viewport: { width: size.width, height: size.height } })).newPage();
     await signIn(page, owner.email, owner.password);

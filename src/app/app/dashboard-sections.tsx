@@ -190,7 +190,7 @@ export function LeadStats({ data }: { data: Lead }) {
   return (
     <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
       <Stat label="Awaiting my review" value={data.reviewQueue.length} href="/app/tasks?scope=review&state=all" icon={<ClipboardCheck />} tone={data.reviewQueue.length ? "info" : "neutral"} />
-      <Stat label="Timesheet entries to review" value={data.timesheetToReview} href="/app/timesheet?tab=collective" icon={<Clock />} tone={data.timesheetToReview ? "info" : "neutral"} />
+      <Stat label="Timesheet entries to review" value={data.timesheetToReview} href="/app/timesheet?tab=pending" icon={<Clock />} tone={data.timesheetToReview ? "info" : "neutral"} />
       <Stat label="Blocked on client" value={data.pendingClient} href="/app/pending?tab=daily&with=CLIENT" icon={<Flag />} tone={data.pendingClient ? "warn" : "neutral"} />
       <Stat label="Pending with team" value={data.pendingTeam} href="/app/pending?tab=daily&with=TEAM_MEMBER" icon={<Users />} tone={data.pendingTeam ? "warn" : "neutral"} />
     </div>
@@ -199,7 +199,7 @@ export function LeadStats({ data }: { data: Lead }) {
 
 const QUICK = [
   { href: "/app/attendance", label: "Attendance", hint: "Mark in / out", icon: CalendarCheck2, tone: "#dcece2" },
-  { href: "/app/timesheet", label: "Add timesheet entry", hint: "Log today's work", icon: NotebookPen, tone: "#fbeccb" },
+  { href: "/app/timesheet?tab=daily", label: "Add timesheet entry", hint: "Log today's work", icon: NotebookPen, tone: "#fbeccb" },
   { href: "/app/day-reports", label: "Day report", hint: "Summarise your day", icon: FileText, tone: "#dde7f3" },
 ];
 
@@ -210,7 +210,7 @@ export function MyDay({ ctx, data, withDue }: { ctx: AppContext; data: Mine; wit
     <>
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Attendance today" value={marked ? (data.attendance!.timeOut ? "Done" : `In ${formatTime(data.attendance!.timeIn, tz)}`) : "Not marked"} href="/app/attendance" icon={<CalendarCheck2 />} tone={marked ? "ok" : "warn"} />
-        <Stat label="Time logged today" value={minutesToHhmm(data.timesheetMinutes)} hint={`${data.timesheetEntries} entries`} href="/app/timesheet" icon={<Clock />} />
+        <Stat label="Time logged today" value={minutesToHhmm(data.timesheetMinutes)} hint={`${data.timesheetEntries} entries`} href="/app/timesheet?tab=daily" icon={<Clock />} />
         <Stat label="Day report" value={data.dayReport ? data.dayReport.status.charAt(0) + data.dayReport.status.slice(1).toLowerCase() : "Not started"} href="/app/day-reports" icon={<FileText />} tone={data.dayReport ? "ok" : "neutral"} />
         <Stat label="My pending items" value={data.pending} href="/app/pending" icon={<Flag />} tone={data.pending ? "warn" : "neutral"} />
       </div>

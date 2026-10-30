@@ -66,7 +66,7 @@ export default async function PricingPage() {
             </p>
             <div className="pub-in mt-8 flex flex-wrap gap-3" style={{ "--d": "450ms" } as CSSProperties}>
               <a href="#quote" className="pub-btn">Build a quote request</a>
-              <a href="tel:+911147094120" className="pub-btn pub-btn-ghost"><Phone className="size-4" aria-hidden /> {FIRM.phone}</a>
+              <a href={FIRM.tel} className="pub-btn pub-btn-ghost"><Phone className="size-4" aria-hidden /> {FIRM.phone}</a>
             </div>
           </div>
 

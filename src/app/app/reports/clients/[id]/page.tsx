@@ -74,7 +74,7 @@ export default async function ClientReportPage({ params, searchParams }: PagePro
                     <tr key={t.name}>
                       <Td className="font-medium"><Link href={`/app/employees/${t.id}`} className="text-brand-700 hover:underline">{t.name}</Link><div className="text-xs font-normal text-muted">{t.designation}</div></Td>
                       <Td>{t.allocated ? <Link href={`/app/allocations?client=${id}`} className="text-brand-700 hover:underline">Yes</Link> : "—"}</Td>
-                      <Td><Link href={`/app/timesheet?tab=collective&client=${id}&employee=${t.id}&from=${from}&to=${to}`} className="text-brand-700 hover:underline">{minutesToHhmm(t.minutes)}</Link></Td>
+                      <Td><Link href={`/app/timesheet?tab=tracker&client=${id}&employee=${t.id}&from=${from}&to=${to}`} className="text-brand-700 hover:underline">{minutesToHhmm(t.minutes)}</Link></Td>
                       <Td>{minutesToHhmm(t.reviewedMinutes)}</Td>
                       <Td>{t.entries || "—"}</Td>
                       <Td>{t.tasksCompleted}</Td>
@@ -104,7 +104,7 @@ export default async function ClientReportPage({ params, searchParams }: PagePro
                 <tbody>
                   {r.hoursByDay.map((d) => (
                     <tr key={d.date}>
-                      <Td><Link href={`/app/timesheet?tab=collective&client=${id}&from=${d.date}&to=${d.date}`} className="text-brand-700 hover:underline">{formatDate(new Date(d.date))}</Link></Td>
+                      <Td><Link href={`/app/timesheet?tab=tracker&client=${id}&from=${d.date}&to=${d.date}`} className="text-brand-700 hover:underline">{formatDate(new Date(d.date))}</Link></Td>
                       <Td>{minutesToHhmm(d.minutes)}</Td>
                     </tr>
                   ))}

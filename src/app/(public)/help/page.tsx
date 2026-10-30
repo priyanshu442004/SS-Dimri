@@ -59,7 +59,7 @@ export default function HelpPage() {
           <div className="relative">
             <h2 className="font-editorial text-4xl leading-tight sm:text-5xl">Still need help? <em className="text-marigold">Talk to a person.</em></h2>
             <p className="mt-4 text-paper/65">
-              Call <a href="tel:+911147094120" className="pub-link font-medium text-paper">{FIRM.phone}</a> or email{" "}
+              Call <a href={FIRM.tel} className="pub-link font-medium text-paper">{FIRM.phone}</a> or email{" "}
               <a href={`mailto:${FIRM.email}`} className="pub-link break-all font-medium text-paper">{FIRM.email}</a> ({FIRM.officeHours}).
             </p>
           </div>

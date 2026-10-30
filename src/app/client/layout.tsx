@@ -31,7 +31,7 @@ export default async function ClientLayout({ children }: LayoutProps<"/client">)
             </span>
           </Link>
           <span className="ml-auto flex items-center gap-1">
-            <a href="tel:+911147094120" className="hidden items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm text-muted transition-colors hover:bg-subtle hover:text-ink lg:flex">
+            <a href={FIRM.tel} className="hidden items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm text-muted transition-colors hover:bg-subtle hover:text-ink lg:flex">
               <Phone className="size-4" aria-hidden /> {FIRM.phone}
             </a>
             <Link href="/client/notifications" className="relative grid size-10 place-items-center rounded-lg text-muted transition-colors hover:bg-subtle hover:text-ink" aria-label={`Notifications (${unread} unread)`}>

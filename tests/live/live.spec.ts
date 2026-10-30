@@ -150,6 +150,32 @@ test("task start defaults to now; a start in the past is refused", async ({ brow
   expect(problems).toEqual([]);
 });
 
+test("admin timesheet shows Tracker, Pending and Dashboard", async ({ browser }) => {
+  const { page, problems } = await newPage(browser);
+  await signIn(page, firmA.email, firmA.password);
+  await page.goto("/app/timesheet");
+  const sections = page.getByRole("navigation", { name: "Sections" });
+  for (const name of ["Tracker", "Pending", "Dashboard"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
+  await expect(sections.getByRole("link", { name: /Communication/ })).toHaveCount(0);
+  await expect(page.getByText("No entries for this period")).toBeVisible();
+  await page.goto("/app/timesheet?tab=pending");
+  await expect(page.getByRole("heading", { name: "Pending by team member" })).toBeVisible();
+  await page.goto("/app/timesheet?tab=dashboard");
+  await expect(page.getByRole("heading", { name: "Team member scorecard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Hours by client" })).toBeVisible();
+  await page.goto("/app/timesheet?tab=collective"); // old links open the tracker
+  await expect(sections.getByRole("link", { name: "Tracker", exact: true })).toHaveAttribute("aria-current", "page");
+  expect(problems).toEqual([]);
+});
+
+test("home page shows the new headline and Sunil Dimri's number", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Simplify daily operations, empower your team, and keep everything organized with one integrated ERP solution\./);
+  await expect(page.locator('a[href="tel:+919312254545"]').first()).toBeVisible();
+  await expect(page.locator('a[href*="47094120"]')).toHaveCount(0);
+  await expect(page.getByText("+91 93122 54545").first()).toBeVisible();
+});
+
 test("notification link stays on the live site", async ({ browser }) => {
   test.skip(!!process.env.LIVE_FIRM_B_EXISTS, "already checked");
   // The client asks for a password reset; the owner is notified and opens it.

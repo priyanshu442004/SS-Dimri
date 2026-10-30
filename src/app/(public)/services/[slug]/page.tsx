@@ -52,8 +52,8 @@ export default async function ServiceDetail({ params }: PageProps<"/services/[sl
               <p className="pub-in mt-6 max-w-2xl text-lg leading-relaxed text-ink/75" style={{ "--d": "350ms" } as CSSProperties}>{s.description}</p>
             )}
             <div className="pub-in mt-8 flex flex-wrap gap-3" style={{ "--d": "500ms" } as CSSProperties}>
-              <a href="tel:+911147094120" className="pub-btn">Request this service <ArrowRight className="arrow size-4" aria-hidden /></a>
-              <a href="tel:+911147094120" className="pub-btn pub-btn-ghost"><Phone className="size-4" aria-hidden /> {FIRM.phone}</a>
+              <a href={FIRM.tel} className="pub-btn">Request this service <ArrowRight className="arrow size-4" aria-hidden /></a>
+              <a href={FIRM.tel} className="pub-btn pub-btn-ghost"><Phone className="size-4" aria-hidden /> {FIRM.phone}</a>
             </div>
           </div>
           <div aria-hidden className="relative mx-auto aspect-square w-full max-w-[340px]">
@@ -142,7 +142,7 @@ export default async function ServiceDetail({ params }: PageProps<"/services/[sl
               </ul>
             </div>
             <div className="flex flex-wrap gap-3 lg:justify-end">
-              <a href="tel:+911147094120" className="pub-btn pub-btn-light">Call {FIRM.phone} <ArrowRight className="arrow size-4" aria-hidden /></a>
+              <a href={FIRM.tel} className="pub-btn pub-btn-light">Call {FIRM.phone} <ArrowRight className="arrow size-4" aria-hidden /></a>
               <Link href="/login" className="pub-btn pub-btn-outline-light">Client sign in</Link>
             </div>
           </div>

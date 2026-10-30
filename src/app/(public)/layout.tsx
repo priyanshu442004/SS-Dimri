@@ -7,7 +7,7 @@ import { PUBLIC_NAV } from "@/components/public/nav";
 import { SiteHeader, Wordmark } from "@/components/public/site-header";
 import { Star } from "@/components/public/art";
 
-const TEL = "tel:+911147094120";
+const TEL = FIRM.tel;
 
 export default function PublicLayout({ children }: LayoutProps<"/">) {
   return (
