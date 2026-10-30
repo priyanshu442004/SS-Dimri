@@ -11,11 +11,13 @@ import { OnboardingForm } from "../onboarding-form";
 import { decideOnboardingAction, resendInvitationAction, resetPasswordAction, saveEmployeeDetailsAction, updateAccessAction } from "../actions";
 import { ActionButton } from "@/components/action-button";
 import { AccessForm, DecisionForm, ResetPasswordForm } from "./admin-forms";
+import { LettersTab } from "./letters-tab";
 
 export default async function EmployeeDetailPage({ params, searchParams }: PageProps<"/app/employees/[id]">) {
   const ctx = await requireCapability("employees.view");
   const { id } = await params;
-  const tab = (await searchParams).tab === "edit" ? "edit" : "profile";
+  const sp = await searchParams;
+  const tab = sp.tab === "edit" || sp.tab === "letters" ? sp.tab : "profile";
   const e = await loadEmployeeProfile(ctx.organization.id, id);
   if (!e) notFound();
   const manage = can(ctx.role, "employees.manage");
@@ -38,7 +40,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
     ? await prisma.emailOutbox.findFirst({ where: { organizationId: ctx.organization.id, relatedUserId: e.membership.userId }, orderBy: { createdAt: "desc" } })
     : null;
   const EMAIL_KIND: Record<string, string> = {
-    "staff.invitation": "Invitation", "staff.approved": "Approval", "staff.rejected": "Rejection", "staff.on_hold": "On-hold notice",
+    "staff.invitation": "Invitation", "staff.approved": "Approval", "staff.rejected": "Rejection", "staff.on_hold": "On-hold notice", "staff.hr_document": "Letter / memo",
   };
 
   return (
@@ -61,11 +63,19 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
           tabs={[
             { key: "profile", label: "Profile & approval", href: `/app/employees/${e.id}` },
             { key: "edit", label: "Edit details", href: `/app/employees/${e.id}?tab=edit` },
+            { key: "letters", label: "Letters & memos", href: `/app/employees/${e.id}?tab=letters` },
           ]}
         />
       )}
 
-      {tab === "edit" && manage ? (
+      {tab === "letters" && manage ? (
+        <LettersTab
+          ctx={ctx}
+          e={e}
+          letter={typeof sp.letter === "string" ? sp.letter : undefined}
+          memo={typeof sp.memo === "string" ? sp.memo : undefined}
+        />
+      ) : tab === "edit" && manage ? (
         <Card className="max-w-4xl">
           <OnboardingForm action={saveEmployeeDetailsAction.bind(null, e.id)} d={onboardingDefaults(e)} selfService={false} aadhaarLast4={e.aadhaarLast4} />
         </Card>
@@ -131,7 +141,10 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
             <div className="space-y-6">
               <Card title="Onboarding approval">
                 {e.approvalStatus === "APPROVED" ? (
-                  <Notice tone="ok">Approved. Permanent ID {e.permanentEmployeeCode}.</Notice>
+                  <>
+                    <Notice tone="ok">Approved. Permanent ID {e.permanentEmployeeCode}.</Notice>
+                    <p className="mt-3 text-sm"><Link href={`/app/employees/${e.id}?tab=letters`} className="font-medium text-brand-700 hover:underline">Letters &amp; memos</Link> — issue the appointment letter, offer letter or a memo.</p>
+                  </>
                 ) : e.approvalStatus === "REJECTED" ? (
                   <Notice tone="danger">Rejected{e.reviewNotes ? ` (reason: ${e.reviewNotes.replace(/\.$/, "")})` : ""}. Waiting for the staff member to correct and resubmit.</Notice>
                 ) : !e.onboardingSubmittedAt ? (
@@ -142,6 +155,10 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
                   <>
                     <div className="mb-3"><Notice tone={e.approvalStatus === "ON_HOLD" ? "warn" : "info"}>{e.approvalStatus === "ON_HOLD" ? "On hold" : "Under review"} — submitted {formatDateTime(e.onboardingSubmittedAt)}.</Notice></div>
                     {e.reviewNotes && <p className="mb-3 text-sm text-muted">Last note: {e.reviewNotes}</p>}
+                    <p className="mb-3 text-sm">
+                      To approve and send the appointment letter together, use{" "}
+                      <Link href={`/app/employees/${e.id}?tab=letters`} className="font-medium text-brand-700 hover:underline">Letters &amp; memos</Link>.
+                    </p>
                     <DecisionForm action={decideOnboardingAction.bind(null, e.id)} canHold={e.approvalStatus !== "ON_HOLD"} />
                   </>
                 )}

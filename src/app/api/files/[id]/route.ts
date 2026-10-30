@@ -23,6 +23,7 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/files/[i
       employeeQualification: { select: { employeeId: true } },
       employeeExperience: { select: { employeeId: true } },
       employeeMemo: { select: { employeeId: true } },
+      employeeLetter: { select: { employeeId: true } },
       attendanceTimeInPhoto: { select: { employeeId: true } },
       attendanceTimeOutPhoto: { select: { employeeId: true } },
       taskAttachment: { select: { task: { select: { assignments: { select: { employeeId: true } } } } } },
@@ -40,7 +41,7 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/files/[i
   const employeeOwner =
     file.employeeProfilePicture?.id ?? file.employeeAadhaarDocument?.id ?? file.employeePanDocument?.id ??
     file.employeeDocument?.employeeId ?? file.employeeBankBook?.employeeId ?? file.employeeQualification?.employeeId ??
-    file.employeeExperience?.employeeId ?? file.employeeMemo?.employeeId;
+    file.employeeExperience?.employeeId ?? file.employeeMemo?.employeeId ?? file.employeeLetter?.employeeId;
   const attendanceOwner = file.attendanceTimeInPhoto?.employeeId ?? file.attendanceTimeOutPhoto?.employeeId;
 
   const clientOwner =

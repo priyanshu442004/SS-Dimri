@@ -54,6 +54,7 @@ export async function sendMail(m: {
   text: string;
   html: string;
   relatedUserId?: string;
+  attachments?: { filename: string; content: Uint8Array; contentType: string }[];
 }): Promise<MailResult> {
   let result: MailResult;
   if (m.to.toLowerCase().endsWith(".invalid")) {
@@ -62,7 +63,7 @@ export async function sendMail(m: {
     if (dir) {
       await mkdir(dir, { recursive: true }).catch(() => undefined);
       const file = path.join(dir, `${m.to.toLowerCase().replace(/[^a-z0-9@._-]/g, "_")}--${m.template}.json`);
-      await writeFile(file, JSON.stringify({ to: m.to, subject: m.subject, text: m.text })).catch(() => undefined);
+      await writeFile(file, JSON.stringify({ to: m.to, subject: m.subject, text: m.text, attachments: m.attachments?.map((a) => a.filename) })).catch(() => undefined);
     }
   } else {
     const t = smtp();
@@ -71,7 +72,10 @@ export async function sendMail(m: {
     } else {
       try {
         const { from, replyTo } = await senderFor(m.organizationId);
-        await t.sendMail({ from, replyTo, to: m.to, subject: m.subject, text: m.text, html: m.html });
+        await t.sendMail({
+          from, replyTo, to: m.to, subject: m.subject, text: m.text, html: m.html,
+          attachments: m.attachments?.map((a) => ({ filename: a.filename, content: Buffer.from(a.content), contentType: a.contentType })),
+        });
         result = { status: "SENT" };
       } catch (e) {
         // Keep the reason short and free of credentials.
@@ -129,5 +133,17 @@ export function decisionEmail(v: { name: string; firm: string; email: string; lo
   const text = `Hello ${v.name},\n\n${lead}${note}\n\nSign in: ${v.loginUrl}\nEmail: ${v.email}`;
   const html = layout(v.firm, `<p>Hello ${esc(v.name)},</p><p>${esc(lead)}</p>${v.note ? `<p style="background:#f5f4f0;padding:10px;border-radius:6px">Note from the administrator: ${esc(v.note)}</p>` : ""}
 ${button(v.loginUrl, "Sign in")}<p style="font-size:13px;color:#5d6470">Email: ${esc(v.email)}</p>`);
+  return { subject, text, html };
+}
+
+export function hrDocumentEmail(v: { name: string; firm: string; title: string; url: string; action: string }) {
+  const subject = `${v.title} – ${v.firm}`;
+  const text = `Hello ${v.name},
+
+${v.firm} has issued you a ${v.title.toLowerCase()}. It is attached to this email.
+
+You can also read it in the portal and ${v.action}: ${v.url}`;
+  const html = layout(v.firm, `<p>Hello ${esc(v.name)},</p><p>${esc(v.firm)} has issued you a <strong>${esc(v.title.toLowerCase())}</strong>. It is attached to this email.</p>
+<p>You can also read it in the portal and ${esc(v.action)}.</p>${button(v.url, `Open ${v.title.toLowerCase()}`)}`);
   return { subject, text, html };
 }

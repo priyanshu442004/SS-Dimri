@@ -6,6 +6,7 @@ import { Card, Notice, PageHeader } from "@/components/ui";
 import { OnboardingForm } from "../employees/onboarding-form";
 import { saveMyOnboardingAction } from "../employees/actions";
 import { ChangePasswordForm } from "@/components/change-password-form";
+import { MyLetters } from "../letters/my-letters";
 
 export default async function MyOnboardingPage() {
   const ctx = await requireContext();
@@ -36,6 +37,7 @@ export default async function MyOnboardingPage() {
           {status === "ON_HOLD" && <div className="mt-4"><Notice tone="warn">Your details are on hold{e.reviewNotes ? `: ${e.reviewNotes}` : "."}</Notice></div>}
           <p className="mt-4 text-xs text-muted">This page updates by itself when a decision is made.</p>
         </div>
+        <MyLetters employeeId={e.id} organizationId={ctx.organization.id} className="mt-6" />
       </div>
     );
   }
@@ -49,6 +51,7 @@ export default async function MyOnboardingPage() {
         )}
         {status === "REJECTED" && <Notice tone="danger">Corrections needed: {e.reviewNotes ?? "see your administrator"}. Update your details and submit again.</Notice>}
       </div>
+      <MyLetters employeeId={e.id} organizationId={ctx.organization.id} className="mb-6 max-w-4xl" />
       <Card className="max-w-4xl">
         <OnboardingForm action={saveMyOnboardingAction} d={onboardingDefaults(e)} selfService={status !== "APPROVED"} aadhaarLast4={e.aadhaarLast4} />
       </Card>

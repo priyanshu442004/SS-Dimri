@@ -168,6 +168,71 @@ test("admin timesheet shows Tracker, Pending and Dashboard", async ({ browser })
   expect(problems).toEqual([]);
 });
 
+let letterUrl = "";
+
+test("admin issues an offer letter and a show cause memo from the firm's templates", async ({ browser }) => {
+  const { page, problems } = await newPage(browser);
+  await signIn(page, firmA.email, firmA.password);
+  await page.goto("/app/employees");
+  await page.getByRole("link", { name: "Live Staff" }).first().click();
+  await page.waitForURL(/\/app\/employees\/[0-9a-f-]+$/);
+  const staffUrl = page.url();
+  await page.getByRole("link", { name: "Letters & memos" }).click();
+  await expect(page.getByRole("link", { name: "Offer letter", exact: true })).toHaveAttribute("aria-current", "page");
+  await page.getByLabel("Interview held on").fill("2026-10-25");
+  await page.getByLabel("Address line 1").fill("12 Karol Bagh");
+  await page.getByLabel("City").fill("New Delhi");
+  await page.getByLabel("Designation", { exact: true }).fill("Accounts Executive");
+  await page.getByLabel("Department", { exact: true }).fill("Accounts");
+  await page.getByLabel("Date of joining").fill("2026-11-02");
+  await page.getByLabel("Confirm acceptance by").fill("2026-10-31");
+  await page.getByLabel("Place of posting").fill("Head Office, Pune");
+  await page.getByLabel("Reporting to").fill("Partner One");
+  await page.getByLabel(/Monthly salary/).fill("25000");
+  await expect(page.getByLabel("Signatory designation")).toHaveValue("Partner");
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "Issue offer letter" }).click();
+  await page.waitForURL(/\/app\/letters\/[0-9a-f-]+$/);
+  letterUrl = page.url();
+  await expect(page.getByText("OFFER LETTER", { exact: true })).toBeVisible();
+  await expect(page.getByText("Subject: Offer of employment for the post of Accounts Executive")).toBeVisible();
+  await expect(page.getByText("₹ 25,000/- per month")).toBeVisible();
+  await expect(page.getByText(firmA.name.toUpperCase(), { exact: true }).first()).toBeVisible(); // this firm's letterhead
+  await expect(page.getByText(/Dimri/i)).toHaveCount(0);
+  await expect(page.getByText("Not yet")).toBeVisible();
+
+  const word = await page.request.get((await page.getByRole("link", { name: "Word file" }).getAttribute("href"))!);
+  expect(word.status()).toBe(200);
+  expect(word.headers()["content-type"]).toContain("wordprocessingml");
+  expect((await word.body()).subarray(0, 2).toString()).toBe("PK");
+  const print = await page.request.get(`${letterUrl}/print`);
+  expect(print.status()).toBe(200);
+  expect(await print.text()).toContain("OFFER LETTER");
+
+  await page.goto(`${staffUrl}?tab=letters&memo=SHOW_CAUSE`);
+  await page.getByLabel("Show cause notice – subject").fill("Unauthorised absence");
+  await page.getByLabel("Incident date").fill("2026-10-28");
+  await page.getByLabel("Written explanation by").fill("2026-11-03");
+  await page.getByLabel(/brought to the notice of the management/).fill("you were absent without intimation");
+  await page.getByLabel(/in violation of/).fill("clause 9.2 of the Leave & Timing Policy");
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "Issue memo" }).click();
+  await page.waitForURL(/\/app\/letters\/[0-9a-f-]+$/);
+  await expect(page.getByText("SHOW CAUSE MEMO", { exact: true })).toBeVisible();
+  await expect(page.getByText("Show cause notice – Unauthorised absence").first()).toBeVisible();
+  await expect(page.getByText(/MEMO\/\d{4}-\d{2}\/001/).first()).toBeVisible();
+
+  await page.goto(`${staffUrl}?tab=letters`);
+  await expect(page.getByText("Awaiting acceptance")).toBeVisible();
+  await expect(page.getByText("Awaiting acknowledgement")).toBeVisible();
+  // The letter page fits a phone screen without sideways scrolling.
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto(letterUrl);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  expect(problems).toEqual([]);
+});
+
 test("home page shows the new headline and Sunil Dimri's number", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Simplify daily operations, empower your team, and keep everything organized with one integrated ERP solution\./);
@@ -212,7 +277,13 @@ test("firm B registers separately and sees none of firm A's clients, staff or pe
   await expect(page.getByText(client.name)).toHaveCount(0);
   await page.goto("/app/settings");
   await expect(page.getByText(firmA.name)).toHaveCount(0);
-  expect(problems.filter((p) => !p.includes(clientUrl))).toEqual([]);
+  // Nor firm A's letters.
+  if (letterUrl) {
+    await page.goto(letterUrl);
+    await expect(page.getByRole("heading", { name: /Page not found/ })).toBeVisible();
+    expect((await page.request.get(`${letterUrl}/print`)).status()).toBe(404);
+  }
+  expect(problems.filter((p) => !p.includes(clientUrl) && !(letterUrl && p.includes(letterUrl)))).toEqual([]);
 });
 
 test("signed-out visitors are sent to the live sign-in page; public sign-up is firm-only", async ({ page }) => {

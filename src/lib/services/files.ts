@@ -98,3 +98,27 @@ export async function storeUpload(
     },
   });
 }
+
+/** Store a file the system produced (e.g. an issued HR letter) in private S3. */
+export async function storeGenerated(
+  ctx: UploadOwner,
+  buf: Uint8Array,
+  opts: { area: StorageArea; ownerId: string; fileName: string; mimeType: string },
+) {
+  const objectKey = buildObjectKey({ organizationId: ctx.organization.id, area: opts.area, ownerId: opts.ownerId, fileName: opts.fileName });
+  await s3().send(
+    new PutObjectCommand({ Bucket: serverEnv().AWS_BUCKET_NAME, Key: objectKey, Body: buf, ContentType: opts.mimeType, ServerSideEncryption: "AES256" }),
+  );
+  return prisma.storedFile.create({
+    data: {
+      organizationId: ctx.organization.id,
+      bucket: serverEnv().AWS_BUCKET_NAME,
+      objectKey,
+      originalFileName: opts.fileName.slice(0, 200),
+      mimeType: opts.mimeType,
+      sizeBytes: BigInt(buf.length),
+      checksumSha256: createHash("sha256").update(buf).digest("hex"),
+      uploadedById: ctx.user.id,
+    },
+  });
+}

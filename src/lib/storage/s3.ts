@@ -69,3 +69,10 @@ export async function createDownloadUrl(objectKey: string, downloadName?: string
   });
   return getSignedUrl(s3(), command, { expiresIn: DOWNLOAD_URL_TTL_SECONDS });
 }
+
+/** Read a private object (server side only, after an authorization check). */
+export async function readObject(objectKey: string): Promise<Uint8Array> {
+  const res = await s3().send(new GetObjectCommand({ Bucket: serverEnv().AWS_BUCKET_NAME, Key: objectKey }));
+  if (!res.Body) throw new Error("Empty object");
+  return res.Body.transformToByteArray();
+}

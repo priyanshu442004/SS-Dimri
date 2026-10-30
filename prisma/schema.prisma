@@ -514,6 +514,7 @@ model User {
   followUps             FollowUp[]
   reviewedTimesheets    TimesheetEntry[]       @relation("TimesheetReviewedBy")
   createdObservations   ClientObservation[]    @relation("ObservationCreatedBy")
+  issuedLetters         EmployeeLetter[]       @relation("LetterIssuedBy")
 
   @@map("users")
 }
@@ -686,6 +687,7 @@ model Organization {
   approvalGraceDays   Int                           @default(7) @map("approval_grace_days")
   observations        ClientObservation[]
   emails              EmailOutbox[]
+  employeeLetters     EmployeeLetter[]
 
   @@index([pan])
   @@index([gstin])
@@ -821,6 +823,7 @@ model StoredFile {
   employeeQualification      EmployeeQualification?      @relation("EmployeeQualificationCertificate")
   employeeExperience         EmployeePreviousEmployment? @relation("EmployeeExperienceCertificate")
   employeeMemo               EmployeeMemo?               @relation("EmployeeMemoFile")
+  employeeLetter             EmployeeLetter?             @relation("EmployeeLetterFile")
   taskAttachment             TaskAttachment?             @relation("TaskAttachmentFile")
   attendanceTimeInPhoto      AttendanceRecord?           @relation("AttendanceTimeInPhoto")
   attendanceTimeOutPhoto     AttendanceRecord?           @relation("AttendanceTimeOutPhoto")
@@ -1239,6 +1242,7 @@ model Employee {
   documents           EmployeeDocument[]
   salaryRecords       EmployeeSalaryRecord[]
   memos               EmployeeMemo[]               @relation("MemoEmployee")
+  letters             EmployeeLetter[]
   issuedMemos         EmployeeMemo[]               @relation("MemoIssuedBy")
 
   // "Whom to Report" — multi-select, self-referential M:N
@@ -1430,6 +1434,39 @@ model EmployeeDocument {
   @@map("employee_documents")
 }
 
+/// Offer / appointment letters generated from the firm's Word templates.
+enum EmployeeLetterKind {
+  OFFER_LETTER
+  APPOINTMENT_EMPLOYEE
+  APPOINTMENT_TRAINEE
+}
+
+/// A letter issued to a staff member: the filled .docx is stored privately;
+/// the merge values are kept so the letter can be shown and checked later.
+model EmployeeLetter {
+  id             String             @id @default(uuid(7)) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  employeeId     String             @map("employee_id") @db.Uuid
+  kind           EmployeeLetterKind
+  referenceNo    String?            @map("reference_no")
+  letterDate     DateTime           @map("letter_date") @db.Date
+  fields         Json
+  fileId         String             @unique @map("file_id") @db.Uuid
+  issuedById     String?            @map("issued_by_id") @db.Uuid
+  /// Set when the staff member accepts the letter in the portal.
+  acceptedAt     DateTime?          @map("accepted_at") @db.Timestamptz(3)
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  file         StoredFile   @relation("EmployeeLetterFile", fields: [fileId], references: [id], onDelete: Restrict)
+  issuedBy     User?        @relation("LetterIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, kind])
+  @@index([employeeId, createdAt])
+  @@map("employee_letters")
+}
+
 /// Agreed salary and committed increments, as dated history.
 model EmployeeSalaryRecord {
   id                        String       @id @default(uuid(7)) @db.Uuid
@@ -1474,6 +1511,11 @@ model EmployeeMemo {
   memoNumber     String?     @map("memo_number")
   actionRequired String?     @map("action_required") @db.Text
   replyByDate    DateTime?   @map("reply_by_date") @db.Date
+  /// Merge-field values the memo was generated with (SSDA memo formats A/B/C).
+  fields         Json?
+  /// The staff member's written explanation, if any.
+  employeeReply  String?     @map("employee_reply") @db.Text
+  repliedAt      DateTime?   @map("replied_at") @db.Timestamptz(3)
 
   @@index([employeeId, memoDate])
   @@map("employee_memos")
