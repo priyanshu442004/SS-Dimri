@@ -12,6 +12,7 @@ import { decideOnboardingAction, resendInvitationAction, resetPasswordAction, sa
 import { ActionButton } from "@/components/action-button";
 import { AccessForm, DecisionForm, ResetPasswordForm } from "./admin-forms";
 import { LettersTab } from "./letters-tab";
+import { IdCard } from "lucide-react";
 
 export default async function EmployeeDetailPage({ params, searchParams }: PageProps<"/app/employees/[id]">) {
   const ctx = await requireCapability("employees.view");
@@ -46,6 +47,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
   return (
     <>
       <PageHeader
+        icon={<IdCard />}
         title={name}
         back={{ href: "/app/employees", label: "Employees" }}
         description={

@@ -17,6 +17,7 @@ import {
   setPortalUserStatusAction,
 } from "../actions";
 import { ContactForm, DetailsForm, DocumentForm, EngagementForm, GstinForm, PortalInviteForm, ResetLinkForm, RepresentativeForm, TransitionForm } from "./forms";
+import { Building2 } from "lucide-react";
 
 const TABS = ["overview", "details", "registration", "services", "documents", "portal", "activity"] as const;
 
@@ -36,6 +37,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   return (
     <>
       <PageHeader
+        icon={<Building2 />}
         title={c.tradeName}
         back={{ href: "/app/clients", label: "Clients" }}
         description={

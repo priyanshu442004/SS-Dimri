@@ -8,6 +8,7 @@ import { Card, DetailList, EmptyState, humanize, Notice, PageHeader, Stat, Statu
 import { addDueAction, saveSnapshotAction, setObservationAction, updateDueAction } from "../actions";
 import { DueForm, DueUpdateForm, ObservationForm, PrintButton, SnapshotForm } from "./forms";
 import { BarList, ChartCard, TrendLine } from "@/components/charts";
+import { ChartColumn } from "lucide-react";
 
 const inr = (n: number) => `₹ ${n.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
@@ -29,6 +30,7 @@ export default async function ClientReportPage({ params, searchParams }: PagePro
   return (
     <>
       <PageHeader
+        icon={<ChartColumn />}
         title={`Client report — ${r.client.tradeName}`}
         back={{ href: "/app/reports/clients", label: "Client reports" }}
         description={`${r.client.code ?? ""} · ${r.client.constitution ?? ""} · GSTIN ${r.client.gstins.join(", ") || "—"} · ${formatDate(new Date(from))} – ${formatDate(new Date(to))}`}

@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { clsx } from "clsx";
-import { ArrowUpRight, CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import {
+  ArrowUpRight, Briefcase, Building2, CalendarCheck2, CalendarDays, CalendarX, ChartColumn, CircleAlert,
+  CircleCheck, CircleDot, CircleHelp, CircleMinus, CircleX, ClipboardCheck, Clock, Clock3, Eye, FileText, History,
+  IdCard, Inbox, Info, KeyRound, ListChecks, MessageSquareWarning, Settings, ShieldAlert, ShieldCheck, TriangleAlert,
+  Upload, Users, Wallet, Zap,
+} from "lucide-react";
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { EmptyArt, type EmptyKind } from "@/components/empty-art";
 
@@ -80,6 +85,55 @@ export function PageHeader({
   );
 }
 
+const CARD_ICON_RULES = {
+  "quick actions": <Zap aria-hidden />,
+  upload: <Upload aria-hidden />,
+  activity: <History aria-hidden />,
+  history: <History aria-hidden />,
+  awaiting: <ClipboardCheck aria-hidden />,
+  review: <ClipboardCheck aria-hidden />,
+  work: <Briefcase aria-hidden />,
+  task: <ListChecks aria-hidden />,
+  timesheet: <Clock aria-hidden />,
+  "day report": <FileText aria-hidden />,
+  deadline: <CalendarDays aria-hidden />,
+  statutory: <CalendarDays aria-hidden />,
+  attendance: <CalendarCheck2 aria-hidden />,
+  leave: <CalendarDays aria-hidden />,
+  client: <Building2 aria-hidden />,
+  business: <Building2 aria-hidden />,
+  employee: <IdCard aria-hidden />,
+  employment: <IdCard aria-hidden />,
+  team: <Users aria-hidden />,
+  contact: <Users aria-hidden />,
+  registration: <FileText aria-hidden />,
+  gstin: <FileText aria-hidden />,
+  document: <FileText aria-hidden />,
+  service: <Briefcase aria-hidden />,
+  pending: <Clock3 aria-hidden />,
+  request: <Inbox aria-hidden />,
+  conversation: <MessageSquareWarning aria-hidden />,
+  updates: <MessageSquareWarning aria-hidden />,
+  observation: <MessageSquareWarning aria-hidden />,
+  dues: <Wallet aria-hidden />,
+  fee: <Wallet aria-hidden />,
+  login: <KeyRound aria-hidden />,
+  portal: <KeyRound aria-hidden />,
+  allocation: <Users aria-hidden />,
+  assignment: <Users aria-hidden />,
+  report: <ChartColumn aria-hidden />,
+  profile: <IdCard aria-hidden />,
+  account: <IdCard aria-hidden />,
+  settings: <Settings aria-hidden />,
+} satisfies Record<string, ReactNode>;
+
+function cardTitleIcon(title: ReactNode): ReactNode {
+  if (typeof title !== "string") return undefined;
+  const normalized = title.trim().toLocaleLowerCase("en-IN");
+  const rule = Object.entries(CARD_ICON_RULES).find(([prefix]) => normalized.startsWith(prefix));
+  return rule?.[1];
+}
+
 export function Card({ title, actions, children, className, padded = true, icon }: {
   title?: ReactNode;
   actions?: ReactNode;
@@ -88,13 +142,14 @@ export function Card({ title, actions, children, className, padded = true, icon 
   padded?: boolean;
   icon?: ReactNode;
 }) {
+  const titleIcon = icon ?? cardTitleIcon(title);
   return (
     <section className={clsx("min-w-0 rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgb(15_29_51/.04)]", className)}>
       {(title || actions) && (
         <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
           {title && (
             <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-ink">
-              {icon && <span aria-hidden className="text-muted [&_svg]:size-4">{icon}</span>}
+              {titleIcon && <span aria-hidden className="text-muted [&_svg]:size-4">{titleIcon}</span>}
               {title}
             </h2>
           )}
@@ -217,17 +272,32 @@ const STATUS_TONES: Record<string, Tone> = {
   IN_PROGRESS: "info", ASSIGNED: "brand", ON_HOLD: "neutral", CHANGES_REQUESTED: "warn", HALF_DAY: "warn", LEAVE: "info",
   REJECTED: "danger", ABSENT: "danger", CANCELLED: "neutral", INACTIVE: "neutral", DRAFT: "neutral", ENDED: "neutral", PLANNED: "info",
   AWAITING_CLIENT: "warn", AWAITING_TEAM_MEMBER: "info",
-  HIGH: "danger", MEDIUM: "warn", LOW: "neutral", WRITTEN_OFF: "neutral", OVERDUE: "danger",
+  HIGH: "danger", CRITICAL: "danger", MEDIUM: "warn", AT_RISK: "warn", LOW: "ok", WRITTEN_OFF: "neutral", OVERDUE: "danger",
+  COMPLIANT: "ok", NON_COMPLIANT: "danger", NOT_APPLICABLE: "neutral",
 };
+
+const STATUS_ICONS = {
+  ACTIVE: CircleCheck, APPROVED: CircleCheck, COMPLETED: CircleCheck, PRESENT: CircleCheck, CLOSED: CircleCheck,
+  SETTLED: CircleCheck, REVIEWED: CircleCheck, COMPLIANT: ShieldCheck, LOW: ShieldCheck,
+  SUBMITTED: FileText, IN_PROGRESS: CircleDot, ASSIGNED: CircleDot, AWAITING_TEAM_MEMBER: CircleDot,
+  PLANNED: CalendarDays, PENDING_APPROVAL: Clock3, PENDING: Clock3, OPEN: Clock3, AWAITING_RESPONSE: Clock3,
+  ON_HOLD: Clock3, CHANGES_REQUESTED: Clock3, HALF_DAY: Clock3, LEAVE: Clock3, AWAITING_CLIENT: Clock3,
+  PENDING_REVIEW: Eye, UNDER_REVIEW: Eye,
+  REJECTED: CircleX, ABSENT: CircleX, NON_COMPLIANT: CircleX,
+  HIGH: ShieldAlert, CRITICAL: ShieldAlert, MEDIUM: TriangleAlert, AT_RISK: TriangleAlert,
+  OVERDUE: CalendarX, NOT_APPLICABLE: CircleMinus, CANCELLED: CircleMinus, INACTIVE: CircleMinus,
+  DRAFT: FileText, ENDED: CircleMinus, WRITTEN_OFF: CircleMinus,
+} satisfies Record<string, typeof CircleHelp>;
 
 export function humanize(v: string) {
   return v.charAt(0) + v.slice(1).toLowerCase().replaceAll("_", " ");
 }
 
 export function StatusBadge({ status, label }: { status: string; label?: string }) {
+  const Icon = STATUS_ICONS[status as keyof typeof STATUS_ICONS] ?? CircleHelp;
   return (
     <Badge tone={STATUS_TONES[status] ?? "neutral"}>
-      <span aria-hidden className="size-1.5 rounded-full bg-current opacity-80" />
+      <Icon aria-hidden className="size-3.5 shrink-0" />
       {label ?? humanize(status)}
     </Badge>
   );

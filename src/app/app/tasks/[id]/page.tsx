@@ -11,6 +11,7 @@ import { employeeOptions } from "@/lib/services/lookups";
 import { Badge, Card, DetailList, humanize, PageHeader, StatusBadge } from "@/components/ui";
 import { addReminderAction, addRemarkAction, setAssigneesAction, setClientSharingAction, taskTransitionAction } from "../actions";
 import { AssignForm, ReminderForm, RemarkForm, SharingForm, TransitionForm } from "./forms";
+import { ListChecks } from "lucide-react";
 
 export default async function TaskDetailPage({ params }: PageProps<"/app/tasks/[id]">) {
   const ctx = await requireCapability("app.use");
@@ -43,6 +44,7 @@ export default async function TaskDetailPage({ params }: PageProps<"/app/tasks/[
   return (
     <>
       <PageHeader
+        icon={<ListChecks />}
         title={t.title}
         back={{ href: "/app/tasks", label: "Tasks" }}
         description={

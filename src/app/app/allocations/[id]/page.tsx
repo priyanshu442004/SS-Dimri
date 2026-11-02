@@ -7,6 +7,7 @@ import { requireCapability } from "@/lib/session";
 import { formatDate, formatDateTime, minutesToHhmm } from "@/lib/dates";
 import { OPEN_STATUSES } from "@/lib/domain/task-workflow";
 import { Card, DetailList, humanize, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
+import { Users } from "lucide-react";
 
 /** Allocation detail: current assignment, full change history, related tasks and timesheet entries. */
 export default async function AllocationDetail({ params }: PageProps<"/app/allocations/[id]">) {
@@ -63,6 +64,7 @@ export default async function AllocationDetail({ params }: PageProps<"/app/alloc
   return (
     <>
       <PageHeader
+        icon={<Users />}
         title={`${a.client.tradeName} — ${a.employee.firstName} ${a.employee.lastName ?? ""}`}
         back={{ href: "/app/allocations", label: "Team allocation" }}
         description={<StatusBadge status={a.status} />}

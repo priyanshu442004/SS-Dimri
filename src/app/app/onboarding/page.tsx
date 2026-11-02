@@ -1,5 +1,5 @@
 import { requireContext } from "@/lib/session";
-import { Clock } from "lucide-react";
+import { Clock, IdCard } from "lucide-react";
 import { formatDateTime } from "@/lib/dates";
 import { loadEmployeeProfile, onboardingDefaults } from "@/lib/services/employee-view";
 import { Card, Notice, PageHeader } from "@/components/ui";
@@ -13,7 +13,7 @@ export default async function MyOnboardingPage() {
   if (!ctx.employee) {
     return (
       <>
-        <PageHeader title="My account" description={`${ctx.user.name} · ${ctx.user.email}`} />
+        <PageHeader icon={<IdCard />} title="My account" description={`${ctx.user.name} · ${ctx.user.email}`} />
         <Card title="Change password" className="max-w-md"><ChangePasswordForm /></Card>
       </>
     );
@@ -43,7 +43,7 @@ export default async function MyOnboardingPage() {
   }
   return (
     <>
-      <PageHeader title={status === "APPROVED" ? "My employee record" : "Complete your details"} description="Your personal, bank and document details. Sensitive numbers are encrypted and visible only to administrators." />
+      <PageHeader icon={<IdCard />} title={status === "APPROVED" ? "My employee record" : "Complete your details"} description="Your personal, bank and document details. Sensitive numbers are encrypted and visible only to administrators." />
       <div className="mb-4 max-w-4xl">
         {status === "APPROVED" && <Notice tone="ok">Your account is approved. Employee ID {e.permanentEmployeeCode}.</Notice>}
         {status === "PENDING" && (

@@ -3,6 +3,7 @@ import { requireClientContext } from "@/lib/session";
 import { formatDate, formatDateTime } from "@/lib/dates";
 import { portalTask } from "@/lib/services/portal";
 import { Card, Notice, PageHeader } from "@/components/ui";
+import { Briefcase } from "lucide-react";
 import { clientRemarkAction, observationAction } from "../../actions";
 import { ObservationForm, RemarkForm } from "../../forms";
 
@@ -20,6 +21,7 @@ export default async function ClientWorkDetail({ params }: PageProps<"/client/wo
   return (
     <>
       <PageHeader
+        icon={<Briefcase />}
         title={t.title}
         back={{ href: "/client/work", label: "Work" }}
         description={`${LABEL[t.status]}${t.dueAt ? ` · due ${formatDate(t.dueAt)}` : ""}${t.completedAt ? ` · completed ${formatDate(t.completedAt)}` : ""}`}

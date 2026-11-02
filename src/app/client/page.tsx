@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireClientContext } from "@/lib/session";
 import { formatDate } from "@/lib/dates";
 import { portalOverview } from "@/lib/services/portal";
-import { ArrowUpRight, Briefcase, CheckCircle2, ClipboardCheck, Inbox, Users, Wallet } from "lucide-react";
+import { ArrowUpRight, Briefcase, ChartColumn, CheckCircle2, ClipboardCheck, Inbox, Users, Wallet } from "lucide-react";
 import { Donut } from "@/components/charts";
 import { Avatar, Card, EmptyState, Notice, Stat, StatusBadge } from "@/components/ui";
 
@@ -59,13 +59,13 @@ export default async function ClientDashboard() {
             )}
           </Card>
           {o.awaitingReview.length > 0 && (
-            <Card title="Work awaiting your review or confirmation">
+            <Card title="Work awaiting your review or confirmation" icon={<ClipboardCheck />}>
               <ul className="divide-y divide-line text-sm">
                 {o.awaitingReview.map((t) => <li key={t.id} className="py-2"><Link href={`/client/work/${t.id}`} className="font-medium text-brand-700 hover:underline">{t.title}</Link></li>)}
               </ul>
             </Card>
           )}
-          <Card title={`Work being done by ${ctx.organization.tradeName}`}>
+          <Card title={`Work being done by ${ctx.organization.tradeName}`} icon={<Briefcase />}>
             {o.openWork.length === 0 ? <p className="text-sm text-muted">No open work items shared with you.</p> : (
               <ul className="divide-y divide-line text-sm">
                 {o.openWork.map((t) => (
@@ -80,7 +80,7 @@ export default async function ClientDashboard() {
               </ul>
             )}
           </Card>
-          <Card title="Recently completed">
+          <Card title="Recently completed" icon={<CheckCircle2 />}>
             {o.completed.length === 0 ? <p className="text-sm text-muted">Nothing completed yet.</p> : (
               <ul className="divide-y divide-line text-sm">
                 {o.completed.map((t) => <li key={t.id} className="flex justify-between gap-2 py-2"><Link href={`/client/work/${t.id}`} className="hover:underline">{t.title}</Link><span className="text-xs text-muted">{formatDate(t.completedAt)}</span></li>)}
@@ -89,7 +89,7 @@ export default async function ClientDashboard() {
           </Card>
         </div>
         <div className="space-y-6">
-          <Card title="Your services">
+          <Card title="Your services" icon={<Briefcase />}>
             {o.client.services.length === 0 ? <p className="text-sm text-muted">Services will appear here once confirmed.</p> : (
               <ul className="space-y-3 text-sm">
                 {o.client.services.map((s) => (
@@ -102,7 +102,7 @@ export default async function ClientDashboard() {
               </ul>
             )}
           </Card>
-          <Card title="Where your work stands">
+          <Card title="Where your work stands" icon={<ChartColumn />}>
             <Donut
               centerLabel="Items"
               slices={[
@@ -125,7 +125,7 @@ export default async function ClientDashboard() {
               </ul>
             )}
           </Card>
-          <Card title="Outstanding dues">
+          <Card title="Outstanding dues" icon={<Wallet />}>
             {o.dues.length === 0 ? <p className="text-sm text-muted">No outstanding dues.</p> : (
               <ul className="divide-y divide-line text-sm">
                 {o.dues.map((d) => (

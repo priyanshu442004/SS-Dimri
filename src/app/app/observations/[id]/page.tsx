@@ -10,6 +10,7 @@ import { employeeOptions } from "@/lib/services/lookups";
 import { Card, DetailList, humanize, PageHeader, StatusBadge } from "@/components/ui";
 import { updateObservationAction } from "../actions";
 import { ObservationUpdateForm } from "../forms";
+import { MessageSquareWarning } from "lucide-react";
 
 /** Observation detail with status changes and full follow-up history (Page 56). */
 export default async function ObservationDetail({ params }: PageProps<"/app/observations/[id]">) {
@@ -35,6 +36,7 @@ export default async function ObservationDetail({ params }: PageProps<"/app/obse
   return (
     <>
       <PageHeader
+        icon={<MessageSquareWarning />}
         title={`Observation — ${o.client.tradeName}`}
         back={{ href: "/app/observations", label: "Client observations" }}
         description={<span className="flex items-center gap-2">{formatDate(o.observedOn)} <StatusBadge status={o.status} /></span>}

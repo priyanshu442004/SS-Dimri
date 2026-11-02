@@ -4,7 +4,7 @@ import { formatDateTime, minutesToHhmm } from "@/lib/dates";
 import { leadOverview, orgOverview } from "@/lib/services/dashboard";
 import { firmAnalytics } from "@/lib/services/analytics";
 import { FirmCharts } from "../chart-sections";
-import { AlarmClock, Building2, CalendarCheck2, ClipboardCheck, Clock, Flag, History, ListChecks, UserCheck, Users, Wallet } from "lucide-react";
+import { AlarmClock, Building2, CalendarCheck2, CalendarDays, ChartColumn, ClipboardCheck, Clock, Flag, History, ListChecks, TriangleAlert, UserCheck, Users, Wallet } from "lucide-react";
 import { Card, Stat } from "@/components/ui";
 import { Deadlines, Greeting, ReviewQueue, StatutoryDue } from "../dashboard-sections";
 
@@ -14,18 +14,22 @@ export default async function AdminDashboard() {
   const ctx = await requireCapability("org.manage");
   const [o, lead, charts] = await Promise.all([orgOverview(ctx), leadOverview(ctx, "org"), firmAnalytics(ctx)]);
   const c = o.clients as Record<string, number>;
-  const section = (t: string) => <h2 className="mb-3 mt-2 font-editorial text-2xl text-ink">{t}</h2>;
+  const section = (t: string, Icon: typeof CalendarDays) => (
+    <h2 className="mb-3 mt-2 flex items-center gap-2 font-editorial text-2xl text-ink">
+      <Icon aria-hidden className="size-5 text-muted" />{t}
+    </h2>
+  );
   return (
     <>
       <Greeting ctx={ctx} subtitle={`${ctx.role === "OWNER" ? "Firm owner" : "Administrator"} dashboard · ${ctx.organization.tradeName}`} />
-      {section("Needs attention")}
+      {section("Needs attention", TriangleAlert)}
       <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Clients pending approval" value={c.PENDING_APPROVAL ?? 0} href="/app/clients?status=PENDING_APPROVAL" icon={<Building2 />} tone={c.PENDING_APPROVAL ? "warn" : "neutral"} />
         <Stat label="Onboarding to approve" value={o.onboardingPending} href="/app/employees?status=pending" icon={<UserCheck />} tone={o.onboardingPending ? "warn" : "neutral"} />
         <Stat label="Overdue tasks" value={o.tasksOverdue} href="/app/tasks?scope=all&state=overdue" icon={<AlarmClock />} tone={o.tasksOverdue ? "danger" : "ok"} />
         <Stat label="Tasks awaiting review" value={o.tasksReview} href="/app/tasks?scope=review&state=all" icon={<ClipboardCheck />} tone={o.tasksReview ? "info" : "neutral"} />
       </div>
-      {section("Firm today")}
+      {section("Firm today", CalendarDays)}
       <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Active clients" value={c.ACTIVE ?? 0} hint={`${c.ON_HOLD ?? 0} on hold · ${c.INACTIVE ?? 0} discontinued`} href="/app/clients?status=ACTIVE" icon={<Building2 />} />
         <Stat label="Present today" value={`${o.presentToday} / ${o.employees}`} hint={`${o.leaveToday} on leave`} href="/app/attendance?tab=team" icon={<CalendarCheck2 />} />
@@ -38,7 +42,7 @@ export default async function AdminDashboard() {
         <Stat label="Pending with clients" value={o.pendingClient} href="/app/pending?tab=daily&with=CLIENT" icon={<Flag />} />
         <Stat label="Pending with team" value={o.pendingTeam} href="/app/pending?tab=daily&with=TEAM_MEMBER" icon={<Flag />} />
       </div>
-      {section("Your firm at a glance")}
+      {section("Your firm at a glance", ChartColumn)}
       <div className="mb-8"><FirmCharts a={charts} /></div>
       <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
         <ReviewQueue data={lead} />

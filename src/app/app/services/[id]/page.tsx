@@ -8,6 +8,7 @@ import { actionContext, requireCapability } from "@/lib/session";
 import { audit } from "@/lib/services/audit";
 import { Card, PageHeader, StatusBadge } from "@/components/ui";
 import { ServiceEditForm } from "./form";
+import { Briefcase } from "lucide-react";
 
 const schema = z.object({
   name: zRequiredText(200),
@@ -76,6 +77,7 @@ export default async function ServiceEditPage({ params }: PageProps<"/app/servic
   return (
     <>
       <PageHeader
+        icon={<Briefcase />}
         title={s.name}
         back={{ href: "/app/services", label: "Services & departments" }}
         description={

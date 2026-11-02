@@ -8,6 +8,7 @@ import { formatDate, formatDateTime, minutesToHhmm } from "@/lib/dates";
 import { Card, Notice, PageHeader, StatusBadge } from "@/components/ui";
 import { acknowledgeDayReportAction } from "../../worklog-actions";
 import { DayReportReviewForm } from "../form";
+import { FileText } from "lucide-react";
 
 /** Day report detail, related work records, manager review and history (Page 51). */
 export default async function DayReportDetail({ params }: PageProps<"/app/day-reports/[id]">) {
@@ -60,6 +61,7 @@ export default async function DayReportDetail({ params }: PageProps<"/app/day-re
   return (
     <>
       <PageHeader
+        icon={<FileText />}
         title={`Day report — ${formatDate(r.reportDate)}`}
         back={{ href: "/app/day-reports", label: "Day reports" }}
         description={<span className="flex items-center gap-2">{r.reportingEmployee.firstName} {r.reportingEmployee.lastName} <StatusBadge status={r.status} />{r.submittedAt && <span>· submitted {formatDateTime(r.submittedAt)}</span>}</span>}

@@ -10,6 +10,7 @@ import { activeClientOptions, employeeOptions } from "@/lib/services/lookups";
 import { Badge, Card, DetailList, humanize, Notice, PageHeader, StatusBadge } from "@/components/ui";
 import { correctEntryAction, createPendingAction, reviewEntryAction } from "../../worklog-actions";
 import { EntryCorrectionForm, EntryReviewForm, PendingForm } from "../../worklog-forms";
+import { Clock } from "lucide-react";
 
 type Change = { field: string; from: unknown; to: unknown };
 
@@ -56,6 +57,7 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
   return (
     <>
       <PageHeader
+        icon={<Clock />}
         title={`${e.clientNameText ?? "Internal work"} — ${formatDate(e.workDate)}`}
         back={{ href: own ? `/app/timesheet?date=${toIsoDate(e.workDate)}` : "/app/timesheet?tab=tracker", label: "Timesheet" }}
         description={

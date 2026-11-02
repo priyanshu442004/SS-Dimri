@@ -5,6 +5,7 @@ import { portalRequest } from "@/lib/services/portal";
 import { Card, PageHeader, StatusBadge } from "@/components/ui";
 import { respondAction } from "../../actions";
 import { ReplyForm } from "../../forms";
+import { Inbox } from "lucide-react";
 
 export default async function ClientRequestDetail({ params }: PageProps<"/client/requests/[id]">) {
   const ctx = await requireClientContext();
@@ -14,6 +15,7 @@ export default async function ClientRequestDetail({ params }: PageProps<"/client
   return (
     <>
       <PageHeader
+        icon={<Inbox />}
         title={r.requestDescription}
         back={{ href: "/client/requests", label: "Requests" }}
         description={<span className="flex items-center gap-2">Requested {formatDate(r.requestedOn)}{r.dueBy && ` · please provide by ${formatDate(r.dueBy)}`} <StatusBadge status={r.status === "CLOSED" ? "COMPLETED" : "OPEN"} label={r.status === "CLOSED" ? "Done" : "Open"} /></span>}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import {
-  ArrowUpRight, CalendarCheck2, CalendarClock, ClipboardCheck, Clock, FileText, Flag, Hourglass, Inbox, ListChecks, Building2, NotebookPen, Users,
+  ArrowUpRight, CalendarCheck2, CalendarClock, ClipboardCheck, Clock, FileText, Flag, Hourglass, Inbox, ListChecks, Building2, NotebookPen, Users, Zap,
 } from "lucide-react";
 import { formatDate, formatDateTime, formatTime, minutesToHhmm } from "@/lib/dates";
 import { formatDue, upcomingDeadlines } from "@/lib/deadlines";
@@ -230,7 +230,7 @@ export function MyDay({ ctx, data, withDue }: { ctx: AppContext; data: Mine; wit
           )}
         </Card>
         <div className="space-y-6">
-          <Card title="Quick actions">
+          <Card title="Quick actions" icon={<Zap />}>
             <div className="grid gap-2">
               {QUICK.map((q) => (
                 <Link key={q.href} href={q.href} data-ripple className="group flex items-center gap-3 rounded-xl border border-line p-2.5 transition-[border-color,box-shadow,translate] duration-300 hover:-translate-y-0.5 hover:border-ink/25 hover:shadow-[0_12px_24px_-20px_rgb(15_29_51/.6)] active:translate-y-0">
