@@ -94,12 +94,12 @@ test("firm A invites staff (email logged, not sent to .invalid) and registers a 
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByText("Enter the trade name")).toBeVisible();
   await page.getByLabel("Trade name").fill(client.name);
-  await page.getByLabel("PAN", { exact: true }).fill("BADPAN");
+  await page.getByRole("textbox", { name: "PAN", exact: true }).fill("BADPAN");
   await page.getByLabel("Contact person").fill("Ms Live");
   await page.getByLabel("Contact mobile").fill("9822233355");
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByText("Enter a valid PAN, e.g. ABCDE1234F")).toBeVisible();
-  await page.getByLabel("PAN", { exact: true }).fill("AAKFL1234C");
+  await page.getByRole("textbox", { name: "PAN", exact: true }).fill("AAKFL1234C");
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("radio", { name: "Proprietorship", exact: true }).check();
   await page.getByRole("textbox", { name: "Full name", exact: true }).first().fill("Live Proprietor");
@@ -150,21 +150,43 @@ test("task start defaults to now; a start in the past is refused", async ({ brow
   expect(problems).toEqual([]);
 });
 
-test("admin timesheet shows Tracker, Pending and Dashboard", async ({ browser }) => {
+test("admin timesheet: workflow tracker, dashboard, client pending report, team log; compliances and import template", async ({ browser }) => {
   const { page, problems } = await newPage(browser);
   await signIn(page, firmA.email, firmA.password);
   await page.goto("/app/timesheet");
   const sections = page.getByRole("navigation", { name: "Sections" });
-  for (const name of ["Tracker", "Pending", "Dashboard"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
-  await expect(sections.getByRole("link", { name: /Communication/ })).toHaveCount(0);
-  await expect(page.getByText("No entries for this period")).toBeVisible();
-  await page.goto("/app/timesheet?tab=pending");
-  await expect(page.getByRole("heading", { name: "Pending by team member" })).toBeVisible();
+  for (const name of ["Tracker", "Dashboard", "Client Pending Report", "Team daily log", "Hours & reviews"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
+  await expect(page.getByText("No tracker lines yet")).toBeVisible();
+  // Add a tracker line for a client typed by name, with a pending point for the client.
+  const add = page.locator("form", { has: page.getByRole("button", { name: "Add to tracker" }) });
+  await add.getByLabel("Client name (if not in list)").fill(`Live Kulfi ${run}`);
+  await add.getByLabel("Type of work").selectOption("GST Work");
+  await add.getByLabel("Pending item – client").fill("Purchase register for October");
+  await add.getByLabel("Due by – client").fill("2026-11-01");
+  await add.getByRole("button", { name: "Add to tracker" }).click();
+  await expect(page.getByText(/Added [A-Z0-9]+-\d{3} to the tracker\./)).toBeVisible();
+  await expect(page.locator("tbody tr", { hasText: `Live Kulfi ${run}` }).getByText("Awaiting Data")).toBeVisible();
   await page.goto("/app/timesheet?tab=dashboard");
+  await expect(page.getByRole("heading", { name: "Team workload" })).toBeVisible();
+  await page.goto("/app/timesheet?tab=report");
+  await expect(page.getByRole("heading", { name: "PENDING INFORMATION / DOCUMENTS LIST" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Purchase register for October" })).toBeVisible();
+  const xlsx = await page.request.get("/app/timesheet/export?sheet=tracker");
+  expect(xlsx.status()).toBe(200);
+  await page.goto("/app/timesheet?tab=log");
+  await expect(page.getByText("No entries for this period")).toBeVisible();
+  await page.goto("/app/timesheet?tab=hours");
   await expect(page.getByRole("heading", { name: "Team member scorecard" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Hours by client" })).toBeVisible();
-  await page.goto("/app/timesheet?tab=collective"); // old links open the tracker
-  await expect(sections.getByRole("link", { name: "Tracker", exact: true })).toHaveAttribute("aria-current", "page");
+  await page.goto("/app/timesheet?tab=pending"); // old links still open
+  await expect(page.getByRole("heading", { name: "Pending by team member" })).toBeVisible();
+  // Compliances: the extended-date column, and departments listing their compliances in registration.
+  await page.goto("/app/compliances?tab=calendar&dept=GST");
+  await expect(page.getByRole("columnheader", { name: "Remark (If Date Extend)" })).toBeVisible();
+  await page.goto("/app/clients/new/quick");
+  await page.locator("label", { hasText: /^GST\d*$/ }).click();
+  await expect(page.locator("fieldset", { hasText: "GST compliances" }).getByRole("checkbox", { name: /GSTR-3B/ }).first()).toBeChecked();
+  const template = await page.request.get("/app/clients/import/template");
+  expect(template.status()).toBe(200);
   expect(problems).toEqual([]);
 });
 
@@ -182,8 +204,8 @@ test("admin issues an offer letter and a show cause memo from the firm's templat
   await page.getByLabel("Interview held on").fill("2026-10-25");
   await page.getByLabel("Address line 1").fill("12 Karol Bagh");
   await page.getByLabel("City").fill("New Delhi");
-  await page.getByLabel("Designation", { exact: true }).fill("Accounts Executive");
-  await page.getByLabel("Department", { exact: true }).fill("Accounts");
+  await page.getByRole("textbox", { name: "Designation", exact: true }).fill("Accounts Executive");
+  await page.getByRole("textbox", { name: "Department", exact: true }).fill("Accounts");
   await page.getByLabel("Date of joining").fill("2026-11-02");
   await page.getByLabel("Confirm acceptance by").fill("2026-10-31");
   await page.getByLabel("Place of posting").fill("Head Office, Pune");
