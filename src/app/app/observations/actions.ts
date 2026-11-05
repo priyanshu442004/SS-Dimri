@@ -24,7 +24,7 @@ export async function updateObservationAction(id: string, _p: ActionState, fd: F
   const parsed = parseForm(observationUpdateSchema, fd);
   if (!parsed.success) return parsed.state;
   return safeAction(async () => {
-    const ctx = await actionContext("app.use");
+    const ctx = await actionContext("observations.use");
     await updateObservation(ctx, id, parsed.data);
     revalidatePath(`/app/observations/${id}`);
     revalidatePath("/app/observations");

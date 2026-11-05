@@ -59,7 +59,8 @@ export async function leadOverview(ctx: AppContext, scope: "org" | "team") {
   const teamFilter = scope === "team" ? { id: { in: teamIds } } : {};
   const [reviewQueue, workload, deadlines, dayReports, timesheetToReview, pendingByWith] = await Promise.all([
     prisma.task.findMany({
-      where: { organizationId: org, status: "PENDING_REVIEW", OR: [{ checkerEmployeeId: me }, { checkerEmployeeId: null }], makerEmployeeId: { not: me } },
+      // Named checker (even when also the maker), or no checker and someone else's work.
+      where: { organizationId: org, status: "PENDING_REVIEW", OR: [{ checkerEmployeeId: me }, { checkerEmployeeId: null, makerEmployeeId: { not: me } }] },
       orderBy: { dueAt: "asc" },
       take: 10,
       select: { id: true, title: true, dueAt: true, client: { select: { tradeName: true } }, maker: { select: { firstName: true } } },

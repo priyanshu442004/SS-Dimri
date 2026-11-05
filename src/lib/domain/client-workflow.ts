@@ -7,7 +7,7 @@
 //          ▼                      ▼                 ▼
 //       REJECTED ─resubmit─▶ PENDING_APPROVAL    INACTIVE ─reactivate─▶ ACTIVE
 
-import { can, type Capability, type Role } from "@/lib/permissions";
+import { can, type Capability, type Member, type Role } from "@/lib/permissions";
 
 export type ClientStatus = "DRAFT" | "PENDING_APPROVAL" | "ACTIVE" | "ON_HOLD" | "REJECTED" | "INACTIVE";
 export type ClientAction = "approve" | "reject" | "hold" | "resume" | "deactivate" | "reactivate" | "resubmit";
@@ -22,12 +22,12 @@ const RULES: Record<ClientAction, { from: ClientStatus[]; to: ClientStatus; cap:
   resubmit: { from: ["REJECTED"], to: "PENDING_APPROVAL", cap: "clients.edit", label: "Resubmit for approval" },
 };
 
-export function clientTransition(current: ClientStatus, action: ClientAction, role: Role): ClientStatus | null {
+export function clientTransition(current: ClientStatus, action: ClientAction, role: Role | Member): ClientStatus | null {
   const r = RULES[action];
   return r.from.includes(current) && can(role, r.cap) ? r.to : null;
 }
 
-export function clientActions(current: ClientStatus, role: Role) {
+export function clientActions(current: ClientStatus, role: Role | Member) {
   return (Object.keys(RULES) as ClientAction[])
     .filter((a) => clientTransition(current, a, role) !== null)
     .map((a) => ({ action: a, label: RULES[a].label }));

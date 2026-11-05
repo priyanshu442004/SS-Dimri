@@ -5,28 +5,36 @@ import { NO_EMPLOYEE } from "@/lib/ids";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import { formatDate, formatDateTime, minutesToHhmm } from "@/lib/dates";
+import { capacityFromPolicy, describeHours } from "@/lib/domain/allocation";
 import { OPEN_STATUSES } from "@/lib/domain/task-workflow";
+import { getPolicy } from "@/lib/services/attendance";
+import { DeleteButton } from "@/components/delete-dialog";
+import { canDelete } from "@/lib/services/deletions";
 import { Card, DetailList, humanize, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
 
 /** Allocation detail: current assignment, full change history, related tasks and timesheet entries. */
 export default async function AllocationDetail({ params }: PageProps<"/app/allocations/[id]">) {
-  const ctx = await requireCapability("app.use");
+  const ctx = await requireCapability("allocations.use");
   const { id } = await params;
   const a = await prisma.teamAllocation.findFirst({
     where: {
       id,
       organizationId: ctx.organization.id,
       // Team members may only open their own allocations.
-      ...(can(ctx.role, "allocations.view_all") ? {} : { employeeId: ctx.employee?.id ?? NO_EMPLOYEE }),
+      ...(can(ctx, "allocations.view_all") ? {} : { employeeId: ctx.employee?.id ?? NO_EMPLOYEE }),
     },
     include: {
       client: { select: { id: true, tradeName: true } },
       clientService: { select: { service: { select: { name: true } } } },
       employee: { select: { id: true, firstName: true, lastName: true, designation: { select: { name: true } } } },
+      reportsTo: { select: { firstName: true, lastName: true } },
+      teamLeader: { select: { firstName: true, lastName: true } },
       createdBy: { select: { name: true } },
     },
   });
   if (!a) notFound();
+  const { row: policy } = await getPolicy(ctx.organization.id);
+  const capacity = capacityFromPolicy(policy);
 
   // Walk the change chain in both directions.
   const chain: { id: string; employee: string; start: Date; end: Date | null; status: string; reason: string | null }[] = [];
@@ -66,6 +74,7 @@ export default async function AllocationDetail({ params }: PageProps<"/app/alloc
         title={`${a.client.tradeName} — ${a.employee.firstName} ${a.employee.lastName ?? ""}`}
         back={{ href: "/app/allocations", label: "Team allocation" }}
         description={<StatusBadge status={a.status} />}
+        actions={canDelete(ctx, "allocation") && <DeleteButton entity="allocation" id={a.id} redirectTo="/app/allocations" />}
       />
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-6">
@@ -76,7 +85,10 @@ export default async function AllocationDetail({ params }: PageProps<"/app/alloc
               ["Team member", `${a.employee.firstName} ${a.employee.lastName ?? ""} · ${a.employee.designation?.name ?? ""}`],
               ["Level on this client", a.seniorityLevel ? humanize(a.seniorityLevel) : null],
               ["Period", `${formatDate(a.startDate)} – ${a.endDate ? formatDate(a.endDate) : "ongoing"}`],
-              ["Share of time", a.allocationPercent ? `${a.allocationPercent}%` : "Full time"],
+              ["Hours", describeHours({ firstHalfHours: a.firstHalfHours === null ? null : Number(a.firstHalfHours), secondHalfHours: a.secondHalfHours === null ? null : Number(a.secondHalfHours) }, capacity)],
+              ["Resource type", a.resourceType],
+              ["Timesheet reviewer", a.reportsTo ? `${a.reportsTo.firstName} ${a.reportsTo.lastName ?? ""}`.trim() : null],
+              ["Team leader (escalation)", a.teamLeader ? `${a.teamLeader.firstName} ${a.teamLeader.lastName ?? ""}`.trim() : null],
               ["Created", `${formatDateTime(a.createdAt)} by ${a.createdBy?.name ?? "—"}`],
             ]} />
           </Card>

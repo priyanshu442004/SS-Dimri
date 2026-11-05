@@ -7,13 +7,15 @@ import { formatDate, formatDateTime } from "@/lib/dates";
 import { OBSERVATION_TRANSITIONS } from "@/lib/domain/observation-workflow";
 import { observationScope } from "@/lib/services/observations";
 import { employeeOptions } from "@/lib/services/lookups";
+import { DeleteButton } from "@/components/delete-dialog";
+import { canDelete } from "@/lib/services/deletions";
 import { Card, DetailList, humanize, PageHeader, StatusBadge } from "@/components/ui";
 import { updateObservationAction } from "../actions";
 import { ObservationUpdateForm } from "../forms";
 
 /** Observation detail with status changes and full follow-up history (Page 56). */
 export default async function ObservationDetail({ params }: PageProps<"/app/observations/[id]">) {
-  const ctx = await requireCapability("app.use");
+  const ctx = await requireCapability("observations.use");
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const o = await prisma.clientObservation.findFirst({
@@ -28,7 +30,7 @@ export default async function ObservationDetail({ params }: PageProps<"/app/obse
     },
   });
   if (!o) notFound();
-  const manager = can(ctx.role, "observations.manage");
+  const manager = can(ctx, "observations.manage");
   const next = OBSERVATION_TRANSITIONS[o.status].filter((s) => manager || s !== "CLOSED").map((s) => ({ value: s, label: humanize(s) }));
   const employees = manager ? await employeeOptions(ctx.organization.id) : undefined;
 
@@ -37,6 +39,7 @@ export default async function ObservationDetail({ params }: PageProps<"/app/obse
       <PageHeader
         title={`Observation — ${o.client.tradeName}`}
         back={{ href: "/app/observations", label: "Client observations" }}
+        actions={canDelete(ctx, "observation") && <DeleteButton entity="observation" id={o.id} redirectTo="/app/observations" />}
         description={<span className="flex items-center gap-2">{formatDate(o.observedOn)} <StatusBadge status={o.status} /></span>}
       />
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">

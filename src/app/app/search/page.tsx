@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import { formatDate } from "@/lib/dates";
+import { NO_EMPLOYEE } from "@/lib/ids";
 import { clientScope } from "@/lib/services/clients";
 import { taskScope } from "@/lib/services/tasks";
 import { Card, EmptyState, PageHeader, StatusBadge } from "@/components/ui";
@@ -23,18 +24,18 @@ export default async function SearchPage({ searchParams }: PageProps<"/app/searc
   const text = { contains: q, mode: "insensitive" as const };
   const [clients, tasks, staff] = await Promise.all([
     prisma.client.findMany({
-      where: { AND: [clientScope(ctx), { OR: [{ tradeName: text }, { legalName: text }, { clientCode: text }, { pan: q.toUpperCase() }, { gstRegistrations: { some: { gstin: { contains: q.toUpperCase() } } } }] }] },
+      where: { AND: [can(ctx, "clients.use") ? clientScope(ctx) : { id: NO_EMPLOYEE }, { OR: [{ tradeName: text }, { legalName: text }, { clientCode: text }, { pan: q.toUpperCase() }, { gstRegistrations: { some: { gstin: { contains: q.toUpperCase() } } } }] }] },
       take: 10,
       orderBy: { tradeName: "asc" },
       select: { id: true, tradeName: true, clientCode: true, status: true },
     }),
     prisma.task.findMany({
-      where: { AND: [taskScope(ctx), { OR: [{ title: text }, { description: text }] }] },
+      where: { AND: [can(ctx, "tasks.use") ? taskScope(ctx) : { id: NO_EMPLOYEE }, { OR: [{ title: text }, { description: text }] }] },
       take: 10,
       orderBy: { updatedAt: "desc" },
       select: { id: true, title: true, status: true, dueAt: true, client: { select: { tradeName: true } } },
     }),
-    can(ctx.role, "employees.view")
+    can(ctx, "employees.view")
       ? prisma.employee.findMany({
           where: { organizationId: ctx.organization.id, OR: [{ firstName: text }, { lastName: text }, { permanentEmployeeCode: text }, { temporaryEmployeeCode: text }] },
           take: 10,
@@ -61,7 +62,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/app/searc
               {tasks.length === 0 && <li className="text-muted">No tasks.</li>}
             </ul>
           </Card>
-          {can(ctx.role, "employees.view") && (
+          {can(ctx, "employees.view") && (
             <Card title={`Staff (${staff.length})`}>
               <ul className="space-y-2 text-sm">
                 {staff.map((e) => <li key={e.id}><Link href={`/app/employees/${e.id}`} className="font-medium text-brand-700 hover:underline">{e.firstName} {e.lastName}</Link><span className="block text-xs text-muted">{[e.permanentEmployeeCode, e.designation?.name].filter(Boolean).join(" · ")}</span></li>)}

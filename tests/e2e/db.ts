@@ -1,10 +1,12 @@
 import { loadEnvConfig } from "@next/env";
 import { Pool } from "@neondatabase/serverless";
+import { applyLocalNeonProxy } from "../../src/lib/neon-local";
 
 // Test-only time travel for the approval grace period. Every helper refuses to
 // touch anything outside an organization created by the e2e suite (owner
 // email @e2e.invalid). Plain SQL: Playwright cannot load the ESM Prisma client.
 loadEnvConfig(process.cwd());
+applyLocalNeonProxy();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const DAY = 86_400_000;
 
@@ -43,6 +45,27 @@ export async function expireInvitation(email: string) {
     [email.toLowerCase()],
   );
   if (!rowCount) throw new Error("Refusing to modify an account outside an e2e test organization.");
+}
+
+/** More user licences for a test organization. */
+export async function raiseLicenceLimit(ownerEmail: string, limit: number) {
+  if (!ownerEmail.endsWith("@e2e.invalid")) throw new Error("Refusing to modify an organization outside the e2e suite.");
+  await pool.query(
+    `UPDATE organizations o SET licensed_user_limit = $2
+      WHERE EXISTS (SELECT 1 FROM organization_memberships m JOIN users u ON u.id = m.user_id WHERE m.organization_id = o.id AND m.role = 'OWNER' AND u.email = $1)`,
+    [ownerEmail.toLowerCase(), limit],
+  );
+}
+
+/** Makes a test task's scheduled reminders due now. */
+export async function makeRemindersDue(title: string) {
+  await pool.query(
+    `UPDATE task_reminders r SET remind_at = now() - interval '1 minute'
+       FROM tasks t WHERE t.id = r.task_id AND t.title = $1 AND r.status = 'SCHEDULED'
+        AND EXISTS (SELECT 1 FROM organization_memberships o JOIN users ou ON ou.id = o.user_id
+                     WHERE o.organization_id = t.organization_id AND o.role = 'OWNER' AND ou.email LIKE '%@e2e.invalid')`,
+    [title],
+  );
 }
 
 export async function disconnect() {

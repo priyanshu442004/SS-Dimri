@@ -7,6 +7,7 @@ import { Copy, Eye, EyeOff } from "lucide-react";
 import { buttonClass } from "@/components/ui";
 import { toast } from "@/components/toaster";
 import { joinMobile } from "@/lib/validation/identifiers";
+import { t } from "@/lib/i18n";
 
 // Forms post to server actions. Validation runs on the server (Zod); this
 // layer only displays the returned field errors and status message.
@@ -122,7 +123,7 @@ export function SubmitButton({
       aria-busy={pending}
       className={buttonClass(variant, size)}
       onClick={(e) => {
-        if (confirm && !window.confirm(confirm)) e.preventDefault();
+        if (confirm && !window.confirm(t(confirm))) e.preventDefault();
       }}
     >
       {/* Both states keep the same elements (only hidden/shown), so browser extensions or page
@@ -138,7 +139,7 @@ export function SubmitButton({
 export const inputCls =
   "block w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/70 transition-[border-color,box-shadow] duration-200 hover:border-ink/25 focus:border-ink focus:outline-none focus:ring-4 focus:ring-marigold-soft aria-[invalid=true]:border-danger aria-[invalid=true]:focus:ring-danger-bg";
 
-function useFieldError(name: string) {
+export function useFieldError(name: string) {
   const errors = useContext(ErrorsContext);
   return errors?.[name]?.[0];
 }
@@ -214,7 +215,7 @@ export function PhoneField({ label, name, hint, required, className }: FieldBase
   );
 }
 
-function FieldShell({ label, id, hint, required, className, children, error }: Omit<FieldBase, "name"> & { id: string; children: ReactNode; error?: string }) {
+export function FieldShell({ label, id, hint, required, className, children, error }: Omit<FieldBase, "name"> & { id: string; children: ReactNode; error?: string }) {
   return (
     <div className={clsx("min-w-0", className)}>
       <label htmlFor={id} className="mb-1 block text-sm font-medium text-ink">

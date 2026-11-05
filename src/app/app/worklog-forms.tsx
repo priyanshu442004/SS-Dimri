@@ -2,37 +2,59 @@
 
 import { useState } from "react";
 import { ActionForm, Checkbox, SelectField, SubmitButton, TextArea, TextField, type FormState } from "@/components/form";
+import { SearchSelect } from "@/components/pickers";
+import { minutesBetween } from "@/lib/domain/timesheet";
 
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
 type Option = { value: string; label: string };
 
-export function TimesheetForm({ action, clients, workTypes, places, tasks, date }: {
-  action: Act; clients: Option[]; workTypes: Option[]; places: string[]; tasks: Option[]; date: string;
+const RESOURCE_OPTIONS = ["Dedicated", "Shared", "Backend Team"].map((v) => ({ value: v, label: v }));
+
+/** Start and end time; the hours worked are shown as soon as both are filled. */
+function TimeBlock({ start, end, hours, minutes }: { start?: string; end?: string; hours?: string; minutes?: string }) {
+  const [from, setFrom] = useState(start ?? "");
+  const [to, setTo] = useState(end ?? "");
+  const worked = minutesBetween(from, to);
+  return (
+    <>
+      <TextField label="Start time" name="startTime" type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
+      <TextField label="End time" name="endTime" type="time" value={to} onChange={(e) => setTo(e.target.value)} hint={worked ? `Hours invested: ${Math.floor(worked / 60)}h ${String(worked % 60).padStart(2, "0")}m` : from && to ? "The end time must be after the start time" : undefined} />
+      {!worked && (
+        <div className="grid grid-cols-2 gap-2">
+          <TextField label="Or hours" name="hours" type="number" min={0} max={24} defaultValue={hours} />
+          <TextField label="Minutes" name="minutes" type="number" min={0} max={59} defaultValue={minutes} />
+        </div>
+      )}
+    </>
+  );
+}
+
+export function TimesheetForm({ action, clients, workTypes, places, tasks, date, years }: {
+  action: Act; clients: Option[]; workTypes: Option[]; places: string[]; tasks: Option[]; date: string; years: string[];
 }) {
   return (
     <ActionForm action={action} resetOnSuccess>
       <div className="grid gap-3 sm:grid-cols-3">
         <TextField label="Date of visit" name="workDate" type="date" required defaultValue={date} />
-        <SelectField label="Client" name="clientId" options={clients} hint="Or type the name below if not registered" />
+        <SearchSelect label="Client" name="clientId" options={clients} placeholder="Search clients…" emptyLabel="Not in the list" hint="Or type the name below if not registered" />
         <TextField label="Client name (if not in list)" name="clientNameText" />
+        <SelectField label="Resource type" name="resourceType" options={RESOURCE_OPTIONS} hint="Filled from the allocation if left blank" />
+        <SelectField label="Nature of work" name="workTypeId" options={workTypes} />
+        <SelectField label="Assessment year (AY)" name="assessmentYear" options={years.map((y) => ({ value: y, label: y }))} />
         <div>
-          <TextField label="Place of work" name="placeOfWork" list="places" />
+          <TextField label="Work location" name="placeOfWork" list="places" />
           <datalist id="places">{places.map((p) => <option key={p} value={p} />)}</datalist>
         </div>
-        <SelectField label="Type of work" name="workTypeId" options={workTypes} />
         <TextField label="Bank name (bank / card work)" name="bankName" />
+        <TextField label="No. of transactions / entries" name="transactionCount" type="number" min={0} />
         <TextField label="Period from" name="periodFrom" type="date" />
         <TextField label="Period to" name="periodTo" type="date" />
-        <TextField label="No. of transactions / entries" name="transactionCount" type="number" min={0} />
-        <div className="grid grid-cols-2 gap-2">
-          <TextField label="Time — hours" name="hours" type="number" min={0} max={24} />
-          <TextField label="Minutes" name="minutes" type="number" min={0} max={59} />
-        </div>
+        <TimeBlock />
         <SelectField label="Status of work" name="workStatus" options={[
           { value: "COMPLETED", label: "Completed" }, { value: "IN_PROGRESS", label: "In progress" }, { value: "PENDING", label: "Pending" },
         ]} />
         <SelectField label="Related task" name="taskId" options={tasks} placeholder="None" />
-        <TextArea label="Details of work done" name="workDetails" rows={2} className="sm:col-span-3" />
+        <TextArea label="Task / compliance description" name="workDetails" rows={2} className="sm:col-span-3" />
         <TextArea label="Message sent on WhatsApp (if any)" name="whatsappMessage" rows={1} className="sm:col-span-3" />
       </div>
       <SubmitButton>Add entry</SubmitButton>
@@ -64,7 +86,7 @@ export function PendingForm({ action, clients, employees, category, today, defau
       </fieldset>
       <div className="grid gap-3 sm:grid-cols-2">
         <SelectField label="Client" name="clientId" options={clients} defaultValue={defaultClient} required={withWhom === "CLIENT"} />
-        {withWhom === "TEAM_MEMBER" && <SelectField label="Team member" name="pendingWithEmployeeId" options={employees} placeholder="Me" />}
+        {withWhom === "TEAM_MEMBER" && <SearchSelect label="Team member" name="pendingWithEmployeeId" options={employees} emptyLabel="Me" />}
         <TextArea label={withWhom === "CLIENT" ? "What we asked" : "What the client asked us"} name="requestDescription" rows={2} required className="sm:col-span-2" />
         <TextField label="Asked / request given on" name="requestedOn" type="date" required defaultValue={today} />
         <TextField label="Due by (date promised)" name="dueBy" type="date" />
@@ -98,7 +120,7 @@ export function ReviewForm({ action, children }: { action: Act; children: React.
       {children}
       <div className="flex flex-wrap items-end gap-2">
         <TextField label="Review note" name="note" className="w-full max-w-sm" />
-        <SubmitButton variant="secondary">Mark selected as reviewed</SubmitButton>
+        <SubmitButton variant="secondary">Mark selected as Checked – OK</SubmitButton>
       </div>
     </ActionForm>
   );
@@ -109,36 +131,35 @@ export function EntryReviewForm({ action }: { action: Act }) {
     <ActionForm action={action}>
       <TextArea label="Review remark" name="note" rows={2} hint="Required when returning the entry for correction" />
       <div className="flex flex-wrap gap-2">
-        <SubmitButton name="decision" value="REVIEWED" size="sm">Mark reviewed</SubmitButton>
-        <SubmitButton name="decision" value="RETURNED" variant="secondary" size="sm">Return for correction</SubmitButton>
+        <SubmitButton name="decision" value="REVIEWED" size="sm">Checked – OK</SubmitButton>
+        <SubmitButton name="decision" value="RETURNED" variant="secondary" size="sm">Checked – Needs correction</SubmitButton>
       </div>
     </ActionForm>
   );
 }
 
-export function EntryCorrectionForm({ action, clients, workTypes, d, needsReason }: {
-  action: Act; clients: Option[]; workTypes: Option[]; d: Record<string, string>; needsReason: boolean;
+export function EntryCorrectionForm({ action, clients, workTypes, d, needsReason, years }: {
+  action: Act; clients: Option[]; workTypes: Option[]; d: Record<string, string>; needsReason: boolean; years: string[];
 }) {
   return (
     <ActionForm action={action}>
       <div className="grid gap-3 sm:grid-cols-3">
         <TextField label="Date of visit" name="workDate" type="date" required defaultValue={d.workDate} />
-        <SelectField label="Client" name="clientId" options={clients} defaultValue={d.clientId} />
+        <SearchSelect label="Client" name="clientId" options={clients} defaultValue={d.clientId} placeholder="Search clients…" emptyLabel="Not in the list" />
         <TextField label="Client name (if not in list)" name="clientNameText" defaultValue={d.clientNameText} />
-        <TextField label="Place of work" name="placeOfWork" defaultValue={d.placeOfWork} />
-        <SelectField label="Type of work" name="workTypeId" options={workTypes} defaultValue={d.workTypeId} />
+        <SelectField label="Resource type" name="resourceType" options={RESOURCE_OPTIONS} defaultValue={d.resourceType} />
+        <SelectField label="Nature of work" name="workTypeId" options={workTypes} defaultValue={d.workTypeId} />
+        <SelectField label="Assessment year (AY)" name="assessmentYear" options={[...new Set([...years, ...(d.assessmentYear ? [d.assessmentYear] : [])])].map((y) => ({ value: y, label: y }))} defaultValue={d.assessmentYear} />
+        <TextField label="Work location" name="placeOfWork" defaultValue={d.placeOfWork} />
         <TextField label="Bank name" name="bankName" defaultValue={d.bankName} />
         <TextField label="Period from" name="periodFrom" type="date" defaultValue={d.periodFrom} />
         <TextField label="Period to" name="periodTo" type="date" defaultValue={d.periodTo} />
         <TextField label="No. of transactions / entries" name="transactionCount" type="number" min={0} defaultValue={d.transactionCount} />
-        <div className="grid grid-cols-2 gap-2">
-          <TextField label="Hours" name="hours" type="number" min={0} max={24} defaultValue={d.hours} />
-          <TextField label="Minutes" name="minutes" type="number" min={0} max={59} defaultValue={d.minutes} />
-        </div>
+        <TimeBlock start={d.startTime} end={d.endTime} hours={d.hours} minutes={d.minutes} />
         <SelectField label="Status of work" name="workStatus" defaultValue={d.workStatus} options={[
           { value: "COMPLETED", label: "Completed" }, { value: "IN_PROGRESS", label: "In progress" }, { value: "PENDING", label: "Pending" },
         ]} />
-        <TextArea label="Details of work done" name="workDetails" rows={2} defaultValue={d.workDetails} className="sm:col-span-3" />
+        <TextArea label="Task / compliance description" name="workDetails" rows={2} defaultValue={d.workDetails} className="sm:col-span-3" />
         <TextArea label="Message sent on WhatsApp" name="whatsappMessage" rows={1} defaultValue={d.whatsappMessage} className="sm:col-span-3" />
         <TextField label="Reason for correction" name="reason" required={needsReason} className="sm:col-span-3" hint={needsReason ? "Required when correcting someone else's entry" : "Optional"} />
       </div>

@@ -74,7 +74,7 @@ export default async function EmployeesPage({ searchParams }: PageProps<"/app/em
     select: { relatedUserId: true, status: true, template: true, createdAt: true },
   });
   const emailOf = new Map(lastEmails.map((m) => [m.relatedUserId, m]));
-  const manage = can(ctx.role, "employees.manage");
+  const invite = can(ctx, "employees.invite");
 
   const counts = new Map<string, number>();
   for (const e of all) counts.set(stageLabel(e), (counts.get(stageLabel(e)) ?? 0) + 1);
@@ -88,7 +88,7 @@ export default async function EmployeesPage({ searchParams }: PageProps<"/app/em
       <PageHeader icon={<IdCard />}
         title="Employees"
         description="Invite staff by email, review their details, and approve, hold or reject them."
-        actions={manage && <LinkButton href="/app/employees/new">Invite staff member</LinkButton>}
+        actions={invite && <LinkButton href="/app/employees/new">Invite staff member</LinkButton>}
       />
       {all.length > 0 && (
         <div className="mb-6 grid gap-4 lg:grid-cols-[1fr_2fr]">
@@ -110,7 +110,7 @@ export default async function EmployeesPage({ searchParams }: PageProps<"/app/em
         <button className="h-10 rounded-md border border-line bg-surface px-4 text-sm hover:bg-subtle">Search</button>
       </form>
       {employees.length === 0 ? (
-        <EmptyState kind="people" title="No staff here" action={manage && <LinkButton href="/app/employees/new">Invite staff member</LinkButton>}>
+        <EmptyState kind="people" title="No staff here" action={invite && <LinkButton href="/app/employees/new">Invite staff member</LinkButton>}>
           Invite a staff member with their name, email, mobile and role. They get a temporary password by email, set their own, fill in their details, and you approve them.
         </EmptyState>
       ) : (

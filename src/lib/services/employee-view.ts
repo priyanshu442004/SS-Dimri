@@ -16,7 +16,7 @@ export async function loadEmployeeProfile(organizationId: string, employeeId: st
       previousEmployments: { orderBy: { createdAt: "asc" }, take: 1 },
       documents: { include: { file: { select: { id: true, originalFileName: true } } } },
       reportsTo: { include: { manager: { select: { id: true, firstName: true, lastName: true } } } },
-      membership: { select: { userId: true, role: true, status: true, mustChangePassword: true, tempPasswordExpiresAt: true, user: { select: { username: true, email: true } } } },
+      membership: { select: { userId: true, role: true, status: true, mustChangePassword: true, tempPasswordExpiresAt: true, grantedCapabilities: true, moduleRestricted: true, allowedModules: true, user: { select: { username: true, email: true } } } },
       approvedBy: { select: { name: true } },
     },
   });

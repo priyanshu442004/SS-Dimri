@@ -91,7 +91,7 @@ export function PolicyForm({ action, d }: { action: Act; d: D }) {
         ]} />
         {n("Minutes per OT day", "overtimeMinutesPerDay", "540 per policy 6.5")}{n("Paid leaves per month", "paidLeavesPerMonth")}{n("Planned-leave notice (days)", "plannedLeaveNoticeDays")}
       </fieldset>
-      <Checkbox name="policyConfirmed" label="The firm has confirmed these rules (payroll calculations remain disabled in this version)" defaultChecked={d.policyConfirmed === "on"} />
+      <Checkbox name="policyConfirmed" label="The firm has confirmed these rules (payroll figures stop being marked provisional)" defaultChecked={d.policyConfirmed === "on"} />
       <SubmitButton>Save policy</SubmitButton>
     </ActionForm>
   );
@@ -113,9 +113,10 @@ export function ListItemForm({ action, withSeniority }: { action: Act; withSenio
   );
 }
 
-export function PreferencesForm({ action, basis, graceDays }: { action: Act; basis: string; graceDays: string }) {
+export function PreferencesForm({ action, basis, graceDays, penalty }: { action: Act; basis: string; graceDays: string; penalty: string }) {
   return (
     <ActionForm action={action}>
+      <TextField label="Timesheet penalty per breach (₹)" name="timesheetPenaltyRupees" type="number" min={0} max={100000} required defaultValue={penalty} hint="Charged for a late submission or a late review, as in the Team Timesheet. Enter 0 to switch it off." />
       <SelectField
         label="Count pending days on"
         name="pendingDaysBasis"

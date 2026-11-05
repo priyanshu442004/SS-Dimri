@@ -1,0 +1,42 @@
+import { NextResponse } from "next/server";
+import { formatDate, formatTime, minutesToHhmm } from "@/lib/dates";
+import { can } from "@/lib/permissions";
+import { getContext } from "@/lib/session";
+import { getPolicy, parseTeamFilters, teamAttendanceRows, todayIso } from "@/lib/services/attendance";
+import { xlsxResponse } from "@/lib/xlsx";
+
+const STATE_LABEL: Record<string, string> = { PRESENT: "Present", ABSENT: "Absent", HALF_DAY: "Half day", LEAVE: "On leave", NOT_MARKED: "Not marked" };
+
+/** The team attendance list as an Excel file, with the same filters as the screen. */
+export async function GET(request: Request) {
+  const ctx = await getContext();
+  if (!ctx || ctx.role === "CLIENT" || ctx.mustChangePassword || ctx.access.state === "locked" || !can(ctx, "attendance.view_all")) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+  const sp = Object.fromEntries(new URL(request.url).searchParams.entries());
+  const f = parseTeamFilters(sp, todayIso(ctx));
+  const tz = ctx.organization.timezone;
+  const { params: policy } = await getPolicy(ctx.organization.id);
+  const { rows } = await teamAttendanceRows(ctx, policy, f);
+
+  const header = ["Date", "Employee ID", "Team member", "Designation", "Department", "Status", "Late", "Time in", "Time out", "Hours worked", "Latitude (in)", "Longitude (in)", "Notes"];
+  const body = rows.map(({ date, employee: e, record: r, approvedLeave, state, isLate, workedMinutes }) => [
+    date,
+    e.permanentEmployeeCode ?? e.temporaryEmployeeCode,
+    `${e.firstName} ${e.lastName ?? ""}`.trim(),
+    e.designation?.name ?? "",
+    e.department?.name ?? "",
+    approvedLeave ? "Approved leave" : STATE_LABEL[state],
+    isLate ? "Yes" : "",
+    r?.timeIn ? formatTime(r.timeIn, tz) : "",
+    r?.timeOut ? formatTime(r.timeOut, tz) : "",
+    workedMinutes != null ? minutesToHhmm(workedMinutes) : "",
+    r?.timeInLatitude ? Number(r.timeInLatitude) : null,
+    r?.timeInLongitude ? Number(r.timeInLongitude) : null,
+    r?.lateReason ?? r?.remarks ?? "",
+  ]);
+  const period = f.from === f.to ? formatDate(new Date(`${f.from}T00:00:00Z`)) : `${formatDate(new Date(`${f.from}T00:00:00Z`))} to ${formatDate(new Date(`${f.to}T00:00:00Z`))}`;
+  return xlsxResponse(`attendance-${f.from}${f.from === f.to ? "" : `-to-${f.to}`}.xlsx`, [
+    { name: "Attendance", title: `${ctx.organization.tradeName} · Attendance · ${period}`, rows: [header, ...body] },
+  ]);
+}

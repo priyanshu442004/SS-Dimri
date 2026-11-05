@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireCapability } from "@/lib/session";
-import { formatDateTime, minutesToHhmm } from "@/lib/dates";
+import { formatDateTime, formatTime, minutesToHhmm, todayDateOnly } from "@/lib/dates";
+import { prisma } from "@/lib/db";
 import { leadOverview, orgOverview } from "@/lib/services/dashboard";
 import { firmAnalytics } from "@/lib/services/analytics";
 import { FirmCharts } from "../chart-sections";
@@ -12,12 +13,18 @@ const inr = (n: number) => `₹ ${n.toLocaleString("en-IN", { maximumFractionDig
 
 export default async function AdminDashboard() {
   const ctx = await requireCapability("org.manage");
-  const [o, lead, charts] = await Promise.all([orgOverview(ctx), leadOverview(ctx, "org"), firmAnalytics(ctx)]);
+  const [o, lead, charts, myAttendance] = await Promise.all([
+    orgOverview(ctx),
+    leadOverview(ctx, "org"),
+    firmAnalytics(ctx),
+    ctx.employee ? prisma.attendanceRecord.findFirst({ where: { employeeId: ctx.employee.id, attendanceDate: todayDateOnly(ctx.organization.timezone) } }) : null,
+  ]);
   const c = o.clients as Record<string, number>;
   const section = (t: string) => <h2 className="mb-3 mt-2 font-editorial text-2xl text-ink">{t}</h2>;
   return (
     <>
       <Greeting ctx={ctx} subtitle={`${ctx.role === "OWNER" ? "Firm owner" : "Administrator"} dashboard · ${ctx.organization.tradeName}`} />
+      <div className="mb-6"><Stat label="My attendance" value={myAttendance?.timeIn ? (myAttendance.timeOut ? "Done for today" : `In ${formatTime(myAttendance.timeIn, ctx.organization.timezone)}`) : "Not marked"} hint={myAttendance?.timeIn ? undefined : "Open to mark in"} href="/app/attendance" icon={<CalendarCheck2 />} tone={myAttendance?.timeIn ? "ok" : "warn"} /></div>
       {section("Needs attention")}
       <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Clients pending approval" value={c.PENDING_APPROVAL ?? 0} href="/app/clients?status=PENDING_APPROVAL" icon={<Building2 />} tone={c.PENDING_APPROVAL ? "warn" : "neutral"} />

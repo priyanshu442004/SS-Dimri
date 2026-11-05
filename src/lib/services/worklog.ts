@@ -5,6 +5,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { BusinessRuleError, zCheckbox, zIsoDate, zOptionalText } from "@/lib/actions";
 import { dateOnly } from "@/lib/dates";
+import { minutesBetween, RESOURCE_TYPES } from "@/lib/domain/timesheet";
 import { can } from "@/lib/permissions";
 import type { AppContext } from "@/lib/session";
 import { audit } from "./audit";
@@ -16,6 +17,14 @@ function requireEmployee(ctx: AppContext) {
 }
 
 // ============================================================ Timesheet (10A)
+
+const zTime = z.string().regex(/^\d{2}:\d{2}$/, "Enter a time");
+
+/** Start and end time win over typed hours, as in the workbook where hours are calculated. */
+function minutesFrom(v: { startTime?: string; endTime?: string; hours?: number; minutes?: number }) {
+  if (v.startTime && v.endTime && !minutesBetween(v.startTime, v.endTime)) throw new BusinessRuleError("The end time must be after the start time.");
+  return minutesBetween(v.startTime, v.endTime) ?? ((v.hours ?? 0) * 60 + (v.minutes ?? 0) || null);
+}
 
 export const timesheetSchema = z.object({
   workDate: zIsoDate,
@@ -32,6 +41,10 @@ export const timesheetSchema = z.object({
   transactionCount: z.coerce.number().int().min(0).max(1_000_000).optional(),
   hours: z.coerce.number().int().min(0).max(24).optional(),
   minutes: z.coerce.number().int().min(0).max(59).optional(),
+  resourceType: z.enum(RESOURCE_TYPES).optional(),
+  assessmentYear: z.string().regex(/^AY \d{4}-\d{2}$/, "Choose the assessment year").optional(),
+  startTime: zTime.optional(),
+  endTime: zTime.optional(),
   workDetails: zOptionalText(4000),
   workStatus: z.enum(["COMPLETED", "IN_PROGRESS", "PENDING"]).optional(),
   whatsappMessage: zOptionalText(2000),
@@ -49,11 +62,11 @@ export async function addTimesheetEntry(ctx: AppContext, v: z.infer<typeof times
   const allocation = client
     ? await prisma.teamAllocation.findFirst({
         where: { clientId: client.id, employeeId, status: { in: ["ACTIVE", "PLANNED"] }, startDate: { lte: day }, OR: [{ endDate: null }, { endDate: { gte: day } }] },
-        select: { id: true },
+        select: { id: true, resourceType: true },
       })
     : null;
   const serial = v.serialNumber ?? (await prisma.timesheetEntry.count({ where: { employeeId, workDate: day } })) + 1;
-  const minutes = (v.hours ?? 0) * 60 + (v.minutes ?? 0);
+  const minutes = minutesFrom(v);
   return prisma.timesheetEntry.create({
     data: {
       organizationId: ctx.organization.id,
@@ -72,7 +85,11 @@ export async function addTimesheetEntry(ctx: AppContext, v: z.infer<typeof times
       periodFrom: v.periodFrom ? dateOnly(v.periodFrom) : null,
       periodTo: v.periodTo ? dateOnly(v.periodTo) : null,
       transactionCount: v.transactionCount,
-      approxMinutes: minutes || null,
+      approxMinutes: minutes,
+      resourceType: v.resourceType ?? allocation?.resourceType,
+      assessmentYear: v.assessmentYear,
+      startTime: v.startTime,
+      endTime: v.endTime,
       workDetails: v.workDetails,
       workStatus: v.workStatus,
       whatsappMessage: v.whatsappMessage,
@@ -110,7 +127,7 @@ export async function loadTimesheetEntryForCtx(ctx: AppContext, entryId: string)
     where: {
       id: entryId,
       organizationId: ctx.organization.id,
-      ...(can(ctx.role, "timesheet.view_all") ? {} : { employeeId: ctx.employee?.id ?? NO_EMPLOYEE }),
+      ...(can(ctx, "timesheet.view_all") ? {} : { employeeId: ctx.employee?.id ?? NO_EMPLOYEE }),
     },
   });
 }
@@ -142,7 +159,7 @@ export async function reviewTimesheetEntry(ctx: AppContext, entryId: string, dec
 
 export const entryCorrectionSchema = timesheetSchema.extend({ reason: zOptionalText(500) });
 
-const AUDITED_FIELDS = ["workDate", "clientNameText", "placeOfWork", "typeOfWork", "bankName", "periodFrom", "periodTo", "transactionCount", "approxMinutes", "workDetails", "workStatus", "whatsappMessage"] as const;
+const AUDITED_FIELDS = ["workDate", "clientNameText", "placeOfWork", "typeOfWork", "bankName", "periodFrom", "periodTo", "transactionCount", "approxMinutes", "resourceType", "assessmentYear", "startTime", "endTime", "workDetails", "workStatus", "whatsappMessage"] as const;
 
 /**
  * Correct an entry. The employee may correct their own entry until it is
@@ -153,7 +170,7 @@ export async function correctTimesheetEntry(ctx: AppContext, entryId: string, v:
   const e = await loadTimesheetEntryForCtx(ctx, entryId);
   if (!e) throw new BusinessRuleError("Entry not found.");
   const own = e.employeeId === ctx.employee?.id;
-  const admin = can(ctx.role, "org.manage");
+  const admin = can(ctx, "org.manage");
   if (!own && !admin) throw new BusinessRuleError("You can only correct your own entries.");
   if (!admin && e.status === "REVIEWED") throw new BusinessRuleError("Reviewed entries can only be corrected by an administrator.");
   if (!own && !v.reason) throw new BusinessRuleError("Give a reason for correcting another person's entry.");
@@ -162,7 +179,7 @@ export async function correctTimesheetEntry(ctx: AppContext, entryId: string, v:
   if (v.clientId && !client) throw new BusinessRuleError("Client not found.");
   if (!client && !v.clientNameText) throw new BusinessRuleError("Select a client or type the client name.");
   const workType = v.workTypeId ? await prisma.workType.findFirst({ where: { id: v.workTypeId, organizationId: ctx.organization.id } }) : null;
-  const minutes = (v.hours ?? 0) * 60 + (v.minutes ?? 0);
+  const minutes = minutesFrom(v);
   const next = {
     workDate: dateOnly(v.workDate),
     clientId: client?.id ?? null,
@@ -174,7 +191,11 @@ export async function correctTimesheetEntry(ctx: AppContext, entryId: string, v:
     periodFrom: v.periodFrom ? dateOnly(v.periodFrom) : null,
     periodTo: v.periodTo ? dateOnly(v.periodTo) : null,
     transactionCount: v.transactionCount ?? null,
-    approxMinutes: minutes || null,
+    approxMinutes: minutes,
+    resourceType: v.resourceType ?? null,
+    assessmentYear: v.assessmentYear ?? null,
+    startTime: v.startTime ?? null,
+    endTime: v.endTime ?? null,
     workDetails: v.workDetails ?? null,
     workStatus: v.workStatus ?? null,
     whatsappMessage: v.whatsappMessage ?? null,
@@ -195,7 +216,7 @@ export async function correctTimesheetEntry(ctx: AppContext, entryId: string, v:
 // ============================================================ Pending items (10B / 12A / 12B)
 
 export function pendingScope(ctx: AppContext): Prisma.PendingItemWhereInput {
-  if (can(ctx.role, "pending.view_all")) return { organizationId: ctx.organization.id };
+  if (can(ctx, "pending.view_all")) return { organizationId: ctx.organization.id };
   const me = ctx.employee?.id ?? NO_EMPLOYEE;
   return { organizationId: ctx.organization.id, OR: [{ raisedByEmployeeId: me }, { pendingWithEmployeeId: me }] };
 }
@@ -231,7 +252,7 @@ export async function createPendingItem(ctx: AppContext, v: z.infer<typeof pendi
       where: {
         id: v.timesheetEntryId,
         organizationId: ctx.organization.id,
-        ...(can(ctx.role, "timesheet.view_all") ? {} : { employeeId: ctx.employee?.id ?? NO_EMPLOYEE }),
+        ...(can(ctx, "timesheet.view_all") ? {} : { employeeId: ctx.employee?.id ?? NO_EMPLOYEE }),
       },
       select: { id: true },
     });

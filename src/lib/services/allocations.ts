@@ -4,10 +4,14 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { BusinessRuleError, zCheckbox, zIsoDate, zOptionalText } from "@/lib/actions";
 import { addDays, dateOnly, toIsoDate } from "@/lib/dates";
-import { findConflicts } from "@/lib/domain/allocation";
+import { capacityFromPolicy, findConflicts, formatHours } from "@/lib/domain/allocation";
+import { RESOURCE_TYPES } from "@/lib/domain/timesheet";
+import { getPolicy } from "./attendance";
 import type { AppContext } from "@/lib/session";
 import { audit } from "./audit";
 import { notifyEmployees } from "./notifications";
+
+const zHours = z.coerce.number("Enter hours as a number").min(0, "Hours cannot be negative").max(24).optional();
 
 export const allocationSchema = z.object({
   clientId: z.uuid("Select a client"),
@@ -16,7 +20,12 @@ export const allocationSchema = z.object({
   seniorityLevel: z.enum(["JUNIOR", "MID_LEVEL", "SENIOR"]).optional(),
   startDate: zIsoDate,
   endDate: zIsoDate.optional(),
-  allocationPercent: z.coerce.number().int().min(1).max(100).optional(),
+  /** Hours in each half of the day; both blank = full day. */
+  firstHalfHours: zHours,
+  secondHalfHours: zHours,
+  resourceType: z.enum(RESOURCE_TYPES).optional(),
+  reportsToEmployeeId: z.uuid().optional(),
+  teamLeaderEmployeeId: z.uuid().optional(),
   allowOverlap: zCheckbox.optional(),
 });
 type AllocationInput = z.infer<typeof allocationSchema>;
@@ -33,18 +42,35 @@ async function prepareAllocation(ctx: AppContext, v: AllocationInput, excludeId?
   const end = v.endDate ? dateOnly(v.endDate) : null;
   if (end && end < start) throw new BusinessRuleError("End date must be on or after the start date.");
 
+  const { row: policy } = await getPolicy(ctx.organization.id);
+  const cap = capacityFromPolicy(policy);
+  const blank = v.firstHalfHours === undefined && v.secondHalfHours === undefined;
+  const first = blank ? null : v.firstHalfHours ?? 0;
+  const second = blank ? null : v.secondHalfHours ?? 0;
+  if (!blank && first === 0 && second === 0) throw new BusinessRuleError("Enter the hours for at least one half of the day, or leave both blank for a full day.");
+  if (first !== null && first > cap.first) throw new BusinessRuleError(`The first half has only ${formatHours(cap.first)} working hours.`);
+  if (second !== null && second > cap.second) throw new BusinessRuleError(`The second half has only ${formatHours(cap.second)} working hours.`);
+  for (const [id, label] of [[v.reportsToEmployeeId, "reviewer"], [v.teamLeaderEmployeeId, "team leader"]] as const) {
+    if (id && !(await prisma.employee.findFirst({ where: { id, organizationId: ctx.organization.id }, select: { id: true } }))) throw new BusinessRuleError(`Select a valid ${label}.`);
+  }
+
   const existing = await prisma.teamAllocation.findMany({
     where: { organizationId: ctx.organization.id, employeeId: employee.id, status: { in: ["ACTIVE", "PLANNED"] }, ...(excludeId ? { id: { not: excludeId } } : {}) },
-    select: { id: true, startDate: true, endDate: true, allocationPercent: true, client: { select: { tradeName: true } } },
+    select: { id: true, startDate: true, endDate: true, firstHalfHours: true, secondHalfHours: true, client: { select: { tradeName: true } } },
   });
   const conflicts = findConflicts(
-    { startDate: start, endDate: end, allocationPercent: v.allocationPercent ?? null },
-    existing.map((r) => ({ ...r, clientName: r.client.tradeName })),
+    { startDate: start, endDate: end, firstHalfHours: first, secondHalfHours: second },
+    existing.map((r) => ({
+      id: r.id, startDate: r.startDate, endDate: r.endDate, clientName: r.client.tradeName,
+      firstHalfHours: r.firstHalfHours === null ? null : Number(r.firstHalfHours),
+      secondHalfHours: r.secondHalfHours === null ? null : Number(r.secondHalfHours),
+    })),
+    cap,
   );
   // Conflicts are never saved silently: the user must explicitly allow the overlap.
   if (conflicts.isConflict && !v.allowOverlap) {
     throw new BusinessRuleError(
-      `This would allocate the team member at ${conflicts.totalPercent}% on overlapping dates (also on: ${conflicts.overlapping.map((o) => o.clientName).join(", ")}). Reduce the percentage, change the dates, or tick “allow overlap” to save anyway.`,
+      `This would book the team member for ${formatHours(conflicts.firstHours)} h in the first half and ${formatHours(conflicts.secondHours)} h in the second (available: ${formatHours(cap.first)} h and ${formatHours(cap.second)} h). Also on: ${conflicts.overlapping.map((o) => o.clientName).join(", ")}. Reduce the hours, change the dates, or tick “allow overlap” to save anyway.`,
     );
   }
   const data: Prisma.TeamAllocationUncheckedCreateInput = {
@@ -55,7 +81,11 @@ async function prepareAllocation(ctx: AppContext, v: AllocationInput, excludeId?
     seniorityLevel: v.seniorityLevel,
     startDate: start,
     endDate: end,
-    allocationPercent: v.allocationPercent,
+    firstHalfHours: first,
+    secondHalfHours: second,
+    resourceType: v.resourceType,
+    reportsToEmployeeId: v.reportsToEmployeeId,
+    teamLeaderEmployeeId: v.teamLeaderEmployeeId,
     status: start > new Date() ? "PLANNED" : "ACTIVE",
     createdById: ctx.user.id,
   };
@@ -107,7 +137,11 @@ export async function changeAllocation(ctx: AppContext, allocationId: string, v:
       seniorityLevel: old.seniorityLevel ?? undefined,
       startDate: v.effectiveDate,
       endDate: old.endDate ? toIsoDate(old.endDate) : undefined,
-      allocationPercent: old.allocationPercent ?? undefined,
+      firstHalfHours: old.firstHalfHours === null ? undefined : Number(old.firstHalfHours),
+      secondHalfHours: old.secondHalfHours === null ? undefined : Number(old.secondHalfHours),
+      resourceType: (RESOURCE_TYPES as readonly string[]).includes(old.resourceType ?? "") ? (old.resourceType as (typeof RESOURCE_TYPES)[number]) : undefined,
+      reportsToEmployeeId: old.reportsToEmployeeId ?? undefined,
+      teamLeaderEmployeeId: old.teamLeaderEmployeeId ?? undefined,
       allowOverlap: v.allowOverlap,
     },
     old.id,

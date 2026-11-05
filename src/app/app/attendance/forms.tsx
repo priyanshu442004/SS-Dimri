@@ -1,6 +1,7 @@
 "use client";
 
 import { ActionForm, Checkbox, SelectField, SubmitButton, TextArea, TextField, type FormState } from "@/components/form";
+import { SearchSelect } from "@/components/pickers";
 
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
 type Option = { value: string; label: string };
@@ -9,7 +10,7 @@ export function CorrectionForm({ action, employees, date }: { action: Act; emplo
   return (
     <ActionForm action={action}>
       <div className="grid gap-3 sm:grid-cols-3">
-        <SelectField label="Team member" name="employeeId" required options={employees} />
+        <SearchSelect label="Team member" name="employeeId" required options={employees} />
         <TextField label="Date" name="date" type="date" required defaultValue={date} />
         <SelectField label="Status" name="status" required placeholder={null} defaultValue="PRESENT" options={[
           { value: "PRESENT", label: "Present (P)" }, { value: "ABSENT", label: "Absent (A)" }, { value: "LEAVE", label: "Leave (L)" }, { value: "HALF_DAY", label: "Half day (HD)" },

@@ -7,6 +7,7 @@ import { ClientNav, ClientPageTransition, ClientTabBar } from "./nav";
 import { formatDateTime } from "@/lib/dates";
 import { FIRM } from "@/lib/firm";
 import { AccessWatcher } from "@/components/access-watcher";
+import { LanguageSwitch } from "@/components/language-switch";
 import { Notice } from "@/components/ui";
 
 export default async function ClientLayout({ children }: LayoutProps<"/client">) {
@@ -31,6 +32,7 @@ export default async function ClientLayout({ children }: LayoutProps<"/client">)
             </span>
           </Link>
           <span className="ml-auto flex items-center gap-1">
+            <LanguageSwitch />
             <a href={FIRM.tel} className="hidden items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm text-muted transition-colors hover:bg-subtle hover:text-ink lg:flex">
               <Phone className="size-4" aria-hidden /> {FIRM.phone}
             </a>

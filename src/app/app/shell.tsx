@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { CommandPalette, usePaletteShortcut } from "@/components/command-palette";
 import { MotionDirector } from "@/components/motion-director";
+import { LanguageSwitch } from "@/components/language-switch";
 import type { NavItem } from "./nav";
 
 const ICONS = {
@@ -23,7 +24,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   app: "Home", admin: "Dashboard", manager: "Dashboard", senior: "Dashboard", workspace: "Dashboard",
   clients: "Clients", approvals: "Approvals", new: "New", employees: "Employees", allocations: "Team allocation", tasks: "Tasks",
   attendance: "Attendance", timesheet: "Timesheet", "day-reports": "Day reports", pending: "Pending tracker", reports: "Reports",
-  services: "Services & departments", compliances: "Compliance calendar", settings: "Settings", notifications: "Notifications",
+  services: "Services & departments", compliances: "Compliance", payroll: "Payroll", import: "Import from Excel", settings: "Settings", notifications: "Notifications",
   onboarding: "My employee record", profile: "My profile", observations: "Client observations", dues: "Fees & dues", search: "Search", "no-access": "No access",
 };
 
@@ -241,6 +242,7 @@ export function AppShell({
           <div className="ml-auto flex items-center gap-1.5">
             <span className="hidden md:block">{paletteButton(false)}</span>
             <span className="md:hidden">{paletteButton(true)}</span>
+            <LanguageSwitch />
             {bell}
             <Link href="/app/profile" className="ml-1 hidden items-center gap-2 rounded-full py-0.5 pl-0.5 pr-2.5 transition-colors hover:bg-subtle lg:flex" title={`${userName} · ${roleLabel}`}>
               <span aria-hidden className="grid size-8 place-items-center rounded-full bg-ink text-xs font-semibold text-paper">{initials}</span>

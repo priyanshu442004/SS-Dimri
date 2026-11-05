@@ -3,8 +3,8 @@
 import { ActionForm, SelectField, SubmitButton, TextField } from "@/components/form";
 import { createEmployeeAction } from "../actions";
 
-/** Invite a staff member: only name, email, mobile and role. Everything else they fill in themselves. */
-export function NewEmployeeForm() {
+/** Invite a staff member: only name, email, mobile, role and access. Everything else they fill in themselves. */
+export function NewEmployeeForm({ canInviteAdmin }: { canInviteAdmin: boolean }) {
   return (
     <ActionForm action={createEmployeeAction} resetOnSuccess>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -21,7 +21,19 @@ export function NewEmployeeForm() {
             { value: "STAFF", label: "Team member" },
             { value: "SENIOR", label: "Senior" },
             { value: "MANAGER", label: "Manager" },
-            { value: "ADMIN", label: "Administrator" },
+            ...(canInviteAdmin ? [{ value: "ADMIN", label: "Administrator" }] : []),
+          ]}
+        />
+        <SelectField
+          label="Module access"
+          name="moduleAccess"
+          required
+          placeholder={null}
+          defaultValue="FULL"
+          hint="Peons, drivers and other support staff usually need only attendance and payroll"
+          options={[
+            { value: "FULL", label: "Everything their role allows" },
+            { value: "SUPPORT", label: "Attendance & payroll only" },
           ]}
         />
       </div>

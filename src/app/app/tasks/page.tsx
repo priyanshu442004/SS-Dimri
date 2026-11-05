@@ -10,7 +10,7 @@ import { OPEN_STATUSES } from "@/lib/domain/task-workflow";
 import { taskScope } from "@/lib/services/tasks";
 import { MonthCalendar } from "@/components/month-calendar";
 import { Badge, EmptyState, LinkButton, PageHeader, Pagination, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
-import { ListChecks } from "lucide-react";
+import { ListChecks, Mic } from "lucide-react";
 
 const PAGE_SIZE = 30;
 
@@ -30,10 +30,10 @@ function istMonthBounds(month: string) {
 }
 
 export default async function TasksPage({ searchParams }: PageProps<"/app/tasks">) {
-  const ctx = await requireCapability("app.use");
+  const ctx = await requireCapability("tasks.use");
   const sp = await searchParams;
   const view = sp.view === "calendar" ? "calendar" : sp.view === "board" ? "board" : "list";
-  const scope = typeof sp.scope === "string" ? sp.scope : can(ctx.role, "tasks.view_all") ? "all" : "mine";
+  const scope = typeof sp.scope === "string" ? sp.scope : can(ctx, "tasks.view_all") ? "all" : "mine";
   const state = typeof sp.state === "string" ? sp.state : "open";
   const clientId = typeof sp.client === "string" && /^[0-9a-f-]{36}$/i.test(sp.client) ? sp.client : "";
   const priority = sp.priority === "ASAP" || sp.priority === "HIGH" || sp.priority === "MEDIUM" || sp.priority === "LOW" ? sp.priority : "";
@@ -50,7 +50,7 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
     AND: [
       taskScope(ctx),
       scope === "mine" ? { OR: [{ assignments: { some: { employeeId: me, removedAt: null } } }, { makerEmployeeId: me }] } : {},
-      scope === "review" ? { status: "PENDING_REVIEW", OR: [{ checkerEmployeeId: me }, ...(can(ctx.role, "tasks.review") ? [{ checkerEmployeeId: null }] : [])] } : {},
+      scope === "review" ? { status: "PENDING_REVIEW", OR: [{ checkerEmployeeId: me }, ...(can(ctx, "tasks.review") ? [{ checkerEmployeeId: null }] : [])] } : {},
       state === "open" ? { status: { in: OPEN_STATUSES } } : state === "overdue" ? { status: { in: OPEN_STATUSES }, dueAt: { lt: new Date() } } : state === "done" ? { status: { in: ["COMPLETED", "CANCELLED"] } } : {},
       clientId ? { clientId } : {},
       priority === "ASAP" ? { isAsap: true } : priority ? { priority } : {},
@@ -66,6 +66,7 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
       take: view === "list" ? PAGE_SIZE : 500,
       select: {
         id: true, title: true, status: true, priority: true, isAsap: true, dueAt: true, makerStatus: true, checkerStatus: true,
+        _count: { select: { attachments: { where: { kind: "AUDIO" } } } },
         client: { select: { tradeName: true } },
         assignments: { where: { removedAt: null }, select: { employee: { select: { firstName: true } } } },
       },
@@ -83,15 +84,15 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
     <>
       <PageHeader icon={<ListChecks />}
         title="Tasks"
-        description="Team members update the status of their tasks and add remarks; tasks cannot be deleted by team members."
-        actions={can(ctx.role, "tasks.create") && <LinkButton href="/app/tasks/new">New task</LinkButton>}
+        description="Create tasks, depute people, update status and add remarks or voice notes."
+        actions={can(ctx, "tasks.create") && <LinkButton href="/app/tasks/new">New task</LinkButton>}
       />
       <TabNav
         current={scope}
         tabs={[
           { key: "mine", label: "My tasks", href: params({ scope: "mine", page: 1 }) },
-          ...(can(ctx.role, "tasks.review") || ctx.employee ? [{ key: "review", label: "Awaiting my review", href: params({ scope: "review", state: "all", page: 1 }) }] : []),
-          ...(can(ctx.role, "tasks.view_all") ? [{ key: "all", label: "All tasks", href: params({ scope: "all", page: 1 }) }] : []),
+          ...(can(ctx, "tasks.review") || ctx.employee ? [{ key: "review", label: "Awaiting my review", href: params({ scope: "review", state: "all", page: 1 }) }] : []),
+          ...(can(ctx, "tasks.view_all") ? [{ key: "all", label: "All tasks", href: params({ scope: "all", page: 1 }) }] : []),
         ]}
       />
       <form className="mb-4 flex flex-wrap items-center gap-2" aria-label="Filters">
@@ -163,7 +164,7 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
           })}
         </div>
       ) : tasks.length === 0 ? (
-        <EmptyState kind="tasks" title="No tasks here" action={can(ctx.role, "tasks.create") && <LinkButton href="/app/tasks/new">Create a task</LinkButton>}>
+        <EmptyState kind="tasks" title="No tasks here" action={can(ctx, "tasks.create") && <LinkButton href="/app/tasks/new">Create a task</LinkButton>}>
           Change the filters to see other tasks.
         </EmptyState>
       ) : (
@@ -186,7 +187,10 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
             <tbody>
               {tasks.map((t) => (
                 <tr key={t.id} className="hover:bg-subtle/50">
-                  <Td><Link href={`/app/tasks/${t.id}`} className="font-medium text-brand-700 hover:underline">{t.title}</Link></Td>
+                  <Td>
+                    <Link href={`/app/tasks/${t.id}`} className="font-medium text-brand-700 hover:underline">{t.title}</Link>
+                    {t._count.attachments > 0 && <Mic className="ml-1.5 inline size-3.5 text-muted" role="img" aria-label="Has a voice note" />}
+                  </Td>
                   <Td>{t.client?.tradeName ?? "—"}</Td>
                   <Td className="text-xs">{t.assignments.map((a) => a.employee.firstName).join(", ") || <span className="text-muted">Unassigned</span>}</Td>
                   <Td><span className="flex gap-1">{t.isAsap && <Badge tone="danger">ASAP</Badge>}<StatusBadge status={t.priority} /></span></Td>

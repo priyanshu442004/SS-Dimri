@@ -15,6 +15,19 @@ export async function employeeOptions(organizationId: string) {
   }));
 }
 
+/** Pickers for tasks: leaves out people whose module access does not include tasks (e.g. a peon). */
+export async function taskEmployeeOptions(organizationId: string) {
+  const [options, restricted] = await Promise.all([
+    employeeOptions(organizationId),
+    prisma.organizationMembership.findMany({
+      where: { organizationId, moduleRestricted: true, NOT: { allowedModules: { has: "tasks" } }, employeeId: { not: null } },
+      select: { employeeId: true },
+    }),
+  ]);
+  const without = new Set(restricted.map((m) => m.employeeId));
+  return options.filter((o) => !without.has(o.value));
+}
+
 export async function activeClientOptions(organizationId: string) {
   const rows = await prisma.client.findMany({
     where: { organizationId, status: { in: ["ACTIVE", "ON_HOLD"] } },

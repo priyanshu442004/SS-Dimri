@@ -6,6 +6,7 @@ import { formatDateTime } from "@/lib/dates";
 import { Card, DetailList, PageHeader, StatusBadge } from "@/components/ui";
 import { ChangePasswordForm } from "@/components/change-password-form";
 import { DisplayNameForm } from "@/components/display-name-form";
+import { LanguageSwitch } from "@/components/language-switch";
 import { CircleUser } from "lucide-react";
 
 /** My profile (Page 58): own login details. Role and status are shown, never self-editable. */
@@ -19,6 +20,12 @@ export default async function MyProfilePage() {
     <>
       <PageHeader icon={<CircleUser />} title="My profile" description="Your sign-in details. Contact an administrator to change your role, email or username." />
       <div className="grid max-w-4xl gap-6 md:grid-cols-2">
+        <Card title="Language" className="md:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted">Choose the language of the portal on this device. Names and client details stay as they were entered.</p>
+            <LanguageSwitch />
+          </div>
+        </Card>
         <Card title="Account">
           <DetailList
             items={[

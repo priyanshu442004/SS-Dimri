@@ -5,7 +5,10 @@ import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import { addDays, dateOnly, formatDate, isoDateInTz, toIsoDate } from "@/lib/dates";
-import { availabilityOn } from "@/lib/domain/allocation";
+import { availabilityOn, capacityFromPolicy, describeHours, formatHours } from "@/lib/domain/allocation";
+import { getPolicy } from "@/lib/services/attendance";
+import { DeleteButton } from "@/components/delete-dialog";
+import { canDelete } from "@/lib/services/deletions";
 import { activeClientOptions, employeeOptions } from "@/lib/services/lookups";
 import { ActionButton } from "@/components/action-button";
 import { Card, EmptyState, humanize, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
@@ -16,10 +19,10 @@ import { Users } from "lucide-react";
 const DAYS = 14;
 
 export default async function AllocationsPage({ searchParams }: PageProps<"/app/allocations">) {
-  const ctx = await requireCapability("app.use");
+  const ctx = await requireCapability("allocations.use");
   const sp = await searchParams;
-  const viewAll = can(ctx.role, "allocations.view_all");
-  const manage = can(ctx.role, "allocations.manage");
+  const viewAll = can(ctx, "allocations.view_all");
+  const manage = can(ctx, "allocations.manage");
   const clientId = typeof sp.client === "string" ? sp.client : "";
   const today = isoDateInTz(new Date(), ctx.organization.timezone);
   const from = typeof sp.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.from) ? sp.from : today;
@@ -27,6 +30,10 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
   const days = Array.from({ length: DAYS }, (_, i) => addDays(start, i));
   const end = days[DAYS - 1];
   const me = ctx.employee?.id;
+  const { row: policy } = await getPolicy(ctx.organization.id);
+  const capacity = capacityFromPolicy(policy);
+  const num = (d: unknown) => (d === null || d === undefined ? null : Number(d));
+  const mayDelete = canDelete(ctx, "allocation");
 
   const allocations = await prisma.teamAllocation.findMany({
     where: {
@@ -60,7 +67,7 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
   const boardSpans = viewAll
     ? await prisma.teamAllocation.findMany({
         where: { organizationId: ctx.organization.id, status: { in: ["ACTIVE", "PLANNED"] }, startDate: { lte: end }, OR: [{ endDate: null }, { endDate: { gte: start } }] },
-        select: { employeeId: true, startDate: true, endDate: true, allocationPercent: true },
+        select: { employeeId: true, startDate: true, endDate: true, firstHalfHours: true, secondHalfHours: true },
       })
     : [];
   const leaves = viewAll
@@ -111,7 +118,7 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
               </thead>
               <tbody>
                 {boardEmployees.map((e) => {
-                  const spans = boardSpans.filter((s) => s.employeeId === e.id);
+                  const spans = boardSpans.filter((s) => s.employeeId === e.id).map((s) => ({ startDate: s.startDate, endDate: s.endDate, firstHalfHours: num(s.firstHalfHours), secondHalfHours: num(s.secondHalfHours) }));
                   const empLeaves = leaves.filter((l) => l.employeeId === e.id);
                   return (
                     <tr key={e.id} className="border-t border-line/70">
@@ -122,12 +129,13 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
                       {days.map((d) => {
                         const onLeave = empLeaves.some((l) => l.fromDate <= d && l.toDate >= d);
                         const sunday = d.getUTCDay() === 0;
-                        const av = availabilityOn(d, spans);
-                        const label = onLeave ? "Leave" : sunday ? "Sun" : av.level === "free" ? "Free" : av.level === "partial" ? `${av.percent}%` : "Busy";
+                        const av = availabilityOn(d, spans, capacity);
+                        const label = onLeave ? "Leave" : sunday ? "Sun" : av.level === "free" ? "Free" : av.level === "busy" ? "Busy" : `${formatHours(av.first)}+${formatHours(av.second)}`;
+                        const full = onLeave ? "On approved leave" : sunday ? "Sunday" : `First half ${formatHours(av.first)} of ${formatHours(capacity.first)} h, second half ${formatHours(av.second)} of ${formatHours(capacity.second)} h`;
                         return (
                           <td key={d.toISOString()} className="px-0.5 py-1">
                             <span
-                              title={label}
+                              title={full}
                               className={clsx(
                                 "block rounded px-0.5 py-1 text-center text-[11px] font-medium",
                                 onLeave ? "bg-info-bg text-info" : sunday ? "bg-subtle text-muted" : av.level === "free" ? "bg-ok-bg text-ok" : av.level === "partial" ? "bg-warn-bg text-warn" : "bg-[#fbe3c9] text-warn",
@@ -144,7 +152,7 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
               </tbody>
             </table>
           </div>
-          <p className="border-t border-line px-3 py-2 text-xs text-muted">Green = free, orange = allocated (with %), blue = approved leave. Calculated from allocations and approved leave.</p>
+          <p className="border-t border-line px-3 py-2 text-xs text-muted">Green = free, orange = hours booked (first half + second half), blue = approved leave. The first half has {formatHours(capacity.first)} h and the second half {formatHours(capacity.second)} h, from the firm&apos;s timing policy.</p>
         </Card>
       )}
 
@@ -172,7 +180,7 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
                     <p><span className="font-medium text-ink">Timeline:</span> {c.services.filter((s) => s.dueDate || s.timelineNote).map((s) => s.timelineNote ?? `due ${formatDate(s.dueDate)}`).join("; ") || "—"}</p>
                   </div>
                   <Table minWidth={560}>
-                    <thead><tr><Th>Team member</Th><Th>Level</Th><Th>Period</Th><Th>Share</Th><Th>Status</Th>{manage && <Th />}</tr></thead>
+                    <thead><tr><Th>Team member</Th><Th>Level</Th><Th>Period</Th><Th>Hours</Th><Th>Status</Th>{manage && <Th />}</tr></thead>
                     <tbody>
                       {rows.map((a) => (
                         <tr key={a.id}>
@@ -183,7 +191,7 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
                           </Td>
                           <Td>{a.seniorityLevel ? humanize(a.seniorityLevel) : "—"}</Td>
                           <Td className="text-xs">{formatDate(a.startDate)} – {a.endDate ? formatDate(a.endDate) : "ongoing"}</Td>
-                          <Td>{a.allocationPercent ? `${a.allocationPercent}%` : "Full"}</Td>
+                          <Td className="text-xs">{describeHours({ firstHalfHours: num(a.firstHalfHours), secondHalfHours: num(a.secondHalfHours) }, capacity)}{a.resourceType && <div className="text-muted">{a.resourceType}</div>}</Td>
                           <Td><StatusBadge status={a.status} /></Td>
                           {manage && (
                             <Td>
@@ -191,7 +199,10 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
                                 <summary className="cursor-pointer text-brand-700">Change</summary>
                                 <div className="mt-2 w-64 space-y-3">
                                   <ChangeForm action={changeAllocationAction.bind(null, a.id)} employees={employees} today={today} />
-                                  <ActionButton variant="danger" confirm="End this allocation today?" action={endAllocationAction.bind(null, a.id)}>End allocation</ActionButton>
+                                  <div className="flex flex-wrap gap-2">
+                                    <ActionButton variant="danger" confirm="End this allocation today?" action={endAllocationAction.bind(null, a.id)}>End allocation</ActionButton>
+                                    {mayDelete && <DeleteButton entity="allocation" id={a.id} />}
+                                  </div>
                                 </div>
                               </details>
                             </Td>
@@ -207,7 +218,7 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
         </div>
         {manage && (
           <Card title="Allocate a team member" className="h-fit">
-            <AllocationForm action={createAllocationAction} employees={employees} clients={clients} defaultClient={clientId} today={today} />
+            <AllocationForm action={createAllocationAction} employees={employees} clients={clients} defaultClient={clientId} today={today} capacity={capacity} />
           </Card>
         )}
       </div>

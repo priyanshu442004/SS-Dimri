@@ -44,6 +44,21 @@ Run serially as one connected story; later tests depend on the records created e
 | Security | Generic invalid-credential message for real and unknown accounts; forgot-password gives identical responses; staff export request returns 404 |
 | Layout | Phone width (375 px) app and portal pages; tablet width (768 px) key pages; screenshots at 1366 / 768 / 375 px for manual review (`test-results/visual/`) |
 
+### Running them safely (local Postgres in Docker)
+
+`.env.local` points at the production database. To run the suite without touching it, start a throw-away Postgres with Neon's WebSocket proxy and point the shell at it; shell values win over `.env.local`:
+
+```bash
+# compose: postgres:17-alpine on 55432 (POSTGRES_DB=ssdimri_test, tmpfs) + ghcr.io/neondatabase/wsproxy on 55433 (APPEND_PORT=pg:5432, ALLOW_ADDR_REGEX=.*)
+export DATABASE_URL="postgresql://postgres:<password>@pg:5432/ssdimri_test"   # as the proxy sees it
+export DIRECT_URL="postgresql://postgres:<password>@localhost:55432/ssdimri_test"
+export NEON_WS_PROXY="localhost:55433/v1"
+export BETTER_AUTH_URL="http://localhost:3100"
+npx prisma migrate deploy && npx tsx prisma/seed.ts && npm run build && npx playwright test
+```
+
+Uploads still go to the configured S3 bucket under the test firm's prefix. Chromium runs with a synthetic microphone so voice notes are recorded for real. The Hindi test covers the JSX-runtime path that reads the request's language cookie.
+
 ## 4. Not covered by automated tests (gaps)
 
 | Gap | Why / mitigation |

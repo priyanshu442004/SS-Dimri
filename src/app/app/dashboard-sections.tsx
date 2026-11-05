@@ -198,6 +198,7 @@ export function LeadStats({ data }: { data: Lead }) {
 }
 
 const QUICK = [
+  { href: "/app/tasks/new", label: "New task", hint: "Type it or record a voice note", icon: ListChecks, tone: "#f3e3dd" },
   { href: "/app/attendance", label: "Attendance", hint: "Mark in / out", icon: CalendarCheck2, tone: "#dcece2" },
   { href: "/app/timesheet?tab=daily", label: "Add timesheet entry", hint: "Log today's work", icon: NotebookPen, tone: "#fbeccb" },
   { href: "/app/day-reports", label: "Day report", hint: "Summarise your day", icon: FileText, tone: "#dde7f3" },

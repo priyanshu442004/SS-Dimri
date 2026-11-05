@@ -3,15 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
-import { BusinessRuleError, parseForm, safeAction, zCheckbox, zOptionalText, type ActionState } from "@/lib/actions";
+import { parseForm, safeAction, zCheckbox, zOptionalText, type ActionState } from "@/lib/actions";
 import { actionContext } from "@/lib/session";
 import {
   addAttachment,
+  addReminders,
   addRemark,
+  cancelReminder,
   createTask,
-  loadTaskForCtx,
-  localDateTimeToUtc,
   performTaskAction,
   setAssignees,
   setClientSharing,
@@ -49,16 +48,18 @@ export async function taskTransitionAction(taskId: string, _p: ActionState, fd: 
   });
 }
 
-const remarkSchema = z.object({ note: z.string().min(1, "Write a remark").max(2000), clientVisible: zCheckbox.optional() });
+const remarkSchema = z.object({ note: z.string().min(1, "Write a remark, or record a voice note").max(2000), clientVisible: zCheckbox.optional() });
 
 export async function addRemarkAction(taskId: string, _p: ActionState, fd: FormData): Promise<ActionState> {
   const parsed = parseForm(remarkSchema, fd);
   const file = fd.get("attachment");
-  if (!parsed.success && !hasFile(file)) return parsed.success ? {} : parsed.state;
+  const voiceNotes = fd.getAll("voiceNotes").filter(hasFile);
+  if (!parsed.success && !hasFile(file) && !voiceNotes.length) return parsed.state;
   return safeAction(async () => {
     const ctx = await actionContext("tasks.update_assigned");
     if (parsed.success) await addRemark(ctx, taskId, parsed.data.note, !!parsed.data.clientVisible);
     if (hasFile(file)) await addAttachment(ctx, taskId, file);
+    for (const v of voiceNotes) await addAttachment(ctx, taskId, v);
     revalidatePath(`/app/tasks/${taskId}`);
     return { ok: true, message: "Added." };
   });
@@ -82,7 +83,8 @@ export async function setAssigneesAction(taskId: string, _p: ActionState, fd: Fo
 }
 
 const reminderSchema = z.object({
-  remindAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Enter date and time"),
+  "remindAt[]": z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Enter date and time")).min(1, "Choose at least one date and time"),
+  audience: z.enum(["me", "team"]).default("team"),
   note: zOptionalText(300),
 });
 
@@ -91,15 +93,18 @@ export async function addReminderAction(taskId: string, _p: ActionState, fd: For
   if (!parsed.success) return parsed.state;
   return safeAction(async () => {
     const ctx = await actionContext("tasks.update_assigned");
-    const task = await loadTaskForCtx(ctx, taskId);
-    if (!task) throw new BusinessRuleError("Task not found.");
-    const at = localDateTimeToUtc(parsed.data.remindAt);
-    if (at < new Date()) throw new BusinessRuleError("Choose a time in the future.");
-    await prisma.taskReminder.create({
-      data: { taskId: task.id, remindAt: at, note: parsed.data.note, createdById: ctx.user.id, recipientEmployeeId: ctx.employee?.id },
-    });
+    await addReminders(ctx, taskId, parsed.data["remindAt[]"], parsed.data.audience, parsed.data.note);
     revalidatePath(`/app/tasks/${taskId}`);
-    return { ok: true, message: "Reminder set." };
+    return { ok: true, message: parsed.data["remindAt[]"].length > 1 ? "Reminders set." : "Reminder set." };
+  });
+}
+
+export async function cancelReminderAction(taskId: string, reminderId: string): Promise<ActionState> {
+  return safeAction(async () => {
+    const ctx = await actionContext("tasks.update_assigned");
+    await cancelReminder(ctx, taskId, reminderId);
+    revalidatePath(`/app/tasks/${taskId}`);
+    return { ok: true, message: "Reminder removed." };
   });
 }
 

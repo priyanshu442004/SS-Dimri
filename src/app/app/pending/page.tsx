@@ -7,6 +7,8 @@ import { dateOnly, formatDate, formatDateTime, isoDateInTz } from "@/lib/dates";
 import { daysPending } from "@/lib/domain/derived";
 import { pendingScope } from "@/lib/services/worklog";
 import { activeClientOptions, employeeOptions } from "@/lib/services/lookups";
+import { DeleteButton } from "@/components/delete-dialog";
+import { canDelete } from "@/lib/services/deletions";
 import { Badge, Card, EmptyState, PageHeader, Stat, StatusBadge, TabNav } from "@/components/ui";
 import { createPendingAction, updatePendingAction } from "../worklog-actions";
 import { PendingForm, PendingUpdateForm } from "../worklog-forms";
@@ -65,7 +67,7 @@ export default async function PendingPage({ searchParams }: PageProps<"/app/pend
     <>
       <PageHeader icon={<Flag />}
         title="Pending tracker"
-        description={can(ctx.role, "pending.view_all") ? "Everything pending with clients and with the team. Days pending are calculated from the request date." : "Items you raised or that are pending with you."}
+        description={can(ctx, "pending.view_all") ? "Everything pending with clients and with the team. Days pending are calculated from the request date." : "Items you raised or that are pending with you."}
       />
       <TabNav
         current={category}
@@ -123,6 +125,7 @@ export default async function PendingPage({ searchParams }: PageProps<"/app/pend
                   </div>
                   <div className="text-right text-xs">
                     <StatusBadge status={i.status} />
+                    {canDelete(ctx, "pending") && <DeleteButton entity="pending" id={i.id} variant="ghost" />}
                     <p className="mt-1 text-muted">Asked {formatDate(i.requestedOn)} · due {formatDate(i.dueBy)}</p>
                     <p className={overdue ? "font-semibold text-danger" : "text-muted"}>{daysPending(i, undefined, ctx.organization.pendingDaysBasis)} days pending{overdue && " · overdue"}</p>
                   </div>

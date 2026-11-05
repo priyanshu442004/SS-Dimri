@@ -16,7 +16,7 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
  */
 export async function GET(req: Request, { params }: RouteContext<"/app/reports/clients/[id]/export">) {
   const ctx = await getContext();
-  if (!ctx || ctx.access.state === "locked" || !can(ctx.role, "reports.client")) return new NextResponse("Not found", { status: 404 });
+  if (!ctx || ctx.access.state === "locked" || !can(ctx, "reports.client")) return new NextResponse("Not found", { status: 404 });
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return new NextResponse("Not found", { status: 404 });
   const exists = await prisma.client.findFirst({ where: { id, organizationId: ctx.organization.id }, select: { id: true } });

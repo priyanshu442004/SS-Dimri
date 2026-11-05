@@ -8,7 +8,10 @@ import { OPEN_STATUSES } from "@/lib/domain/task-workflow";
 import { employeeFiles, loadEmployeeProfile, onboardingDefaults } from "@/lib/services/employee-view";
 import { Card, DetailList, humanize, Notice, PageHeader, StatusBadge, TabNav } from "@/components/ui";
 import { OnboardingForm } from "../onboarding-form";
-import { decideOnboardingAction, resendInvitationAction, resetPasswordAction, saveEmployeeDetailsAction, updateAccessAction } from "../actions";
+import { decideOnboardingAction, resendInvitationAction, resetPasswordAction, saveEmployeeDetailsAction, updateAccessAction, updateRightsAction } from "../actions";
+import { DeleteButton } from "@/components/delete-dialog";
+import { canDelete } from "@/lib/services/deletions";
+import { RightsForm } from "./rights-form";
 import { ActionButton } from "@/components/action-button";
 import { AccessForm, DecisionForm, ResetPasswordForm } from "./admin-forms";
 import { LettersTab } from "./letters-tab";
@@ -20,7 +23,13 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
   const tab = sp.tab === "edit" || sp.tab === "letters" ? sp.tab : "profile";
   const e = await loadEmployeeProfile(ctx.organization.id, id);
   if (!e) notFound();
-  const manage = can(ctx.role, "employees.manage");
+  const manage = can(ctx, "employees.manage");
+  const approve = can(ctx, "employees.approve");
+  const invite = can(ctx, "employees.invite");
+  // Whoever approves a person must be able to read what they submitted.
+  const seesPersonal = manage || approve;
+  const accessManage = can(ctx, "access.manage");
+  const mayDelete = canDelete(ctx, "employee") && e.id !== ctx.employee?.id && e.membership?.role !== "OWNER";
 
   const [designations, departments, colleagues] = manage
     ? await Promise.all([
@@ -35,8 +44,8 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
     : [[], [], []];
 
   const name = `${e.firstName} ${e.lastName ?? ""}`.trim();
-  const files = manage ? employeeFiles(e) : [];
-  const lastEmail = manage && e.membership
+  const files = seesPersonal ? employeeFiles(e) : [];
+  const lastEmail = (manage || invite) && e.membership
     ? await prisma.emailOutbox.findFirst({ where: { organizationId: ctx.organization.id, relatedUserId: e.membership.userId }, orderBy: { createdAt: "desc" } })
     : null;
   const EMAIL_KIND: Record<string, string> = {
@@ -48,6 +57,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
       <PageHeader
         title={name}
         back={{ href: "/app/employees", label: "Employees" }}
+        actions={mayDelete && <DeleteButton entity="employee" id={e.id} redirectTo="/app/employees" />}
         description={
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-mono">{e.permanentEmployeeCode ?? `${e.temporaryEmployeeCode} (temporary)`}</span>
@@ -105,11 +115,11 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
                   ["Mobile", e.mobile],
                   ["Email", e.email],
                   ["Official email", e.officialEmail],
-                  ["Date of birth", manage ? formatDate(e.dateOfBirth) : "Restricted"],
+                  ["Date of birth", seesPersonal ? formatDate(e.dateOfBirth) : "Restricted"],
                   ["Gender", e.gender ? humanize(e.gender) : null],
                   ["Current address", e.addresses.find((a) => a.type === "CURRENT")?.line1],
                   ["Emergency contact", e.emergencyContactName ? `${e.emergencyContactName} (${e.emergencyContactRelation ?? "—"}) ${e.emergencyContactPhone ?? ""}` : null],
-                  ["PAN", manage ? e.panNumber : e.panNumber ? "On file" : null],
+                  ["PAN", seesPersonal ? e.panNumber : e.panNumber ? "On file" : null],
                   ["Aadhaar", e.aadhaarLast4 ? `XXXX XXXX ${e.aadhaarLast4}` : null],
                   ["Bank account", e.bankAccounts[0] ? `••••${e.bankAccounts[0].accountNumberLast4} · ${e.bankAccounts[0].ifscCode}` : null],
                   ["Qualification", e.qualifications[0]?.qualification],
@@ -117,7 +127,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
                 ]}
               />
             </Card>
-            {manage && (
+            {seesPersonal && (
               <Card title="Documents">
                 {files.length === 0 ? (
                   <p className="text-sm text-muted">No documents uploaded yet.</p>
@@ -137,13 +147,13 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
             )}
           </div>
 
-          {manage && (
+          {(seesPersonal || invite) && (
             <div className="space-y-6">
-              <Card title="Onboarding approval">
+              {approve && <Card title="Onboarding approval">
                 {e.approvalStatus === "APPROVED" ? (
                   <>
                     <Notice tone="ok">Approved. Permanent ID {e.permanentEmployeeCode}.</Notice>
-                    <p className="mt-3 text-sm"><Link href={`/app/employees/${e.id}?tab=letters`} className="font-medium text-brand-700 hover:underline">Letters &amp; memos</Link> — issue the appointment letter, offer letter or a memo.</p>
+                    {manage && <p className="mt-3 text-sm"><Link href={`/app/employees/${e.id}?tab=letters`} className="font-medium text-brand-700 hover:underline">Letters &amp; memos</Link> — issue the appointment letter, offer letter or a memo.</p>}
                   </>
                 ) : e.approvalStatus === "REJECTED" ? (
                   <Notice tone="danger">Rejected{e.reviewNotes ? ` (reason: ${e.reviewNotes.replace(/\.$/, "")})` : ""}. Waiting for the staff member to correct and resubmit.</Notice>
@@ -155,15 +165,28 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
                   <>
                     <div className="mb-3"><Notice tone={e.approvalStatus === "ON_HOLD" ? "warn" : "info"}>{e.approvalStatus === "ON_HOLD" ? "On hold" : "Under review"} — submitted {formatDateTime(e.onboardingSubmittedAt)}.</Notice></div>
                     {e.reviewNotes && <p className="mb-3 text-sm text-muted">Last note: {e.reviewNotes}</p>}
-                    <p className="mb-3 text-sm">
-                      To approve and send the appointment letter together, use{" "}
-                      <Link href={`/app/employees/${e.id}?tab=letters`} className="font-medium text-brand-700 hover:underline">Letters &amp; memos</Link>.
-                    </p>
+                    {manage && (
+                      <p className="mb-3 text-sm">
+                        To approve and send the appointment letter together, use{" "}
+                        <Link href={`/app/employees/${e.id}?tab=letters`} className="font-medium text-brand-700 hover:underline">Letters &amp; memos</Link>.
+                      </p>
+                    )}
                     <DecisionForm action={decideOnboardingAction.bind(null, e.id)} canHold={e.approvalStatus !== "ON_HOLD"} />
                   </>
                 )}
-              </Card>
-              {e.membership && e.membership.role !== "OWNER" && (
+              </Card>}
+              {accessManage && e.membership && e.membership.role !== "OWNER" && e.membership.userId !== ctx.user.id && (
+                <Card title="Module access & extra rights">
+                  <RightsForm
+                    action={updateRightsAction.bind(null, e.id)}
+                    role={e.membership.role as Role}
+                    rights={e.membership.grantedCapabilities}
+                    restricted={e.membership.moduleRestricted}
+                    modules={e.membership.allowedModules}
+                  />
+                </Card>
+              )}
+              {manage && e.membership && e.membership.role !== "OWNER" && (
                 <Card title="Access, role & reporting">
                   <AccessForm
                     action={updateAccessAction.bind(null, e.id)}
@@ -182,7 +205,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
                   />
                 </Card>
               )}
-              {e.membership && (
+              {e.membership && (manage || invite) && (
                 <Card title="Sign-in">
                   <p className="mb-3 text-sm">Email: <span className="font-medium">{e.membership.user.email}</span></p>
                   {lastEmail && (
@@ -198,9 +221,9 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
                       </p>
                       <ActionButton action={resendInvitationAction.bind(null, e.id)} confirm="Email a new temporary password? The previous one stops working.">Resend invitation</ActionButton>
                     </>
-                  ) : (
+                  ) : manage ? (
                     <ResetPasswordForm action={resetPasswordAction.bind(null, e.id)} />
-                  )}
+                  ) : null}
                 </Card>
               )}
             </div>

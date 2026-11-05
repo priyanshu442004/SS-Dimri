@@ -8,9 +8,11 @@ import { loadEnvConfig } from "@next/env";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaClient } from "../src/generated/prisma/client";
 import type { ConstitutionMemberRole, ConstitutionType } from "../src/generated/prisma/enums";
+import { applyLocalNeonProxy } from "../src/lib/neon-local";
 import master from "./data/ssda-master-data.json";
 
 loadEnvConfig(process.cwd());
+applyLocalNeonProxy();
 
 const prisma = new PrismaClient({
   adapter: new PrismaNeon({ connectionString: process.env.DATABASE_URL! }),

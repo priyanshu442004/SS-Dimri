@@ -1,7 +1,8 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { days, disconnect, expireInvitation, setAccountAge } from "./db";
+import { days, disconnect, expireInvitation, makeRemindersDue, raiseLicenceLimit, setAccountAge } from "./db";
+import { buildXlsx, readFirstSheet } from "../../src/lib/xlsx";
 
 // Full walk-through against the real app and database. Creates an organization
 // whose owner email ends in @e2e.invalid; every other login created here also
@@ -35,7 +36,15 @@ async function signIn(page: Page, id: string, password: string) {
   await page.getByLabel("Login ID or email").fill(id);
   await page.locator("#password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith("/login"));
+  await page.waitForURL((u) => !u.pathname.startsWith("/login") && u.pathname !== "/app"); // "/app" redirects on by role
+}
+
+/** Search-as-you-type picker: type part of the name, then choose the match. */
+async function pick(scope: Page | Locator, label: string, name: string, typed = name) {
+  const box = scope.getByRole("combobox", { name: label, exact: true }).last();
+  await box.click();
+  await box.fill(typed);
+  await box.page().getByRole("option", { name }).first().click({ timeout: 20_000 });
 }
 
 async function signOut(page: Page) {
@@ -538,15 +547,15 @@ test("allocation conflicts are not saved silently", async ({ page }) => {
   await signIn(page, owner.email, owner.password);
   await page.goto("/app/allocations");
   const form = page.locator("form", { has: page.getByRole("button", { name: "Allocate" }) });
-  await form.getByRole("combobox", { name: "Client", exact: true }).selectOption({ label: clientName });
-  await form.getByLabel("Team member").selectOption({ label: "Sonu Kumar — Executive" });
+  await pick(form, "Client", clientName);
+  await pick(form, "Team member", "Sonu Kumar — Executive", "Sonu");
   await form.getByLabel("Role on this client").selectOption("JUNIOR");
   await form.getByRole("button", { name: "Allocate" }).click();
   await expect(page.getByText("Team member allocated.")).toBeVisible();
-  await form.getByRole("combobox", { name: "Client", exact: true }).selectOption({ label: clientName });
-  await form.getByLabel("Team member").selectOption({ label: "Sonu Kumar — Executive" });
+  await pick(form, "Client", clientName);
+  await pick(form, "Team member", "Sonu Kumar — Executive", "Sonu");
   await form.getByRole("button", { name: "Allocate" }).click();
-  await expect(page.getByText(/would allocate the team member at 200%/)).toBeVisible();
+  await expect(page.getByText(/would book the team member for 7 h in the first half and 10 h in the second/)).toBeVisible();
   await page.getByRole("link", { name: "Sonu Kumar" }).first().click();
   await expect(page.getByRole("heading", { name: "Allocation history" })).toBeVisible();
 });
@@ -556,10 +565,10 @@ test("task: maker/checker cycle with waiting state; team member cannot cancel or
   await signIn(ownerPage, owner.email, owner.password);
   await ownerPage.goto("/app/tasks/new");
   await ownerPage.getByRole("textbox", { name: "Task", exact: true }).fill(`GSTR-3B September ${run}`);
-  await ownerPage.getByRole("combobox", { name: "Client", exact: true }).selectOption({ label: clientName });
+  await pick(ownerPage, "Client", clientName);
   await ownerPage.getByLabel("Priority").selectOption("HIGH");
-  await ownerPage.getByLabel("Sonu Kumar — Executive · Junior").check();
-  await ownerPage.getByLabel("Checker").selectOption({ label: "Kamal Rawat — Senior" });
+  await pick(ownerPage, "Assign to (one or more)", "Sonu Kumar — Executive", "Sonu");
+  await pick(ownerPage, "Checker", "Kamal Rawat — Senior", "Kamal");
   await ownerPage.getByLabel(/Share with the client/).check();
   await ownerPage.getByRole("button", { name: "Create task" }).click();
   await ownerPage.waitForURL(/\/app\/tasks\/[0-9a-f-]+$/);
@@ -604,12 +613,12 @@ test("team member: attendance with location, timesheet, pending item and day rep
   await expect(page.getByRole("navigation", { name: "Sections" })).toHaveCount(0);
   await page.goto("/app/timesheet?tab=dashboard"); // a staff member asking for a team view still gets the daily log
   await expect(page.getByRole("heading", { name: "Team member scorecard" })).toHaveCount(0);
-  await page.getByRole("combobox", { name: "Client", exact: true }).first().selectOption({ label: clientName });
-  await page.getByLabel("Place of work").fill("Client Office (Onsite)");
-  await page.getByLabel("Type of work").selectOption({ label: "Bank Statement Posting" });
+  await pick(page, "Client", clientName);
+  await page.getByLabel("Work location").fill("Client Office (Onsite)");
+  await page.getByLabel("Nature of work").selectOption({ label: "Bank Statement Posting" });
   await page.getByLabel("Bank name (bank / card work)").fill("HDFC Bank");
   await page.getByLabel("No. of transactions / entries").fill("120");
-  await page.getByLabel("Time — hours").fill("3");
+  await page.getByLabel("Or hours").fill("3");
   await page.getByLabel("Minutes").fill("30");
   await page.getByRole("button", { name: "Add entry" }).click();
   await expect(page.getByText("Entry added.")).toBeVisible();
@@ -640,18 +649,18 @@ test("senior returns a timesheet entry, the team member corrects it, and the sen
   await expect(sections.getByRole("link", { name: /Communication/ })).toHaveCount(0);
   await seniorPage.goto("/app/timesheet?tab=pending");
   await expect(seniorPage.getByRole("heading", { name: /Waiting for review \([1-9]/ })).toBeVisible();
-  await expect(seniorPage.getByText("Within 24 h").first()).toBeVisible();
+  await expect(seniorPage.getByText("Within window").first()).toBeVisible();
   await seniorPage.goto("/app/timesheet?tab=dashboard");
   await expect(seniorPage.getByRole("heading", { name: "Team member scorecard" })).toBeVisible();
   await expect(seniorPage.getByText("3h 30m").first()).toBeVisible();
   await seniorPage.goto("/app/timesheet?tab=tracker");
-  await seniorPage.locator('a[href^="/app/timesheet/"]').first().click();
+  await seniorPage.locator('tbody a[href^="/app/timesheet/"]').first().click();
   await seniorPage.waitForURL(/\/app\/timesheet\/[0-9a-f-]+$/);
   const entryUrl = seniorPage.url();
-  await seniorPage.getByRole("button", { name: "Return for correction" }).click();
+  await seniorPage.getByRole("button", { name: "Checked – Needs correction" }).click();
   await expect(seniorPage.getByText("Explain what needs to be corrected.")).toBeVisible(); // a reason is required
   await seniorPage.getByLabel("Review remark").fill("Transaction count looks wrong — please recheck.");
-  await seniorPage.getByRole("button", { name: "Return for correction" }).click();
+  await seniorPage.getByRole("button", { name: "Checked – Needs correction" }).click();
   await expect(seniorPage.getByText("Returned to the employee for correction.")).toBeVisible();
 
   const staffPage = await (await browser.newContext()).newPage();
@@ -666,10 +675,10 @@ test("senior returns a timesheet entry, the team member corrects it, and the sen
   await expect(staffPage.getByText("transactionCount: 120 → 112")).toBeVisible();
 
   await seniorPage.goto(entryUrl);
-  await seniorPage.getByRole("button", { name: "Mark reviewed" }).click();
+  await seniorPage.getByRole("button", { name: "Checked – OK" }).click();
   await expect(seniorPage.getByText("Marked as reviewed.")).toBeVisible();
   await seniorPage.reload();
-  await expect(seniorPage.getByRole("button", { name: "Mark reviewed" })).toHaveCount(0);
+  await expect(seniorPage.getByRole("button", { name: "Checked – OK" })).toHaveCount(0);
 
   // The day report recipient reviews it with a remark; the reporter sees the remark.
   await seniorPage.goto(dayReportUrl);
@@ -800,10 +809,533 @@ test("a second firm registers separately and never sees the first firm's clients
   await expect(page.getByText(clientName)).toHaveCount(0);
 });
 
+// ------------------------------------------------------------- client feedback, 5 Nov 2026
+
+let managerUrl = "";
+const manager = { email: `manager-${run}@e2e.invalid`, temp: "", password: "Manager-Pass-12345" };
+const peon = { email: `peon-${run}@e2e.invalid`, temp: "", password: "Peon-Pass-123456" };
+
+/** Invite → first sign-in → fill details → submit. Returns the person's signed-in page. */
+async function inviteAndSubmit(inviter: Page, browser: Browser, who: { email: string; temp: string; password: string }, name: string, role: string, access?: string) {
+  await inviter.goto("/app/employees/new");
+  await inviter.getByLabel("Full name").fill(name);
+  await inviter.getByLabel("Email").fill(who.email);
+  await inviter.getByLabel("Mobile").fill("9876543210");
+  await inviter.getByLabel("Role").selectOption({ label: role });
+  if (access) await inviter.getByLabel("Module access").selectOption({ label: access });
+  await inviter.getByRole("button", { name: "Send invitation" }).click();
+  await expect(inviter.getByText(/Invitation created/)).toBeVisible();
+  who.temp = tempPasswordIn((await mailTo(who.email, "staff.invitation")).text);
+  const page = await (await browser.newContext()).newPage();
+  await signIn(page, who.email, who.temp);
+  await page.getByRole("textbox", { name: "New password", exact: true }).fill(who.password);
+  await page.getByRole("textbox", { name: "Confirm new password" }).fill(who.password);
+  await page.getByRole("button", { name: /Save/ }).click();
+  await page.waitForURL(/\/app\/onboarding/);
+  await page.getByLabel("PAN", { exact: true }).fill("FFNPS3234F");
+  await page.getByLabel("Aadhaar number").fill("234567890123");
+  await page.getByLabel("Current address").fill("B-139, Aali Vihar, New Delhi");
+  await page.getByLabel(/submit for approval/).check();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Your details are under review" })).toBeVisible();
+  return page;
+}
+
+async function approve(approver: Page, name: string, code: string) {
+  await approver.goto("/app/employees?status=review");
+  await approver.getByRole("link", { name }).first().click();
+  await approver.waitForURL(/\/app\/employees\/[0-9a-f-]{36}/);
+  const url = approver.url();
+  await approver.getByLabel("Permanent employee ID").fill(code);
+  approver.once("dialog", (d) => d.accept());
+  await approver.getByRole("button", { name: "Approve", exact: true }).click();
+  await expect(approver.getByText(`Approved. Permanent ID ${code}.`)).toBeVisible();
+  return url;
+}
+
+test("point 1 voice notes, several reminders, one person as maker and checker, searching for people", async ({ browser }) => {
+  const page = await (await browser.newContext()).newPage();
+  const problems: string[] = [];
+  page.on("pageerror", (e) => problems.push(e.message));
+  page.on("console", (m) => { if (m.type() === "error" && /Content Security Policy|Permissions Policy|Hydration/i.test(m.text())) problems.push(m.text()); });
+  await signIn(page, staff.email, staff.password); // a team member: every role can now create tasks
+  await page.goto("/app/tasks");
+  await page.getByRole("link", { name: "New task" }).click();
+  await page.waitForURL(/\/app\/tasks\/new/);
+
+  // Record a voice note; the title may be left blank.
+  await page.getByRole("button", { name: "Record voice note" }).click();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+  await page.waitForTimeout(1500);
+  await page.getByRole("button", { name: "Stop" }).click();
+  await expect(page.locator("audio")).toHaveCount(1);
+
+  // Find people by typing.
+  await page.getByRole("combobox", { name: "Assign to (one or more)" }).fill("Son");
+  await expect(page.getByRole("option", { name: /Sonu Kumar/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: /Ramu Peon/ })).toHaveCount(0);
+  await expect(page.getByRole("option", { name: /Kamal/ })).toHaveCount(0);
+  await page.getByRole("combobox", { name: "Assign to (one or more)" }).press("Enter");
+  // Deputed alone: the maker follows, and the same person can check.
+  await expect(page.getByRole("combobox", { name: "Maker", exact: true })).toHaveValue(/Sonu Kumar/);
+  await pick(page, "Checker", "Sonu Kumar — Executive", "Sonu");
+
+  // Several reminders.
+  await page.getByRole("button", { name: "Add a reminder" }).click();
+  await page.getByRole("button", { name: "Add another reminder" }).click();
+  const future = (d: number) => new Date(Date.now() + d * 86_400_000 + 5.5 * 3_600_000).toISOString().slice(0, 16);
+  await page.getByLabel("Reminder 1", { exact: true }).fill(future(2));
+  await page.getByLabel("Reminder 2", { exact: true }).fill(future(3));
+  await page.getByRole("button", { name: "Create task" }).click();
+  await page.waitForURL(/\/app\/tasks\/[0-9a-f-]{36}$/);
+  soloTaskUrl = page.url();
+
+  await expect(page.getByRole("heading", { name: /Voice notes \(1\)/ })).toBeVisible();
+  // The stored note really loads and plays through the security policy.
+  const audio = page.locator("main audio").first();
+  await expect.poll(async () => audio.evaluate((el: HTMLAudioElement) => new Promise<number>((res) => {
+    el.addEventListener("loadedmetadata", () => res(el.readyState), { once: true });
+    el.addEventListener("error", () => res(-1), { once: true });
+    el.preload = "metadata";
+    el.load();
+  })), { timeout: 30_000 }).toBeGreaterThan(0);
+  await expect(page.locator("li").getByText("Everyone on this task")).toHaveCount(2);
+
+  // A remark can be a voice note alone.
+  await page.getByRole("button", { name: "Record voice note" }).click();
+  await page.waitForTimeout(1200);
+  await page.getByRole("button", { name: "Stop" }).click();
+  await page.getByRole("button", { name: "Post" }).click();
+  await expect(page.getByRole("heading", { name: /Voice notes \(2\)/ })).toBeVisible();
+
+  // Add one more reminder, remove one.
+  await page.getByLabel("Reminder 1", { exact: true }).fill(future(5));
+  await page.getByRole("button", { name: "Set reminder" }).click();
+  await expect(page.getByText("Reminder set.")).toBeVisible();
+  await expect(page.locator("li").getByText("Everyone on this task")).toHaveCount(3);
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "Remove", exact: true }).first().click();
+  await expect(page.getByText("Reminder removed.")).toBeVisible();
+
+  // One person makes and checks the work.
+  await page.getByRole("button", { name: "Start / resume work" }).click();
+  await expect(page.getByText("Task updated.")).toBeVisible();
+  await page.getByRole("button", { name: "Submit for review" }).click();
+  await expect(page.getByRole("button", { name: "Approve (checker)" })).toBeVisible();
+  await page.getByRole("button", { name: "Approve (checker)" }).click();
+  await expect(page.getByText("Completed", { exact: true }).first()).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
+let soloTaskUrl = "";
+
+test("point 3 allocation in hours, first half at one client and second half at another", async ({ page }) => {
+  await signIn(page, owner.email, owner.password);
+  await page.goto("/app/allocations");
+  const form = page.locator("form", { has: page.getByRole("button", { name: "Allocate" }) });
+  await expect(page.getByLabel("Share of time (%)")).toHaveCount(0);
+  await pick(form, "Client", portalClient.name);
+  await pick(form, "Team member", "Kamal Rawat — Senior", "Kamal");
+  await form.getByRole("button", { name: /^First half \(/ }).click();
+  await expect(form.getByLabel("First half (hours)")).toHaveValue("3.5");
+  await expect(form.getByLabel("Second half (hours)")).toHaveValue("0");
+  await form.getByRole("button", { name: "Allocate" }).click();
+  await expect(page.getByText("Team member allocated.")).toBeVisible();
+
+  // The second half is free, so a second client fits without a conflict…
+  await pick(form, "Client", clientName);
+  await pick(form, "Team member", "Kamal Rawat — Senior", "Kamal");
+  await form.getByRole("button", { name: /^Second half \(/ }).click();
+  await form.getByRole("button", { name: "Allocate" }).click();
+  await expect(page.getByText("Team member allocated.")).toBeVisible();
+  await expect(page.getByText("First half 3.5 h", { exact: true })).toBeVisible();
+  await expect(page.getByText("Second half 5 h", { exact: true })).toBeVisible();
+  await expect(page.getByTitle(/^First half 3\.5 of 3\.5 h, second half 5 of 5 h/).first()).toBeVisible();
+
+  // …but more hours than a half holds are refused.
+  await pick(form, "Client", clientName);
+  await pick(form, "Team member", "Sonu Kumar — Executive", "Sonu");
+  await form.getByLabel("First half (hours)").fill("6");
+  await form.getByRole("button", { name: "Allocate" }).click();
+  await expect(page.getByText("The first half has only 3.5 working hours.")).toBeVisible();
+});
+
+test("point 2 a manager given the right can add, invite and approve staff; without it they cannot", async ({ browser }) => {
+  await raiseLicenceLimit(owner.email, 20);
+  const owner1 = await (await browser.newContext()).newPage();
+  await signIn(owner1, owner.email, owner.password);
+  const managerPage = await inviteAndSubmit(owner1, browser, manager, "Sanjay Test", "Manager");
+  managerUrl = await approve(owner1, "Sanjay Test", `E2E-${run}-M`);
+
+  // A manager has no such right by default.
+  const mgr = await (await browser.newContext()).newPage();
+  await signIn(mgr, manager.email, manager.password);
+  await mgr.goto("/app/employees");
+  await expect(mgr.getByRole("link", { name: "Invite staff member" })).toHaveCount(0);
+  await mgr.goto("/app/employees/new");
+  await expect(mgr).toHaveURL(/\/app\/no-access/);
+  await managerPage.context().close();
+
+  // The owner ticks the boxes on the person's page.
+  await owner1.goto(managerUrl);
+  await owner1.getByLabel("Add & invite employees").check();
+  await owner1.getByLabel("Approve employees").check();
+  await owner1.getByRole("button", { name: "Save rights" }).click();
+  await expect(owner1.getByText("Rights updated.")).toBeVisible();
+
+  // Now the manager invites someone, and approves them.
+  await mgr.goto("/app/employees");
+  await mgr.getByRole("link", { name: "Invite staff member" }).click();
+  await expect(mgr.getByLabel("Role").locator("option", { hasText: "Administrator" })).toHaveCount(0); // no self-escalation
+  const peonPage = await inviteAndSubmit(mgr, browser, peon, "Ramu Peon", "Team member", "Attendance & payroll only");
+  await approve(mgr, "Ramu Peon", `E2E-${run}-P`);
+  await peonPage.context().close();
+  // The right is limited to staff: administration stays with administrators.
+  await mgr.goto(managerUrl);
+  await expect(mgr.getByRole("button", { name: "Save rights" })).toHaveCount(0);
+  await mgr.goto("/app/settings");
+  await expect(mgr).toHaveURL(/\/app\/no-access/);
+});
+
+test("point 2b a peon or driver reaches only attendance and payroll, in the menu and on the server", async ({ page }) => {
+  await signIn(page, peon.email, peon.password);
+  await expect(page).toHaveURL(/\/app\/attendance/);
+  const menu = page.getByRole("navigation", { name: "Application" }).first();
+  await expect(menu.getByRole("link", { name: "Attendance", exact: true })).toBeVisible();
+  await expect(menu.getByRole("link", { name: "Payroll", exact: true })).toBeVisible();
+  for (const name of ["Dashboard", "Tasks", "Timesheet", "Day reports", "Pending tracker", "Clients", "Team allocation", "Compliance"]) {
+    await expect(menu.getByRole("link", { name, exact: true }), name).toHaveCount(0);
+  }
+  for (const path of ["/app/tasks", "/app/tasks/new", "/app/timesheet", "/app/day-reports", "/app/pending", "/app/clients", "/app/allocations", "/app/compliances", "/app/observations"]) {
+    await page.goto(path);
+    await expect(page, path).toHaveURL(/\/app\/no-access/);
+  }
+  await page.goto("/app/workspace");
+  await expect(page).toHaveURL(/\/app\/attendance/); // no dashboard: straight to their module
+  await page.goto("/app");
+  await expect(page).toHaveURL(/\/app\/attendance/);
+  await page.goto("/app/search?q=GST");
+  await expect(page.getByText(clientName)).toHaveCount(0);
+  // What they do have works.
+  await page.goto("/app/attendance");
+  await page.getByRole("button", { name: "Mark in" }).click();
+  await expect(page.getByText(/Marked in/)).toBeVisible();
+  await page.goto("/app/payroll");
+  await expect(page.getByRole("heading", { name: /Payslip/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Team payroll" })).toHaveCount(0);
+  await page.goto("/app/payroll?tab=team");
+  await expect(page.getByRole("heading", { name: "Enter or change a salary" })).toHaveCount(0);
+  expect((await page.request.get("/app/payroll/export")).status()).toBe(404);
+  expect((await page.request.get("/app/timesheet/export")).status()).toBe(404);
+  expect((await page.request.get("/app/attendance/export")).status()).toBe(404);
+});
+
+test("point 3b the owner marks their own attendance; points 4 export, filters and clickable counts", async ({ page }) => {
+  await signIn(page, owner.email, owner.password);
+  await page.goto("/app/attendance");
+  await page.getByRole("button", { name: "Mark in" }).click();
+  await expect(page.getByText(/Marked in/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Mark out" })).toBeVisible();
+  await page.goto("/app/admin");
+  await expect(page.getByText("My attendance")).toBeVisible();
+
+  await page.goto("/app/attendance?tab=team");
+  const list = page.locator("#attendance-list");
+  // Present opens the list of those present.
+  await page.getByRole("link", { name: /^Present/ }).click();
+  await expect(page).toHaveURL(/status=PRESENT/);
+  await expect(list.getByRole("heading", { name: /^Present \(/ })).toBeVisible();
+  await expect(list.getByText("Ramu Peon")).toBeVisible();
+  await expect(list.getByText("Not marked")).toHaveCount(0);
+  // Not marked opens the list of those missing.
+  await page.getByRole("link", { name: /^Not marked/ }).click();
+  await expect(page).toHaveURL(/status=NOT_MARKED/);
+  await expect(list.getByRole("heading", { name: /^Not marked \(/ })).toBeVisible();
+  await expect(list.getByText("Ramu Peon")).toHaveCount(0);
+  await expect(list.getByText("Kamal Rawat")).toBeVisible();
+  // Filter by name and status.
+  await page.goto("/app/attendance?tab=team");
+  await page.getByLabel("Employee name").fill("Ramu");
+  await page.locator('form[aria-label="Filter attendance"] select[name="status"]').selectOption("PRESENT");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(list.getByText("Ramu Peon")).toBeVisible();
+  await expect(list.getByText("Kamal Rawat")).toHaveCount(0);
+  // Export gives a real Excel file with the same filters.
+  // A real click downloads the file.
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Export to Excel" }).click();
+  expect((await downloading).suggestedFilename()).toMatch(/^attendance-.*\.xlsx$/);
+  const href = await page.getByRole("link", { name: "Export to Excel" }).getAttribute("href");
+  const res = await page.request.get(href!);
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toContain("spreadsheetml");
+  const rows = readFirstSheet(new Uint8Array(await res.body()));
+  expect(rows[1]).toContain("Team member");
+  expect(rows.slice(2).map((r) => r[2])).toEqual(["Ramu Peon"]);
+  // Date range.
+  const range = await page.request.get(`/app/attendance/export?from=2026-10-01&to=2026-10-05`);
+  expect(readFirstSheet(new Uint8Array(await range.body()))[0][0]).toContain("Attendance");
+});
+
+test("point 4 timesheet carries the workbook's fields, review roles, penalties and Excel export", async ({ browser }) => {
+  const page = await (await browser.newContext()).newPage();
+  await signIn(page, staff.email, staff.password);
+  await page.goto("/app/timesheet");
+  await pick(page, "Client", clientName);
+  await page.getByLabel("Resource type").selectOption("Dedicated");
+  await page.getByLabel("Nature of work").selectOption({ label: "GSTR-1 Compilation" });
+  await page.getByLabel("Assessment year (AY)").selectOption("AY 2026-27");
+  await page.getByLabel("Work location").fill("Other Client Site");
+  await page.getByLabel("Start time").fill("10:00");
+  await page.getByLabel("End time").fill("12:30");
+  await expect(page.getByText("Hours invested: 2h 30m")).toBeVisible();
+  await page.getByLabel("Task / compliance description").fill("GSTR-1 working for September");
+  await page.getByRole("button", { name: "Add entry" }).click();
+  await expect(page.getByText("Entry added.")).toBeVisible();
+  await expect(page.getByText("10:00 – 12:30")).toBeVisible();
+
+  const lead = await (await browser.newContext()).newPage();
+  await signIn(lead, senior.email, senior.password);
+  await lead.goto(`/app/timesheet?tab=tracker`);
+  await expect(lead.getByText("GSTR-1 working for September")).toBeVisible();
+  await expect(lead.getByRole("columnheader", { name: "Reviewer (auto)" })).toBeVisible();
+  await expect(lead.getByRole("columnheader", { name: "Escalate to" })).toBeVisible();
+  await expect(lead.getByRole("columnheader", { name: "Late submission" })).toBeVisible();
+  await lead.goto("/app/timesheet?tab=dashboard");
+  await expect(lead.getByRole("heading", { name: "Penalty summary" })).toBeVisible();
+  await expect(lead.getByRole("heading", { name: "Reviewer performance" })).toBeVisible();
+  await expect(lead.getByRole("heading", { name: "Hours by assessment year" })).toBeVisible();
+  const href = await lead.getByRole("link", { name: "Export to Excel" }).getAttribute("href");
+  const res = await lead.request.get(href!);
+  expect(res.status()).toBe(200);
+  const rows = readFirstSheet(new Uint8Array(await res.body()));
+  for (const col of ["Resource Type", "Nature of Work", "Assessment Year (AY)", "Start Time", "End Time", "Hours Invested", "Reviewer (auto)", "SLA Status", "Escalate To (Level 2)", "Late Submission Penalty (Rs) - Junior", "Reviewed By (actual)"]) {
+    expect(rows[1], col).toContain(col);
+  }
+  const row = rows.find((r) => r.includes("GSTR-1 working for September"))!;
+  expect(row[rows[1].indexOf("Hours Invested")]).toBe("2.5");
+  expect(row[rows[1].indexOf("Assessment Year (AY)")]).toBe("AY 2026-27");
+});
+
+test("point 5 choosing GST shows its compliances; tracker columns, an added column, mark done and export", async ({ page }) => {
+  await signIn(page, owner.email, owner.password);
+  await page.goto("/app/compliances?dept=GST");
+  const chips = page.getByRole("group", { name: "GST compliances" });
+  await expect(chips.getByRole("link", { name: "GSTR-3B (monthly)" })).toBeVisible();
+  await expect(chips.getByRole("link", { name: "Director KYC" })).toHaveCount(0);
+  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: /^ROC/ }).click();
+  await expect(page.getByRole("group", { name: "ROC compliances" }).getByRole("link", { name: "Director KYC" })).toBeVisible();
+  await page.goto("/app/compliances?dept=GST");
+  await chips.getByRole("link", { name: "GSTR-3B (monthly)" }).click();
+  await expect(page.getByRole("heading", { name: "GSTR-3B (monthly)" })).toBeVisible();
+  await expect(page.getByText("20th of next month").first()).toBeVisible();
+
+  // Add a column of the firm's own.
+  await page.getByLabel("New column").fill("Acknowledgement no.");
+  await page.getByRole("button", { name: "Add column" }).click();
+  await expect(page.getByText("Column added.")).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Acknowledgement no." })).toHaveCount(0); // no rows yet
+
+  // In the form, the module narrows the compliance list and fills what it can.
+  const form = page.locator("form", { has: page.getByRole("button", { name: "Add to tracker" }) });
+  await expect(form.getByLabel("Compliance / licence type")).toHaveValue("GSTR-3B (monthly)");
+  await expect(form.getByLabel("Issuing authority")).toHaveValue("GST Dept");
+  await form.getByLabel("Module").selectOption("TDS");
+  await expect(form.getByLabel("Issuing authority")).toHaveValue("TDS Dept");
+  await form.getByLabel("TDS compliance").selectOption({ index: 1 });
+  await form.getByLabel("Module").selectOption("GST");
+  await form.getByLabel("GST compliance").selectOption({ label: "GSTR-3B (monthly)" });
+  await expect(form.getByLabel("Renewal frequency")).toHaveValue("Monthly");
+  await pick(form, "Client", clientName);
+  await pick(form, "Responsible person", "Sonu Kumar — Executive", "Sonu");
+  await form.getByLabel("Due date").fill("2030-03-31");
+  await form.getByLabel("Licence / registration no.").fill("07AAAAA0000A1Z5");
+  await form.getByLabel("Acknowledgement no.").fill("ACK-991");
+  await form.getByRole("button", { name: "Add to tracker" }).click();
+  await expect(page.getByText("Added to the tracker.")).toBeVisible();
+  for (const name of ["Issuing authority", "Licence / reg. no.", "Renewal frequency", "Responsible person", "Reminder lead days", "Days remaining", "Status", "Action taken", "Action taken date", "Escalated", "Acknowledgement no.", "Remarks"]) {
+    await expect(page.getByRole("columnheader", { name, exact: true }), name).toBeVisible();
+  }
+  await expect(page.getByRole("cell", { name: "ACK-991" })).toBeVisible();
+
+  // Done → the next month's row appears by itself.
+  await page.getByRole("button", { name: "Mark done" }).click();
+  await expect(page.getByText(/Marked as done\. The next one is added, due 30 Apr 2030/)).toBeVisible();
+  await expect(page.getByText("Completed", { exact: true }).last()).toBeVisible();
+
+  const res = await page.request.get("/app/compliances/export?dept=GST");
+  expect(res.status()).toBe(200);
+  const rows = readFirstSheet(new Uint8Array(await res.body()));
+  expect(rows[1]).toEqual(expect.arrayContaining(["Client Name", "Compliance / License Type", "Issuing Authority", "Days Remaining", "Action Taken (Y/N)", "Escalated", "Acknowledgement no.", "Remarks"]));
+  expect(rows.flat()).toContain("ACK-991");
+
+  // The Yes/No for the firm itself sits on the due-date calendar.
+  await page.goto("/app/compliances?tab=calendar&dept=GST");
+  const applies = page.getByLabel("Does GSTR-1 (monthly) apply to our firm?");
+  await applies.selectOption("yes");
+  await expect.poll(async () => { await page.reload(); return applies.inputValue(); }).toBe("yes");
+
+  // Team members see the calendar and their own rows, and can mark them done.
+  const staffPage = await (await page.context().browser()!.newContext()).newPage();
+  await signIn(staffPage, staff.email, staff.password);
+  await staffPage.goto("/app/compliances?dept=GST");
+  await expect(staffPage.getByRole("button", { name: "Add to tracker" })).toHaveCount(0);
+  await expect(staffPage.getByRole("button", { name: "Mark done" })).toBeVisible();
+  await staffPage.context().close();
+});
+
+test("point 6 rights to delete: staff, client, task and other entries, with a clear warning", async ({ browser }) => {
+  const page = await (await browser.newContext()).newPage();
+  await signIn(page, owner.email, owner.password);
+
+  // Task: voice notes go with it.
+  await page.goto(soloTaskUrl);
+  await page.getByRole("button", { name: "Delete" }).first().click();
+  await expect(page.getByRole("heading", { name: /^Delete task/ })).toBeVisible();
+  await page.getByRole("button", { name: "Delete permanently" }).click();
+  await page.waitForURL(/\/app\/tasks(\?|$)/);
+  await page.goto(soloTaskUrl);
+  await expect(page.getByText("This page was never filed.")).toBeVisible();
+
+  // Client: the name must be typed.
+  await page.goto("/app/clients/new/quick");
+  const doomed = `E2E Delete Me ${run}`;
+  await page.getByLabel("Trade name").fill(doomed);
+  await page.getByRole("button", { name: "Submit for approval" }).click();
+  await page.waitForURL(/\/app\/clients\/[0-9a-f-]{36}/);
+  const doomedUrl = page.url().split("?")[0];
+  await page.getByRole("button", { name: "Delete" }).first().click();
+  const confirm = page.getByRole("button", { name: "Delete permanently" });
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel(/to confirm/).fill("wrong name");
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel(/to confirm/).fill(doomed);
+  await confirm.click();
+  await page.waitForURL(/\/app\/clients(\?|$)/);
+  await page.goto(doomedUrl);
+  await expect(page.getByText("This page was never filed.")).toBeVisible();
+  // Codes keep moving forward after a deletion, so the next client never collides.
+  await page.goto("/app/clients/new/quick");
+  await page.getByLabel("Trade name").fill(`E2E After Delete ${run}`);
+  await page.getByRole("button", { name: "Submit for approval" }).click();
+  await page.waitForURL(/\/app\/clients\/[0-9a-f-]{36}/);
+
+  // Staff member: their login goes too. The owner cannot be deleted, nor oneself.
+  await page.goto("/app/employees");
+  await page.getByRole("link", { name: "Sanjay Test" }).first().click();
+  await page.waitForURL(/\/app\/employees\/[0-9a-f-]{36}/);
+  await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeVisible();
+  // Without the right, no button and no action.
+  const seniorPage = await (await browser.newContext()).newPage();
+  await signIn(seniorPage, senior.email, senior.password);
+  await seniorPage.goto("/app/clients");
+  await seniorPage.getByRole("link", { name: clientName }).first().click();
+  await expect(seniorPage.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
+  await seniorPage.context().close();
+});
+
+test("point 7 import clients from Excel: template, preview, column matching, duplicates, then import", async ({ page }) => {
+  await signIn(page, owner.email, owner.password);
+  await page.goto("/app/clients");
+  await page.getByRole("link", { name: "Import from Excel" }).click();
+  await page.waitForURL(/\/app\/clients\/import/);
+  const template = await page.request.get("/app/clients/import/template");
+  expect(template.status()).toBe(200);
+  expect(readFirstSheet(new Uint8Array(await template.body()))[0]).toContain("Client Name");
+
+  // A sheet in the firm's own layout, with a title row and columns the import must ignore.
+  const gstin = `07AAAAA${String(Date.now()).slice(-4)}A1Z5`;
+  const sheet = buildXlsx([{ name: "12. Client Details", title: "12. CLIENT DETAILS", rows: [
+    ["S.No.", "Client Code", "Client Name (as used in office)", "Legal Name (as per PAN / GST)", "Visit Days", "Services Taken", "Constitution", "GSTIN", "PAN", "Contact Person", "Mobile", "Email", "Address", "Place of Work", "Billing Basis", "Fee (₹)", "Status"],
+    [1, `IMP-${run}-1`, `Bansi Import ${run}`, "Bansi Institutional Supplies", 307, "Internal Audit, GST Return Filing", "Pvt Ltd", gstin, "ABCDE1234F", "Ravi", "+91 98765 43210", "ravi@example.com", "Naraina", "Client Office (Onsite)", "Monthly Retainer", "5,000", "Active"],
+    [2, "", `Bad Identifiers ${run}`, "", 1, "", "Partnership", "BADGSTIN", "BADPAN", "", "123", "nope", "", "", "", "abc", "On Hold"],
+    [3, "", clientName, "", 1, "", "", "", "", "", "", "", "", "", "", "", ""],
+    [4, "", "", "No name here", 1, "", "", "", "", "", "", "", "", "", "", "", ""],
+  ] }]);
+  const file = { name: "clients.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(sheet) };
+  await page.locator('input[type="file"]').setInputFiles(file);
+
+  await expect(page.getByRole("heading", { name: "2. Check the columns" })).toBeVisible();
+  await expect(page.getByLabel("Client Name (as used in office)")).toHaveValue("tradeName");
+  await expect(page.getByLabel("Visit Days")).toHaveValue("");
+  await expect(page.getByText("Already registered: " + clientName)).toBeVisible();
+  await expect(page.getByText("Client name is empty")).toBeVisible();
+  await expect(page.getByText(/GSTIN BADGSTIN is not valid/)).toBeVisible();
+  await page.getByRole("button", { name: "Import 2 clients" }).click();
+  await expect(page.getByText(/2 clients imported\. 2 rows were skipped/).first()).toBeVisible();
+
+  // What was imported is complete, and importing again duplicates nothing.
+  await page.goto(`/app/clients?q=${encodeURIComponent(`Bansi Import ${run}`)}`);
+  await page.getByRole("link", { name: `Bansi Import ${run}` }).first().click();
+  await expect(page.getByText(`IMP-${run}-1`).first()).toBeVisible();
+  await expect(page.getByText(gstin).first()).toBeVisible();
+  await page.goto("/app/clients/import");
+  await page.locator('input[type="file"]').setInputFiles(file);
+  await expect(page.getByText(`Already registered: Bansi Import ${run}`)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import 0 clients" })).toBeDisabled();
+
+  // Not an Excel file.
+  await page.locator('input[type="file"]').setInputFiles(pdf("clients.pdf"));
+  await expect(page.getByText(/Upload an Excel \.xlsx file/)).toBeVisible();
+});
+
+test("payroll: the owner enters a salary; pay follows attendance; the register exports", async ({ browser }) => {
+  const page = await (await browser.newContext()).newPage();
+  await signIn(page, owner.email, owner.password);
+  await page.goto("/app/payroll?tab=team");
+  await pick(page, "Team member", "Ramu Peon", "Ramu");
+  await page.getByLabel("Salary (₹)").fill("15000");
+  await page.getByRole("button", { name: "Save salary" }).click();
+  await expect(page.getByText("Salary saved.")).toBeVisible();
+  await expect(page.getByRole("cell", { name: /Ramu Peon/ })).toBeVisible();
+  const res = await page.request.get("/app/payroll/export");
+  expect(res.status()).toBe(200);
+  const rows = readFirstSheet(new Uint8Array(await res.body()));
+  expect(rows.find((r) => r.includes("Ramu Peon"))).toContain("15000");
+  const peonPage = await (await browser.newContext()).newPage();
+  await signIn(peonPage, peon.email, peon.password);
+  await peonPage.goto("/app/payroll");
+  await expect(peonPage.getByText("₹ 15,000.00")).toBeVisible();
+  await peonPage.context().close();
+});
+
+test("the interface switches to Hindi across pages, keeps names as entered, and the public site stays English", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("pageerror", (e) => problems.push(e.message));
+  page.on("console", (m) => { if (m.type() === "error" && /hydrat|did not match/i.test(m.text())) problems.push(m.text()); });
+  await signIn(page, owner.email, owner.password);
+  await page.goto("/app/tasks");
+  await page.getByRole("button", { name: "हिन्दी" }).click();
+  const menu = page.getByRole("navigation", { name: "एप्लिकेशन" }).first();
+  await expect(menu.getByRole("link", { name: "टास्क", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "टास्क", exact: true })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "hi");
+  // Server pages and interactive (client-rendered) forms alike.
+  await page.goto("/app/tasks/new");
+  await expect(page.getByRole("button", { name: "वॉइस नोट रिकॉर्ड करें" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "टास्क बनाएँ" })).toBeVisible();
+  for (const [path, text] of [["/app/attendance?tab=team", "टीम की उपस्थिति"], ["/app/compliances", "अनुपालन"], ["/app/payroll", "पेरोल"], ["/app/employees", "कर्मचारी"], ["/app/clients", "क्लाइंट"], ["/app/allocations", "टीम आवंटन"], ["/app/timesheet", "टाइमशीट"]] as const) {
+    await page.goto(path);
+    await expect(page.getByText(text, { exact: true }).first(), path).toBeVisible();
+  }
+  // Client names stay as they were typed.
+  await page.goto("/app/clients");
+  await expect(page.getByRole("link", { name: clientName }).last()).toBeVisible();
+  // The public website stays in English.
+  await page.goto("/help");
+  await expect(page.getByRole("link", { name: "टास्क" })).toHaveCount(0);
+  // Back to English.
+  await page.goto("/app/tasks");
+  await page.getByRole("button", { name: "EN", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Tasks", exact: true })).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
 test("key pages fit a tablet viewport (768px) without horizontal scroll", async ({ browser }) => {
   const page = await (await browser.newContext({ viewport: { width: 768, height: 1024 } })).newPage();
   await signIn(page, owner.email, owner.password);
-  for (const path of ["/app/admin", "/app/clients", "/app/tasks", "/app/timesheet?tab=tracker", "/app/pending", "/app/reports/clients", "/app/dues", "/app/observations", "/app/profile", "/app/settings?tab=lists"]) {
+  for (const path of ["/app/admin", "/app/clients", "/app/tasks", "/app/timesheet?tab=tracker", "/app/pending", "/app/reports/clients", "/app/dues", "/app/observations", "/app/profile", "/app/settings?tab=lists", "/app/compliances", "/app/payroll?tab=team", "/app/attendance?tab=team", "/app/clients/import", "/app/allocations", "/app/tasks/new"]) {
     await page.goto(path);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow, `horizontal overflow on ${path}`).toBeLessThanOrEqual(0);
@@ -813,7 +1345,7 @@ test("key pages fit a tablet viewport (768px) without horizontal scroll", async 
 test("app and portal pages are usable at phone width (no horizontal page scroll)", async ({ browser }) => {
   const page = await (await browser.newContext({ viewport: { width: 375, height: 812 } })).newPage();
   await signIn(page, owner.email, owner.password);
-  for (const path of ["/app/admin", "/app/clients", "/app/clients/approvals", "/app/tasks", "/app/tasks?view=board", "/app/attendance", "/app/timesheet", "/app/pending", "/app/allocations", "/app/settings?tab=roles", "/app/dues", "/app/observations", "/app/profile"]) {
+  for (const path of ["/app/admin", "/app/clients", "/app/clients/approvals", "/app/tasks", "/app/tasks?view=board", "/app/attendance", "/app/attendance?tab=team", "/app/compliances", "/app/payroll?tab=team", "/app/clients/import", "/app/tasks/new", "/app/timesheet", "/app/pending", "/app/allocations", "/app/settings?tab=roles", "/app/dues", "/app/observations", "/app/profile"]) {
     await page.goto(path);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow, `horizontal overflow on ${path}`).toBeLessThanOrEqual(0);
@@ -851,4 +1383,115 @@ test("visual check screenshots at desktop, tablet and phone widths", async ({ br
     await client.goto(path);
     await client.screenshot({ path: `test-results/visual/phone-portal${path.replace(/\//g, "_")}.png` });
   }
+});
+
+
+// Last, because they remove people and clients the tests above use.
+test("point 1 several reminders all fire; compliance reminder and escalation reach the right people", async ({ browser }) => {
+  const page = await (await browser.newContext()).newPage();
+  await signIn(page, owner.email, owner.password);
+  const title = `Two reminders ${run}`;
+  await page.goto("/app/tasks/new");
+  await page.getByRole("textbox", { name: "Task", exact: true }).fill(title);
+  await pick(page, "Assign to (one or more)", "Sonu Kumar — Executive", "Sonu");
+  await page.getByRole("button", { name: "Add a reminder" }).click();
+  await page.getByRole("button", { name: "Add another reminder" }).click();
+  const future = (d: number) => new Date(Date.now() + d * 86_400_000 + 5.5 * 3_600_000).toISOString().slice(0, 16);
+  await page.getByLabel("Reminder 1", { exact: true }).fill(future(2));
+  await page.getByLabel("Reminder 2", { exact: true }).fill(future(3));
+  await page.getByRole("button", { name: "Create task" }).click();
+  await page.waitForURL(/\/app\/tasks\/[0-9a-f-]{36}$/);
+  await makeRemindersDue(title);
+
+  await page.goto("/app/compliances?dept=GST");
+  const form = page.locator("form", { has: page.getByRole("button", { name: "Add to tracker" }) });
+  await form.getByLabel("Compliance / licence type").fill(`Due soon ${run}`);
+  await pick(form, "Responsible person", "Sonu Kumar — Executive", "Sonu");
+  await form.getByLabel("Due date").fill(new Date(Date.now() + 2 * 86_400_000 + 5.5 * 3_600_000).toISOString().slice(0, 10));
+  await form.getByRole("button", { name: "Add to tracker" }).click();
+  await expect(page.getByText("Added to the tracker.")).toBeVisible();
+
+  const sonu = await (await browser.newContext()).newPage();
+  await signIn(sonu, staff.email, staff.password);
+  await sonu.goto("/app/notifications");
+  await sonu.reload();
+  await expect(sonu.getByText(`Reminder: ${title}`)).toHaveCount(2);
+  await expect(sonu.getByText(new RegExp(`Due soon ${run} for the firm: due in`))).toBeVisible();
+  await page.goto("/app/notifications");
+  await page.reload();
+  await expect(page.getByText(new RegExp(`Escalated: Due soon ${run}`))).toBeVisible();
+  await sonu.context().close();
+});
+
+test("point 6 deleting a staff member and clients with real history: nothing breaks, logins stop, hours stay", async ({ browser }) => {
+  const page = await (await browser.newContext()).newPage();
+  await signIn(page, owner.email, owner.password);
+  // A senior logs time against the client, to prove hours survive the client's deletion.
+  const lead = await (await browser.newContext()).newPage();
+  await signIn(lead, senior.email, senior.password);
+  await lead.goto("/app/timesheet?tab=daily");
+  await pick(lead, "Client", clientName);
+  await lead.getByLabel("Or hours").fill("2");
+  await lead.getByRole("button", { name: "Add entry" }).click();
+  await expect(lead.getByText("Entry added.")).toBeVisible();
+
+  const remove = async (name: string) => {
+    await page.getByRole("button", { name: "Delete", exact: true }).first().click();
+    await page.getByLabel(/to confirm/).fill(name);
+    await page.getByRole("button", { name: "Delete permanently" }).click();
+  };
+
+  // Staff member with attendance, timesheets, tasks as maker, allocations, a day report, compliance rows.
+  await page.goto("/app/employees");
+  await page.getByRole("link", { name: "Sonu Kumar" }).last().click();
+  await page.waitForURL(/\/app\/employees\/[0-9a-f-]{36}/);
+  await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeVisible();
+  await remove("Sonu Kumar");
+  await page.waitForURL(/\/app\/employees(\?|$)/);
+  await expect(page.getByRole("link", { name: "Sonu Kumar" })).toHaveCount(0);
+  await page.goto("/login");
+  const gone = await (await browser.newContext()).newPage();
+  await gone.goto("/login");
+  await gone.getByLabel("Login ID or email").fill(staff.email);
+  await gone.locator("#password").fill(staff.password);
+  await gone.getByRole("button", { name: "Sign in" }).click();
+  await expect(gone).toHaveURL(/\/login/);
+  await expect(gone.getByRole("alert").first()).toBeVisible();
+  await gone.context().close();
+  // Their tasks stay.
+  await page.goto("/app/tasks?scope=all&state=all");
+  await expect(page.getByRole("link", { name: `Two reminders ${run}` }).last()).toBeVisible();
+
+  // Client with tasks, allocations, pending items, dues, reports and hours.
+  await page.goto(`/app/clients?q=${encodeURIComponent(clientName)}`);
+  await page.getByRole("link", { name: clientName }).last().click();
+  await page.waitForURL(/\/app\/clients\/[0-9a-f-]{36}/);
+  await remove(clientName);
+  await page.waitForURL(/\/app\/clients(\?|$)/);
+  await page.goto(`/app/clients?q=${encodeURIComponent(clientName)}`);
+  await expect(page.getByText("No clients found")).toBeVisible();
+  await lead.goto("/app/timesheet?tab=daily");
+  await expect(lead.getByText(clientName).first()).toBeVisible();
+
+  // Client with a portal login: the login stops working.
+  await page.goto(`/app/clients?q=${encodeURIComponent(portalClient.name)}`);
+  await page.getByRole("link", { name: portalClient.name }).last().click();
+  await page.waitForURL(/\/app\/clients\/[0-9a-f-]{36}/);
+  await remove(portalClient.name);
+  await page.waitForURL(/\/app\/clients(\?|$)/);
+  const portal = await (await browser.newContext()).newPage();
+  await portal.goto("/login");
+  await portal.getByLabel("Login ID or email").fill(portalClient.email);
+  await portal.locator("#password").fill(portalClient.newPassword);
+  await portal.getByRole("button", { name: "Sign in" }).click();
+  await expect(portal).toHaveURL(/\/login/);
+  await portal.context().close();
+
+  // The owner has no delete button on their own record; other entries can go too.
+  await page.goto("/app/attendance?tab=team");
+  const row = page.locator("#attendance-list tbody tr", { hasText: "Ramu Peon" });
+  await row.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Delete permanently" }).click();
+  await expect(row.getByText("Not marked")).toBeVisible();
+  await lead.context().close();
 });

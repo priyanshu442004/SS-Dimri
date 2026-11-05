@@ -181,7 +181,8 @@ export async function toggleListItemAction(kind: "designation" | "work_type", id
   });
 }
 
-const preferencesSchema = z.object({ pendingDaysBasis: z.enum(["CALENDAR", "BUSINESS"]), approvalGraceDays: zInt(0, 90) });
+const preferencesSchema = z.object({
+  timesheetPenaltyRupees: z.coerce.number().int().min(0).max(100000).default(100), pendingDaysBasis: z.enum(["CALENDAR", "BUSINESS"]), approvalGraceDays: zInt(0, 90) });
 
 export async function savePreferencesAction(_p: ActionState, fd: FormData): Promise<ActionState> {
   const parsed = parseForm(preferencesSchema, fd);
@@ -189,7 +190,7 @@ export async function savePreferencesAction(_p: ActionState, fd: FormData): Prom
   return safeAction(async () => {
     const ctx = await actionContext("org.manage");
     await prisma.$transaction(async (tx) => {
-      await tx.organization.update({ where: { id: ctx.organization.id }, data: { pendingDaysBasis: parsed.data.pendingDaysBasis, approvalGraceDays: parsed.data.approvalGraceDays } });
+      await tx.organization.update({ where: { id: ctx.organization.id }, data: { timesheetPenaltyRupees: parsed.data.timesheetPenaltyRupees, pendingDaysBasis: parsed.data.pendingDaysBasis, approvalGraceDays: parsed.data.approvalGraceDays } });
       await audit(tx, ctx, "organization.preferences_updated", "organization", ctx.organization.id, parsed.data);
     });
     revalidatePath("/app", "layout");

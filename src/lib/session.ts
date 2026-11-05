@@ -4,12 +4,17 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { can, type Capability, type Role } from "@/lib/permissions";
+import { can, landingPath, moduleOf, type Capability, type Role } from "@/lib/permissions";
 import { clientAccess, staffAccess, type AccessInfo } from "@/lib/domain/approval-access";
 
 export type AppContext = {
   user: { id: string; name: string; email: string; username: string | null };
   role: Role;
+  /** Rights given to this person on top of their role. Check with can(ctx, ...). */
+  grantedCapabilities: string[];
+  /** true = only `allowedModules` are usable. */
+  moduleRestricted: boolean;
+  allowedModules: string[];
   membershipId: string;
   mustChangePassword: boolean;
   tempPasswordExpiresAt: Date | null;
@@ -42,6 +47,9 @@ export const getContext = cache(async (): Promise<AppContext | null> => {
     select: {
       id: true,
       role: true,
+      grantedCapabilities: true,
+      moduleRestricted: true,
+      allowedModules: true,
       mustChangePassword: true,
       tempPasswordExpiresAt: true,
       organization: { select: { id: true, tradeName: true, timezone: true, pendingDaysBasis: true, approvalGraceDays: true } },
@@ -65,6 +73,9 @@ export const getContext = cache(async (): Promise<AppContext | null> => {
   return {
     user: { id: u.id, name: u.name, email: u.email, username: u.username ?? null },
     role: membership.role as Role,
+    grantedCapabilities: membership.grantedCapabilities,
+    moduleRestricted: membership.moduleRestricted,
+    allowedModules: membership.allowedModules,
     membershipId: membership.id,
     mustChangePassword: membership.mustChangePassword,
     tempPasswordExpiresAt: membership.tempPasswordExpiresAt,
@@ -116,7 +127,11 @@ export function isAwaitingApproval(ctx: AppContext) {
 export async function requireCapability(capability: Capability): Promise<AppContext> {
   const ctx = await requireContext();
   if (isAwaitingApproval(ctx)) redirect("/app/onboarding");
-  if (!can(ctx.role, capability)) redirect("/app/no-access");
+  if (!can(ctx, capability)) {
+    // A closed dashboard is not an error: support staff simply start on their own module.
+    if (moduleOf(capability) === "dashboard") redirect(landingPath(ctx));
+    redirect("/app/no-access");
+  }
   return ctx;
 }
 
@@ -132,7 +147,7 @@ export async function actionContext(capability?: Capability): Promise<AppContext
   if (!ctx) throw new AuthorizationError("Your session has expired. Please sign in again.");
   if (ctx.mustChangePassword && ctx.role !== "CLIENT") throw new AuthorizationError("Set your own password first.");
   if (capability && isAwaitingApproval(ctx)) throw new AuthorizationError("Your access period has ended. You can continue once an administrator approves your account.");
-  if (capability && !can(ctx.role, capability)) throw new AuthorizationError();
+  if (capability && !can(ctx, capability)) throw new AuthorizationError();
   if (!capability && ctx.role === "CLIENT") throw new AuthorizationError(); // internal actions without a capability are staff-only
   return ctx;
 }

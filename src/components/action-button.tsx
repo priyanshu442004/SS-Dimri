@@ -3,6 +3,7 @@
 import { useTransition, type ReactNode } from "react";
 import { buttonClass } from "@/components/ui";
 import { toast } from "@/components/toaster";
+import { t } from "@/lib/i18n";
 
 type Result = { ok?: boolean; message?: string } | void;
 
@@ -28,7 +29,7 @@ export function ActionButton({
       aria-busy={pending}
       className={buttonClass(variant, size)}
       onClick={() => {
-        if (confirm && !window.confirm(confirm)) return;
+        if (confirm && !window.confirm(t(confirm))) return;
         start(async () => {
           const r = await action();
           if (r && r.ok === false) toast(r.message ?? "That didn't work. Please try again.", "error");

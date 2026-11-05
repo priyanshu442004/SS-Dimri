@@ -18,7 +18,7 @@ const STATUS_TABS = [
 ];
 
 export default async function ClientsPage({ searchParams }: PageProps<"/app/clients">) {
-  const ctx = await requireCapability("app.use"); // list is scoped per user below
+  const ctx = await requireCapability("clients.use"); // list is scoped per user below
   const sp = await searchParams;
   const status = typeof sp.status === "string" && STATUS_TABS.some((t) => t.key === sp.status) ? sp.status : "all";
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
@@ -76,11 +76,12 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
     <>
       <PageHeader icon={<Building2 />}
         title="Clients"
-        description={can(ctx.role, "clients.view_all") ? "All registered businesses." : "Clients you are allocated to or have tasks for."}
+        description={can(ctx, "clients.view_all") ? "All registered businesses." : "Clients you are allocated to or have tasks for."}
         actions={
           <>
-            {can(ctx.role, "clients.approve") && <LinkButton variant="secondary" href="/app/clients/approvals">Approval queue{pendingCount ? ` (${pendingCount})` : ""}</LinkButton>}
-            {can(ctx.role, "clients.register") && <LinkButton href="/app/clients/new">Register a client</LinkButton>}
+            {can(ctx, "clients.approve") && <LinkButton variant="secondary" href="/app/clients/approvals">Approval queue{pendingCount ? ` (${pendingCount})` : ""}</LinkButton>}
+            {can(ctx, "clients.import") && <LinkButton variant="secondary" href="/app/clients/import">Import from Excel</LinkButton>}
+            {can(ctx, "clients.register") && <LinkButton href="/app/clients/new">Register a client</LinkButton>}
           </>
         }
       />
@@ -110,7 +111,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
       </form>
 
       {clients.length === 0 ? (
-        <EmptyState kind="clients" title="No clients found" action={can(ctx.role, "clients.register") && <LinkButton href="/app/clients/new">Register a client</LinkButton>}>
+        <EmptyState kind="clients" title="No clients found" action={can(ctx, "clients.register") && <LinkButton href="/app/clients/new">Register a client</LinkButton>}>
           {q || serviceId ? "Try a different search or filter." : "Registered clients will appear here."}
         </EmptyState>
       ) : (

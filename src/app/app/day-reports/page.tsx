@@ -14,7 +14,7 @@ import { FileText } from "lucide-react";
 export default async function DayReportsPage({ searchParams }: PageProps<"/app/day-reports">) {
   const ctx = await requireCapability("dayreport.submit");
   const sp = await searchParams;
-  const all = can(ctx.role, "dayreport.view_all");
+  const all = can(ctx, "dayreport.view_all");
   const tab = sp.tab === "received" ? "received" : sp.tab === "all" && all ? "all" : "mine";
   const today = isoDateInTz(new Date(), ctx.organization.timezone);
   const date = typeof sp.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : today;

@@ -10,7 +10,7 @@ export async function GET(_req: Request, { params }: RouteContext<"/app/letters/
   const ctx = await getContext();
   const { id } = await params;
   if (!ctx || ctx.role === "CLIENT" || ctx.mustChangePassword || !/^[0-9a-f-]{36}$/i.test(id)) return new NextResponse("Not found", { status: 404 });
-  const doc = await loadHrDocument(ctx, id, can(ctx.role, "employees.manage") && !isAwaitingApproval(ctx));
+  const doc = await loadHrDocument(ctx, id, can(ctx, "employees.manage") && !isAwaitingApproval(ctx));
   if (!doc?.file) return new NextResponse("Not found", { status: 404 });
   const title = doc.type === "letter" ? `${LETTERS[doc.kind].title} – ${doc.employee.firstName}` : `Memo ${doc.memoNumber ?? ""}`;
   return new NextResponse(printableHtml(title, await renderStoredLetter(doc.file.objectKey)), {

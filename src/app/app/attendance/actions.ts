@@ -4,14 +4,16 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { parseForm, safeAction, zOptionalText, type ActionState } from "@/lib/actions";
 import { actionContext } from "@/lib/session";
-import { correctAttendance, correctionSchema, decideLeave, leaveSchema, markAttendance, markSchema, requestLeave } from "@/lib/services/attendance";
+import { correctAttendance, correctionSchema, decideLeave, ensureAdminEmployee, leaveSchema, markAttendance, markSchema, requestLeave } from "@/lib/services/attendance";
 
 export async function markAction(kind: "in" | "out", _p: ActionState, fd: FormData): Promise<ActionState> {
   const parsed = parseForm(markSchema, fd);
   if (!parsed.success) return parsed.state;
   return safeAction(async () => {
     const ctx = await actionContext("attendance.mark_own");
-    const r = await markAttendance(ctx, kind, parsed.data, fd);
+    // The owner and administrators get their attendance record at their first mark-in.
+    const me = await ensureAdminEmployee(ctx);
+    const r = await markAttendance(me, kind, parsed.data, fd);
     revalidatePath("/app/attendance");
     return { ok: true, message: kind === "in" ? (r.late ? "Marked in (after the 9:45 grace time)." : "Marked in.") : "Marked out." };
   });

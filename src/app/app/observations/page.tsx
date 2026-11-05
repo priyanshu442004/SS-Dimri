@@ -15,11 +15,11 @@ const UUID = /^[0-9a-f-]{36}$/i;
 
 /** Client observations register (Page 56). */
 export default async function ObservationsPage({ searchParams }: PageProps<"/app/observations">) {
-  const ctx = await requireCapability("app.use");
+  const ctx = await requireCapability("observations.use");
   const sp = await searchParams;
   const state = sp.state === "closed" ? "closed" : sp.state === "all" ? "all" : "open";
   const clientId = typeof sp.client === "string" && UUID.test(sp.client) ? sp.client : "";
-  const manager = can(ctx.role, "observations.manage");
+  const manager = can(ctx, "observations.manage");
 
   const where: Prisma.ClientObservationWhereInput = {
     AND: [

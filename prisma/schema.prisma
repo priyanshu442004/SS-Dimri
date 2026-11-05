@@ -289,6 +289,8 @@ enum TaskAttachmentKind {
   IMAGE
   DOCUMENT
   OTHER
+  /// Voice note recorded in the browser (WhatsApp-style).
+  AUDIO
 }
 
 enum ReminderChannel {
@@ -491,30 +493,31 @@ model User {
   accounts    Account[]
   memberships OrganizationMembership[]
 
-  approvedClients       Client[]               @relation("ClientApprovedBy")
-  rejectedClients       Client[]               @relation("ClientRejectedBy")
-  createdClients        Client[]               @relation("ClientCreatedBy")
-  approvedEmployees     Employee[]             @relation("EmployeeApprovedBy")
-  rejectedEmployees     Employee[]             @relation("EmployeeRejectedBy")
-  uploadedFiles         StoredFile[]
-  auditLogs             AuditLog[]
-  createdAllocations    TeamAllocation[]
-  createdTasks          Task[]                 @relation("TaskCreatedBy")
-  taskActivities        TaskActivity[]
-  createdReminders      TaskReminder[]
-  assignedTasks         TaskAssignment[]       @relation("TaskAssignedBy")
-  decidedLeaveRequests  LeaveRequest[]         @relation("LeaveDecidedBy")
-  recordedAttendance    AttendanceRecord[]     @relation("AttendanceRecordedBy")
-  createdPendingItems   PendingItem[]
-  generatedClientReport ClientReport[]
-  createdSalaryRecords  EmployeeSalaryRecord[]
-  createdDues           ClientDue[]
-  notifications         Notification[]
-  attendanceCorrections AttendanceCorrection[]
-  followUps             FollowUp[]
-  reviewedTimesheets    TimesheetEntry[]       @relation("TimesheetReviewedBy")
-  createdObservations   ClientObservation[]    @relation("ObservationCreatedBy")
-  issuedLetters         EmployeeLetter[]       @relation("LetterIssuedBy")
+  approvedClients          Client[]               @relation("ClientApprovedBy")
+  rejectedClients          Client[]               @relation("ClientRejectedBy")
+  createdClients           Client[]               @relation("ClientCreatedBy")
+  approvedEmployees        Employee[]             @relation("EmployeeApprovedBy")
+  rejectedEmployees        Employee[]             @relation("EmployeeRejectedBy")
+  uploadedFiles            StoredFile[]
+  auditLogs                AuditLog[]
+  createdAllocations       TeamAllocation[]
+  createdTasks             Task[]                 @relation("TaskCreatedBy")
+  taskActivities           TaskActivity[]
+  createdReminders         TaskReminder[]
+  assignedTasks            TaskAssignment[]       @relation("TaskAssignedBy")
+  decidedLeaveRequests     LeaveRequest[]         @relation("LeaveDecidedBy")
+  recordedAttendance       AttendanceRecord[]     @relation("AttendanceRecordedBy")
+  createdPendingItems      PendingItem[]
+  generatedClientReport    ClientReport[]
+  createdSalaryRecords     EmployeeSalaryRecord[]
+  createdDues              ClientDue[]
+  notifications            Notification[]
+  attendanceCorrections    AttendanceCorrection[]
+  followUps                FollowUp[]
+  reviewedTimesheets       TimesheetEntry[]       @relation("TimesheetReviewedBy")
+  createdObservations      ClientObservation[]    @relation("ObservationCreatedBy")
+  issuedLetters            EmployeeLetter[]       @relation("LetterIssuedBy")
+  createdComplianceEntries ComplianceEntry[]      @relation("ComplianceCreatedBy")
 
   @@map("users")
 }
@@ -653,41 +656,46 @@ model Organization {
   constitution   Constitution?       @relation(fields: [constitutionId], references: [id], onDelete: Restrict)
   profilePicture StoredFile?         @relation("OrganizationProfilePicture", fields: [profilePictureFileId], references: [id], onDelete: SetNull)
 
-  certificate         OrganizationCertificate?
-  memberships         OrganizationMembership[]
-  documents           OrganizationDocument[]
-  previousCompanies   OrganizationPreviousCompany[]
-  files               StoredFile[]                  @relation("OrganizationFiles")
-  auditLogs           AuditLog[]
-  constitutionMembers ConstitutionMember[]
-  clients             Client[]
-  departments         Department[]
-  services            Service[]
-  clientServices      ClientService[]
-  designations        Designation[]
-  employeeNatures     EmployeeNatureOption[]
-  employees           Employee[]
-  teamAllocations     TeamAllocation[]
-  tasks               Task[]
-  attendanceRecords   AttendanceRecord[]
-  leaveBalances       LeaveBalance[]
-  leaveRequests       LeaveRequest[]
-  timesheetEntries    TimesheetEntry[]
-  pendingItems        PendingItem[]
-  dayReports          DayReport[]
-  workCommitments     WorkCommitment[]
-  clientReports       ClientReport[]
-  clientDues          ClientDue[]
-  attendancePolicy    AttendancePolicy?
-  workTypes           WorkType[]
-  notifications       Notification[]
-  followUps           FollowUp[]
-  pendingDaysBasis    PendingDaysBasis              @default(CALENDAR) @map("pending_days_basis")
+  certificate            OrganizationCertificate?
+  memberships            OrganizationMembership[]
+  documents              OrganizationDocument[]
+  previousCompanies      OrganizationPreviousCompany[]
+  files                  StoredFile[]                    @relation("OrganizationFiles")
+  auditLogs              AuditLog[]
+  constitutionMembers    ConstitutionMember[]
+  clients                Client[]
+  departments            Department[]
+  services               Service[]
+  clientServices         ClientService[]
+  designations           Designation[]
+  employeeNatures        EmployeeNatureOption[]
+  employees              Employee[]
+  teamAllocations        TeamAllocation[]
+  tasks                  Task[]
+  attendanceRecords      AttendanceRecord[]
+  leaveBalances          LeaveBalance[]
+  leaveRequests          LeaveRequest[]
+  timesheetEntries       TimesheetEntry[]
+  pendingItems           PendingItem[]
+  dayReports             DayReport[]
+  workCommitments        WorkCommitment[]
+  clientReports          ClientReport[]
+  clientDues             ClientDue[]
+  attendancePolicy       AttendancePolicy?
+  workTypes              WorkType[]
+  notifications          Notification[]
+  followUps              FollowUp[]
+  pendingDaysBasis       PendingDaysBasis                @default(CALENDAR) @map("pending_days_basis")
   /// Days a pending staff member or client may use their account before approval (0 = no access until approved).
-  approvalGraceDays   Int                           @default(7) @map("approval_grace_days")
-  observations        ClientObservation[]
-  emails              EmailOutbox[]
-  employeeLetters     EmployeeLetter[]
+  approvalGraceDays      Int                             @default(7) @map("approval_grace_days")
+  /// Flat charge per timesheet breach, as in the firm's Team Timesheet workbook.
+  timesheetPenaltyRupees Int                             @default(100) @map("timesheet_penalty_rupees")
+  complianceEntries      ComplianceEntry[]
+  complianceColumns      ComplianceColumn[]
+  complianceSettings     OrganizationComplianceSetting[]
+  observations           ClientObservation[]
+  emails                 EmailOutbox[]
+  employeeLetters        EmployeeLetter[]
 
   @@index([pan])
   @@index([gstin])
@@ -727,6 +735,11 @@ model OrganizationMembership {
   mustChangePassword    Boolean          @default(false) @map("must_change_password")
   /// Emailed temporary password stops working after this time (admin can resend the invitation).
   tempPasswordExpiresAt DateTime?        @map("temp_password_expires_at") @db.Timestamptz(3)
+  /// Rights given to this person on top of their role (see src/lib/permissions.ts).
+  grantedCapabilities   String[]         @default([]) @map("granted_capabilities")
+  /// true = only `allowedModules` are usable (e.g. peon, driver: attendance and payroll).
+  moduleRestricted      Boolean          @default(false) @map("module_restricted")
+  allowedModules        String[]         @default([]) @map("allowed_modules")
   createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -929,6 +942,7 @@ model Client {
   registrationChannel       ClientRegistrationChannel @default(STAFF) @map("registration_channel")
   portalMemberships         OrganizationMembership[]
   observations              ClientObservation[]
+  complianceEntries         ComplianceEntry[]
 
   @@unique([organizationId, clientCode])
   @@index([organizationId, status])
@@ -1283,6 +1297,9 @@ model Employee {
   /// Set when the employee submits onboarding details for admin approval.
   onboardingSubmittedAt    DateTime?            @map("onboarding_submitted_at") @db.Timestamptz(3)
   taskReviews              TaskReview[]
+  allocationsReportedTo    TeamAllocation[]     @relation("AllocationReportsTo")
+  allocationsLed           TeamAllocation[]     @relation("AllocationTeamLeader")
+  complianceEntries        ComplianceEntry[]    @relation("ComplianceResponsible")
   responsibleObservations  ClientObservation[]  @relation("ObservationResponsible")
 
   @@unique([organizationId, temporaryEmployeeCode])
@@ -1538,8 +1555,18 @@ model TeamAllocation {
   seniorityLevel       SeniorityLevel?  @map("seniority_level")
   startDate            DateTime         @map("start_date") @db.Date
   endDate              DateTime?        @map("end_date") @db.Date
-  /// Optional share of the employee's capacity (0-100) for availability views.
+  /// Superseded by the first/second half hours below; kept so history is not lost.
   allocationPercent    Int?             @map("allocation_percent")
+  /// Hours assigned in the first half (start of day to lunch). Both null = full day.
+  firstHalfHours       Decimal?         @map("first_half_hours") @db.Decimal(4, 2)
+  /// Hours assigned in the second half (lunch to end of day).
+  secondHalfHours      Decimal?         @map("second_half_hours") @db.Decimal(4, 2)
+  /// Dedicated / Shared / Backend Team (Team Timesheet workbook).
+  resourceType         String?          @map("resource_type")
+  /// Immediate reviewer of this person's timesheet for this client (Reviewer auto).
+  reportsToEmployeeId  String?          @map("reports_to_employee_id") @db.Uuid
+  /// Level-2 escalation contact for this client.
+  teamLeaderEmployeeId String?          @map("team_leader_employee_id") @db.Uuid
   status               AllocationStatus @default(ACTIVE)
   replacesAllocationId String?          @unique @map("replaces_allocation_id") @db.Uuid
   changeReason         String?          @map("change_reason") @db.Text
@@ -1551,6 +1578,8 @@ model TeamAllocation {
   client             Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
   clientService      ClientService?  @relation(fields: [clientServiceId], references: [id], onDelete: SetNull)
   employee           Employee        @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  reportsTo          Employee?       @relation("AllocationReportsTo", fields: [reportsToEmployeeId], references: [id], onDelete: SetNull)
+  teamLeader         Employee?       @relation("AllocationTeamLeader", fields: [teamLeaderEmployeeId], references: [id], onDelete: SetNull)
   replacesAllocation TeamAllocation? @relation("AllocationChange", fields: [replacesAllocationId], references: [id], onDelete: SetNull)
   replacedBy         TeamAllocation? @relation("AllocationChange")
   createdBy          User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
@@ -1653,12 +1682,14 @@ model TaskAssignment {
 
 /// "Attached artifact" — images and documents for quick task creation.
 model TaskAttachment {
-  id        String             @id @default(uuid(7)) @db.Uuid
-  taskId    String             @map("task_id") @db.Uuid
-  fileId    String             @unique @map("file_id") @db.Uuid
-  kind      TaskAttachmentKind
-  caption   String?
-  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  id              String             @id @default(uuid(7)) @db.Uuid
+  taskId          String             @map("task_id") @db.Uuid
+  fileId          String             @unique @map("file_id") @db.Uuid
+  kind            TaskAttachmentKind
+  caption         String?
+  /// Length of a voice note.
+  durationSeconds Int?               @map("duration_seconds")
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
 
   task Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
   file StoredFile @relation("TaskAttachmentFile", fields: [fileId], references: [id], onDelete: Restrict)
@@ -1833,6 +1864,13 @@ model TimesheetEntry {
   /// 10B: details & status of work done.
   workDetails      String?     @map("work_details") @db.Text
   workStatus       WorkStatus? @map("work_status")
+  /// Workbook columns: Dedicated / Shared / Backend Team.
+  resourceType     String?     @map("resource_type")
+  /// e.g. "AY 2026-27".
+  assessmentYear   String?     @map("assessment_year")
+  /// This task's time block ("HH:MM" in the firm's timezone); hours derive from it.
+  startTime        String?     @map("start_time") @db.VarChar(5)
+  endTime          String?     @map("end_time") @db.VarChar(5)
   createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -2151,8 +2189,82 @@ model ComplianceItem {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  entries  ComplianceEntry[]
+  settings OrganizationComplianceSetting[]
+
   @@index([department])
   @@map("compliance_items")
+}
+
+/// Per-firm answer to "Applies to the firm itself?" for a compliance (master data column I).
+model OrganizationComplianceSetting {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  complianceItemId String   @map("compliance_item_id") @db.Uuid
+  appliesToFirm    Boolean  @default(false) @map("applies_to_firm")
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  item         ComplianceItem @relation(fields: [complianceItemId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, complianceItemId])
+  @@map("organization_compliance_settings")
+}
+
+/// Extra column a firm adds to its compliance tracker; values live in compliance_entries.custom_values.
+model ComplianceColumn {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  label          String
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, label])
+  @@map("compliance_columns")
+}
+
+/// One tracked filing or licence renewal (Compliance Tracker workbook). Days remaining,
+/// status and escalation are DERIVED from due date and action taken (domain/compliance.ts).
+model ComplianceEntry {
+  id                    String    @id @default(uuid(7)) @db.Uuid
+  organizationId        String    @map("organization_id") @db.Uuid
+  /// Null = the firm's own compliance.
+  clientId              String?   @map("client_id") @db.Uuid
+  /// Department / module, e.g. GST. Selecting it narrows the compliance list.
+  department            String
+  complianceItemId      String?   @map("compliance_item_id") @db.Uuid
+  /// Compliance / licence type, e.g. "GSTR-3B (Monthly) (Sep-2026)".
+  complianceType        String    @map("compliance_type")
+  issuingAuthority      String?   @map("issuing_authority")
+  registrationNumber    String?   @map("registration_number")
+  dueDate               DateTime  @map("due_date") @db.Date
+  frequency             String?
+  responsibleEmployeeId String?   @map("responsible_employee_id") @db.Uuid
+  reminderLeadDays      Int       @default(7) @map("reminder_lead_days")
+  actionTaken           Boolean   @default(false) @map("action_taken")
+  actionTakenOn         DateTime? @map("action_taken_on") @db.Date
+  remarks               String?   @db.Text
+  /// Values of the firm's extra columns: { [compliance_columns.id]: string }.
+  customValues          Json      @default("{}") @map("custom_values")
+  /// One-time reminder and escalation notices (avoid repeats).
+  reminderSentAt        DateTime? @map("reminder_sent_at") @db.Timestamptz(3)
+  escalatedAt           DateTime? @map("escalated_at") @db.Timestamptz(3)
+  createdById           String?   @map("created_by_id") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client?         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  item         ComplianceItem? @relation(fields: [complianceItemId], references: [id], onDelete: SetNull)
+  responsible  Employee?       @relation("ComplianceResponsible", fields: [responsibleEmployeeId], references: [id], onDelete: SetNull)
+  createdBy    User?           @relation("ComplianceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, department, dueDate])
+  @@index([clientId])
+  @@index([responsibleEmployeeId])
+  @@map("compliance_entries")
 }
 
 /// Leave & Timing Policy parameters, one row per organization. Configurable

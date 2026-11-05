@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availabilityOn, findConflicts } from "@/lib/domain/allocation";
+import { availabilityOn, capacityFromPolicy, describeHours, findConflicts } from "@/lib/domain/allocation";
 import { evaluateDay, summarizeMonth, type PolicyParams } from "@/lib/domain/attendance-policy";
 import { availableActions, canPerform, nextStatus } from "@/lib/domain/task-workflow";
 import { daysPending, isTaskOverdue, workHours } from "@/lib/domain/derived";
@@ -62,8 +62,10 @@ describe("task workflow", () => {
     expect(nextStatus("COMPLETED", "submit")).toBeNull();
     expect(nextStatus("CANCELLED", "approve")).toBeNull();
   });
-  it("a maker can never approve their own work", () => {
-    expect(canPerform({ role: "OWNER", employeeId: "maker", isAssignee: true }, parties, "approve")).toBe(false);
+  it("a maker with a different named checker cannot approve; one person can hold both jobs", () => {
+    expect(canPerform({ role: "STAFF", employeeId: "maker", isAssignee: true }, parties, "approve")).toBe(false);
+    expect(canPerform({ role: "STAFF", employeeId: "solo", isAssignee: true }, { makerEmployeeId: "solo", checkerEmployeeId: "solo" }, "approve")).toBe(true);
+    expect(canPerform({ role: "SENIOR", employeeId: "solo", isAssignee: true }, { makerEmployeeId: "solo", checkerEmployeeId: null }, "approve")).toBe(false);
   });
   it("only the named checker (or an admin) approves", () => {
     expect(canPerform({ role: "SENIOR", employeeId: "someone", isAssignee: false }, parties, "approve")).toBe(false);
@@ -153,18 +155,38 @@ describe("attendance policy (provisional)", () => {
   });
 });
 
-describe("team allocation conflicts", () => {
-  const span = (s: string, e: string | null, pct: number | null) => ({ startDate: dateOnly(s), endDate: e ? dateOnly(e) : null, allocationPercent: pct });
-  it("full-time overlapping allocations conflict", () => {
-    expect(findConflicts(span("2026-11-01", "2026-11-30", null), [span("2026-11-15", null, null)]).isConflict).toBe(true);
+describe("team allocation in hours", () => {
+  const cap = capacityFromPolicy({ officeStart: "09:30", lunchStart: "13:00", lunchEnd: "13:30", officeEnd: "18:30" });
+  const span = (s: string, e: string | null, first: number | null, second: number | null) => ({ startDate: dateOnly(s), endDate: e ? dateOnly(e) : null, firstHalfHours: first, secondHalfHours: second });
+  it("takes each half's capacity from the timing policy", () => {
+    expect(cap).toEqual({ first: 3.5, second: 5 });
   });
-  it("partial allocations up to 100% do not conflict; non-overlapping never conflict", () => {
-    expect(findConflicts(span("2026-11-01", "2026-11-30", 50), [span("2026-11-01", null, 50)]).isConflict).toBe(false);
-    expect(findConflicts(span("2026-11-01", "2026-11-10", null), [span("2026-11-11", null, null)]).isConflict).toBe(false);
+  it("two full days on overlapping dates conflict", () => {
+    expect(findConflicts(span("2026-11-01", null, null, null), [span("2026-11-10", "2026-11-20", null, null)], cap).isConflict).toBe(true);
   });
-  it("availability levels", () => {
-    expect(availabilityOn(dateOnly("2026-11-05"), [span("2026-11-01", null, 50)]).level).toBe("partial");
-    expect(availabilityOn(dateOnly("2026-12-05"), [span("2026-11-01", "2026-11-30", 50)]).level).toBe("free");
+  it("first half at one client and second half at another do not conflict", () => {
+    const r = findConflicts(span("2026-11-01", null, 3.5, 0), [span("2026-11-01", null, 0, 5)], cap);
+    expect(r.isConflict).toBe(false);
+    expect(r.firstHours).toBe(3.5);
+    expect(r.secondHours).toBe(5);
+  });
+  it("too many hours in one half conflict even if the day total would fit", () => {
+    expect(findConflicts(span("2026-11-01", null, 2, 0), [span("2026-11-01", null, 2, 0)], cap).isConflict).toBe(true);
+  });
+  it("allocations that never meet do not add up", () => {
+    const r = findConflicts(span("2026-11-01", "2026-11-30", 3, 0), [span("2026-10-01", "2026-10-15", 3, 0), span("2026-12-01", null, 3, 0)], cap);
+    expect(r.isConflict).toBe(false);
+  });
+  it("availability reflects booked hours per half", () => {
+    const spans = [span("2026-11-01", null, 2, 1)];
+    expect(availabilityOn(dateOnly("2026-10-31"), spans, cap).level).toBe("free");
+    expect(availabilityOn(dateOnly("2026-11-02"), spans, cap)).toMatchObject({ level: "partial", first: 2, second: 1 });
+    expect(availabilityOn(dateOnly("2026-11-02"), [span("2026-11-01", null, null, null)], cap).level).toBe("busy");
+  });
+  it("describes hours in words", () => {
+    expect(describeHours({ firstHalfHours: null, secondHalfHours: null }, cap)).toBe("Full day");
+    expect(describeHours({ firstHalfHours: 3.5, secondHalfHours: 0 }, cap)).toBe("First half 3.5 h");
+    expect(describeHours({ firstHalfHours: 2, secondHalfHours: 1.5 }, cap)).toBe("First half 2 h · Second half 1.5 h");
   });
 });
 

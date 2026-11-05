@@ -38,8 +38,8 @@ export function SignInForm() {
     }
     // The server decides the destination from the account's role and status.
     // `next` is only honoured for same-site app paths.
-    router.replace(next && /^\/(app|client)(\/|$)/.test(next) ? next : "/app");
-    router.refresh();
+    // A full load, so the portal starts cleanly in the language chosen on this device.
+    window.location.assign(next && /^\/(app|client)(\/|$)/.test(next) ? next : "/app");
   }
 
   return (

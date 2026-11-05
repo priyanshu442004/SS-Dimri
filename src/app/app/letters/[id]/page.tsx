@@ -16,7 +16,7 @@ export default async function LetterPage({ params }: PageProps<"/app/letters/[id
   const ctx = await requireContext();
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const manage = can(ctx.role, "employees.manage") && !isAwaitingApproval(ctx);
+  const manage = can(ctx, "employees.manage") && !isAwaitingApproval(ctx);
   const doc = await loadHrDocument(ctx, id, manage);
   if (!doc?.file) notFound();
   const sheet = await renderStoredLetter(doc.file.objectKey);

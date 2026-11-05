@@ -17,6 +17,7 @@ import {
   saveOnboarding,
 } from "@/lib/services/employees";
 import type { MailResult } from "@/lib/services/mailer";
+import { isGrantable, MODULES, type ModuleKey } from "@/lib/permissions";
 
 const mailNote = (m: MailResult, to: string) =>
   m.status === "SENT" ? `An email was sent to ${to}.` : m.status === "SKIPPED" ? `No email sent to ${to} (test address).` : `The email to ${to} could NOT be sent (${m.error}). Use “Resend invitation” once email works.`;
@@ -25,7 +26,7 @@ export async function createEmployeeAction(_p: ActionState, fd: FormData): Promi
   const parsed = parseForm(createEmployeeSchema, fd);
   if (!parsed.success) return parsed.state;
   return safeAction(async () => {
-    const ctx = await actionContext("employees.manage");
+    const ctx = await actionContext("employees.invite");
     const r = await createEmployeeLogin(ctx, parsed.data);
     revalidatePath("/app/employees");
     return { ok: r.mail.status !== "FAILED", message: `Invitation created. ${mailNote(r.mail, r.email)}` };
@@ -60,7 +61,7 @@ export async function decideOnboardingAction(employeeId: string, _p: ActionState
   const parsed = parseForm(decisionSchema, fd);
   if (!parsed.success) return parsed.state;
   return safeAction(async () => {
-    const ctx = await actionContext("employees.manage");
+    const ctx = await actionContext("employees.approve");
     const mail = await decideOnboarding(ctx, employeeId, parsed.data);
     revalidatePath(`/app/employees/${employeeId}`);
     revalidatePath("/app/employees");
@@ -79,7 +80,7 @@ export async function resetPasswordAction(employeeId: string, _p: ActionState): 
 
 export async function resendInvitationAction(employeeId: string): Promise<ActionState> {
   return safeAction(async () => {
-    const ctx = await actionContext("employees.manage");
+    const ctx = await actionContext("employees.invite");
     const mail = await resendInvitation(ctx, employeeId);
     revalidatePath(`/app/employees/${employeeId}`);
     if (mail.status === "FAILED") return { ok: false, message: `The email could not be sent: ${mail.error}` };
@@ -141,5 +142,38 @@ export async function updateAccessAction(employeeId: string, _p: ActionState, fd
     });
     revalidatePath(`/app/employees/${employeeId}`);
     return { ok: true, message: "Saved." };
+  });
+}
+
+const rightsSchema = z.object({
+  "rights[]": z.array(z.string()).default([]),
+  moduleAccess: z.enum(["FULL", "CUSTOM"]),
+  "modules[]": z.array(z.string()).default([]),
+});
+
+/** Extra rights and module access for one person. Only the owner and administrators can change these. */
+export async function updateRightsAction(employeeId: string, _p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(rightsSchema, fd);
+  if (!parsed.success) return parsed.state;
+  const v = parsed.data;
+  return safeAction(async () => {
+    const ctx = await actionContext("access.manage");
+    const m = await prisma.organizationMembership.findFirst({ where: { employeeId, organizationId: ctx.organization.id }, select: { id: true, role: true, userId: true } });
+    if (!m) throw new BusinessRuleError("This person has no login yet.");
+    if (m.role === "OWNER") throw new BusinessRuleError("The owner always has full access.");
+    if (m.userId === ctx.user.id) throw new BusinessRuleError("You cannot change your own rights. Ask another administrator.");
+    const rights = [...new Set(v["rights[]"])].filter(isGrantable);
+    const modules = [...new Set(v["modules[]"])].filter((k): k is ModuleKey => k in MODULES);
+    const restricted = v.moduleAccess === "CUSTOM";
+    if (restricted && modules.length === 0) throw new BusinessRuleError("Tick at least one module, or choose “Everything their role allows”.");
+    await prisma.$transaction(async (tx) => {
+      await tx.organizationMembership.update({
+        where: { id: m.id },
+        data: { grantedCapabilities: rights, moduleRestricted: restricted, allowedModules: restricted ? modules : [] },
+      });
+      await audit(tx, ctx, "employee.rights_updated", "employee", employeeId, { rights, moduleRestricted: restricted, modules: restricted ? modules : [] });
+    });
+    revalidatePath(`/app/employees/${employeeId}`);
+    return { ok: true, message: "Rights updated." };
   });
 }

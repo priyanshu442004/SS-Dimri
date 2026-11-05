@@ -8,6 +8,8 @@ import { clientActions, type ClientStatus } from "@/lib/domain/client-workflow";
 import { daysPending, isTaskOverdue } from "@/lib/domain/derived";
 import { clientScope } from "@/lib/services/clients";
 import { ActionButton } from "@/components/action-button";
+import { DeleteButton } from "@/components/delete-dialog";
+import { canDelete } from "@/lib/services/deletions";
 import { Badge, Card, DetailList, EmptyState, humanize, Notice, PageHeader, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
 import {
   addContactAction, addEngagementAction, addGstinAction, addRepresentativeAction, removeContactAction, removeGstinAction,
@@ -21,7 +23,7 @@ import { ContactForm, DetailsForm, DocumentForm, EngagementForm, GstinForm, Port
 const TABS = ["overview", "details", "registration", "services", "documents", "portal", "activity"] as const;
 
 export default async function ClientDetailPage({ params, searchParams }: PageProps<"/app/clients/[id]">) {
-  const ctx = await requireCapability("app.use");
+  const ctx = await requireCapability("clients.use");
   const { id } = await params;
   const sp = await searchParams;
   const tab = TABS.includes(sp.tab as never) ? (sp.tab as (typeof TABS)[number]) : "overview";
@@ -29,8 +31,8 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   const allowed = await prisma.client.findFirst({ where: { AND: [clientScope(ctx), { id }] }, select: { id: true } });
   const c = allowed ? await getFull(allowed.id) : null;
   if (!c) notFound();
-  const edit = can(ctx.role, "clients.edit");
-  const viewAll = can(ctx.role, "clients.view_all");
+  const edit = can(ctx, "clients.edit");
+  const viewAll = can(ctx, "clients.view_all");
   const base = `/app/clients/${c.id}`;
 
   return (
@@ -38,6 +40,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
       <PageHeader
         title={c.tradeName}
         back={{ href: "/app/clients", label: "Clients" }}
+        actions={canDelete(ctx, "client") && <DeleteButton entity="client" id={c.id} redirectTo="/app/clients" />}
         description={
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-mono">{c.clientCode}</span>
@@ -60,7 +63,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         ]}
       />
 
-      {tab === "overview" && <Overview c={c} role={ctx.role} edit={edit} viewAll={viewAll} basis={ctx.organization.pendingDaysBasis} />}
+      {tab === "overview" && <Overview c={c} role={ctx} edit={edit} viewAll={viewAll} basis={ctx.organization.pendingDaysBasis} />}
 
       {tab === "details" && edit && (
         <Card className="max-w-4xl">
@@ -115,7 +118,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
                       <Td className="font-medium">{m.fullName}</Td>
                       <Td>{humanize(m.role)}</Td>
                       <Td className="text-xs">{[m.mobile, m.email].filter(Boolean).join(" · ") || "—"}</Td>
-                      <Td className="text-xs">{can(ctx.role, "org.manage") ? `${m.pan ?? "—"} / ${m.aadhaarLast4 ? `XXXX ${m.aadhaarLast4}` : "—"}` : "Restricted"}</Td>
+                      <Td className="text-xs">{can(ctx, "org.manage") ? `${m.pan ?? "—"} / ${m.aadhaarLast4 ? `XXXX ${m.aadhaarLast4}` : "—"}` : "Restricted"}</Td>
                       <Td>{edit && <ActionButton variant="ghost" confirm={`Remove ${m.fullName}?`} action={removeRepresentativeAction.bind(null, c.id, m.id)}>Remove</ActionButton>}</Td>
                     </tr>
                   ))}
@@ -131,7 +134,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         </div>
       )}
 
-      {tab === "portal" && edit && <PortalTab clientId={c.id} organizationId={ctx.organization.id} canDisable={can(ctx.role, "clients.approve")} />}
+      {tab === "portal" && edit && <PortalTab clientId={c.id} organizationId={ctx.organization.id} canDisable={can(ctx, "clients.approve")} />}
       {tab === "activity" && viewAll && <ActivityTab clientId={c.id} organizationId={ctx.organization.id} />}
       {tab === "services" && <ServicesTab c={c} edit={edit} organizationId={ctx.organization.id} />}
 

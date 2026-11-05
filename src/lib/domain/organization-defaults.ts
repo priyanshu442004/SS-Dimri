@@ -23,6 +23,13 @@ export const DEFAULT_EMPLOYEE_NATURES = [
   { label: "On-site", sourceWording: "On-site", sortOrder: 3 },
 ] as const;
 
+/** Natures of work from the firm's Team Timesheet workbook that the master pack does not list. */
+export const WORKBOOK_WORK_TYPES = [
+  "Sales Entry", "Purchase Entry", "Payment Mode Reconciliation", "GSTR-1 Compilation", "GSTR-3B Compilation", "TDS Reconciliation", "GST Liability Working",
+  "PNL Preparation / Comparison", "GSTR-3B Reconciliation & Drafting", "Books Finalisation", "Audit Data Entry", "Audit Data Compilation", "Audit Coordination with Client",
+  "Backend Training (Fresher)", "Team Supervision / Mentoring", "Client Site Visit (Review/Monitoring)", "Waiting - Client Not Available", "System / Portal Downtime", "Documentation",
+] as const;
+
 export async function createOrganizationDefaults(tx: Prisma.TransactionClient, organizationId: string) {
   await tx.designation.createMany({
     data: DEFAULT_DESIGNATIONS.map((d) => ({ ...d, organizationId })),
@@ -60,7 +67,10 @@ export async function createOrganizationDefaults(tx: Prisma.TransactionClient, o
     skipDuplicates: true,
   });
   await tx.workType.createMany({
-    data: master.workTypes.map((w, i) => ({ organizationId, code: w.code, name: w.name, sortOrder: i + 1 })),
+    data: [
+      ...master.workTypes.map((w, i) => ({ organizationId, code: w.code as string | null, name: w.name, sortOrder: i + 1 })),
+      ...WORKBOOK_WORK_TYPES.map((name, i) => ({ organizationId, code: null, name, sortOrder: 100 + i })),
+    ],
     skipDuplicates: true,
   });
   await tx.attendancePolicy.upsert({ where: { organizationId }, update: {}, create: { organizationId } });

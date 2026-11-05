@@ -21,7 +21,7 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
 
   return (
     <AppShell
-      nav={navFor(ctx.role, awaiting, !!ctx.employee)}
+      nav={navFor(ctx, awaiting, !!ctx.employee)}
       badges={badges}
       orgName={ctx.organization.tradeName}
       userName={ctx.employee ? `${ctx.employee.firstName} ${ctx.employee.lastName ?? ""}`.trim() : ctx.user.name}
@@ -46,11 +46,11 @@ async function navBadges(ctx: Awaited<ReturnType<typeof requireContext>>): Promi
   const org = ctx.organization.id;
   const me = ctx.employee?.id ?? NO_EMPLOYEE;
   const [clients, onboarding, reviews, overdue, pending] = await Promise.all([
-    can(ctx.role, "clients.approve") ? prisma.client.count({ where: { organizationId: org, status: "PENDING_APPROVAL" } }) : 0,
-    can(ctx.role, "employees.manage")
+    can(ctx, "clients.approve") ? prisma.client.count({ where: { organizationId: org, status: "PENDING_APPROVAL" } }) : 0,
+    can(ctx, "employees.approve")
       ? prisma.employee.count({ where: { organizationId: org, approvalStatus: { in: ["PENDING", "UNDER_REVIEW"] }, onboardingSubmittedAt: { not: null } } })
       : 0,
-    can(ctx.role, "tasks.review") ? prisma.task.count({ where: { organizationId: org, status: "PENDING_REVIEW", checkerEmployeeId: me } }) : 0,
+    can(ctx, "tasks.use") ? prisma.task.count({ where: { organizationId: org, status: "PENDING_REVIEW", checkerEmployeeId: me } }) : 0,
     prisma.task.count({ where: { organizationId: org, status: { in: OPEN_STATUSES }, dueAt: { lt: new Date() }, assignments: { some: { employeeId: me, removedAt: null } } } }),
     prisma.pendingItem.count({ where: { organizationId: org, status: { not: "CLOSED" }, pendingWithEmployeeId: me } }),
   ]);

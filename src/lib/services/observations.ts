@@ -14,7 +14,7 @@ import { canMoveObservation } from "@/lib/domain/observation-workflow";
 
 /** Leads see every observation in the organization; others see those assigned to them. */
 export function observationScope(ctx: AppContext): Prisma.ClientObservationWhereInput {
-  return can(ctx.role, "observations.manage")
+  return can(ctx, "observations.manage")
     ? { organizationId: ctx.organization.id }
     : { organizationId: ctx.organization.id, responsibleEmployeeId: ctx.employee?.id ?? NO_EMPLOYEE };
 }
@@ -29,7 +29,7 @@ export const observationSchema = z.object({
 });
 
 export async function createObservation(ctx: AppContext, v: z.infer<typeof observationSchema>) {
-  if (!can(ctx.role, "observations.manage")) throw new BusinessRuleError("You cannot log observations.");
+  if (!can(ctx, "observations.manage")) throw new BusinessRuleError("You cannot log observations.");
   const org = ctx.organization.id;
   const [client, task, service, employee] = await Promise.all([
     prisma.client.findFirst({ where: { id: v.clientId, organizationId: org }, select: { id: true, tradeName: true } }),
@@ -66,7 +66,7 @@ export const observationUpdateSchema = z.object({
 export async function updateObservation(ctx: AppContext, id: string, v: z.infer<typeof observationUpdateSchema>) {
   const o = await prisma.clientObservation.findFirst({ where: { id, ...observationScope(ctx) } });
   if (!o) throw new BusinessRuleError("Observation not found.");
-  const manager = can(ctx.role, "observations.manage");
+  const manager = can(ctx, "observations.manage");
   if (v.status && v.status !== o.status) {
     if (!canMoveObservation(o.status, v.status)) throw new BusinessRuleError(`An observation cannot move from ${o.status.toLowerCase()} to ${v.status.toLowerCase()}.`);
     if (v.status === "CLOSED" && !manager) throw new BusinessRuleError("Only a manager can close an observation.");

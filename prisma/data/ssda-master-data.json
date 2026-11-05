@@ -549,6 +549,12 @@
       "code": "PRI-03",
       "label": "C – Occasional",
       "description": "One-time / annual"
+    },
+    {
+      "basis": "PLACE_OF_WORK",
+      "code": "PLC-05",
+      "label": "Other Client Site",
+      "description": "A different client site visited the same day"
     }
   ],
   "constitutions": [

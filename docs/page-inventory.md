@@ -68,7 +68,9 @@ Roles: **O** Owner · **A** Administrator · **M** Manager · **S** Senior · **
 | `/app/reports/clients/[id]/export` | O A M | Client-facing CSV (no internal remarks), audited | as above |
 | `/app/dues` | O A M | Fees & dues overview: outstanding, overdue, by client, agreed fees | `client_dues`, `client_services` |
 | `/app/services`, `/[id]` | O A | Service catalogue & departments; edit, publish, deactivate | `services`, `departments` |
-| `/app/compliances` | all staff | Compliance calendar reference | `compliance_items` |
+| `/app/compliances` | all staff (rows: responsible person; leads all) | Choose a module (GST…) to see its compliances; tracker with the Compliance Tracker workbook's columns, extra columns, mark done (next period added automatically), due-date calendar, Excel export | `compliance_items`, `compliance_entries`, `compliance_columns`, `organization_compliance_settings` |
+| `/app/payroll` | own payslip: all staff; team: `payroll.manage` | Monthly pay from attendance and approved leave, salary entry, Excel register | `employee_salary_records`, `attendance_records`, `leave_requests` |
+| `/app/clients/import` | `clients.import` | Excel import: template, column matching, row preview, duplicates skipped | `clients` and children |
 | `/app/settings` | O A | Organization, certificate, leave & timing policy, lists & preferences (designations, work types, pending-days basis, timezone), roles & permissions, audit log | `organizations`, `attendance_policies`, `designations`, `work_types`, `audit_logs` |
 
 ## 4. Key workflows

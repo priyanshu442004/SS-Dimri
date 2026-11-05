@@ -26,7 +26,7 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/files/[i
       employeeLetter: { select: { employeeId: true } },
       attendanceTimeInPhoto: { select: { employeeId: true } },
       attendanceTimeOutPhoto: { select: { employeeId: true } },
-      taskAttachment: { select: { task: { select: { assignments: { select: { employeeId: true } } } } } },
+      taskAttachment: { select: { task: { select: { makerEmployeeId: true, checkerEmployeeId: true, createdById: true, assignments: { select: { employeeId: true } } } } } },
       clientDocument: { select: { clientId: true } },
       clientProfilePicture: { select: { id: true } },
       clientMsmeCertificate: { select: { id: true } },
@@ -57,14 +57,15 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/files/[i
     allowed = !!ctx.client && clientOwner === ctx.client.id;
   } else if (employeeOwner) {
     // Personal identity / HR documents: the employee themself or HR administrators.
-    allowed = employeeOwner === me || can(ctx.role, "employees.manage");
+    allowed = employeeOwner === me || can(ctx, "employees.manage") || can(ctx, "employees.approve");
   } else if (attendanceOwner) {
-    allowed = attendanceOwner === me || can(ctx.role, "attendance.view_all");
+    allowed = attendanceOwner === me || can(ctx, "attendance.view_all");
   } else if (file.taskAttachment) {
-    allowed = can(ctx.role, "tasks.view_all") || file.taskAttachment.task.assignments.some((a) => a.employeeId === me);
+    const task = file.taskAttachment.task;
+    allowed = can(ctx, "tasks.view_all") || task.createdById === ctx.user.id || task.makerEmployeeId === me || task.checkerEmployeeId === me || task.assignments.some((a) => a.employeeId === me);
   } else {
     // Organization and client documents: internal staff with client access.
-    allowed = can(ctx.role, "clients.view_all");
+    allowed = can(ctx, "clients.view_all");
   }
   if (!allowed) return new NextResponse("Not found", { status: 404 });
 

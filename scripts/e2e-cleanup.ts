@@ -4,8 +4,10 @@
 import { loadEnvConfig } from "@next/env";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { applyLocalNeonProxy } from "../src/lib/neon-local";
 
 loadEnvConfig(process.cwd());
+applyLocalNeonProxy();
 const prisma = new PrismaClient({ adapter: new PrismaNeon({ connectionString: process.env.DATABASE_URL! }) });
 
 async function main() {
@@ -28,6 +30,7 @@ async function main() {
 
   await prisma.$transaction(
     [
+      prisma.complianceEntry.deleteMany({ where: org }),
       prisma.followUp.deleteMany({ where: org }),
       prisma.clientObservation.deleteMany({ where: org }),
       prisma.notification.deleteMany({ where: org }),

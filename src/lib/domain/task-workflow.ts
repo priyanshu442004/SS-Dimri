@@ -10,7 +10,7 @@
 //
 // "Overdue" is not a status: it is derived from due_at (see derived.ts).
 
-import type { Role } from "@/lib/permissions";
+import type { Member, Role } from "@/lib/permissions";
 import { can } from "@/lib/permissions";
 
 export type TaskStatus =
@@ -60,6 +60,8 @@ export function nextStatus(current: TaskStatus, action: TaskAction): TaskStatus 
 
 export type TaskActor = {
   role: Role;
+  /** The member's own rights and module limits, when known. */
+  member?: Member;
   employeeId: string | null;
   isAssignee: boolean;
 };
@@ -72,8 +74,9 @@ export type TaskParties = {
 /**
  * Whether `actor` may perform `action`. Team members can only move their own
  * assigned work forward; review actions need the review capability and, when
- * a checker is named, must be performed by that checker. A maker may never
- * approve their own work (separation of duties).
+ * a checker is named, must be performed by that checker. One person may be both
+ * maker and checker when deputed alone on a job (client feedback, 5 Nov 2026);
+ * if no checker is named, a maker still cannot approve their own work.
  */
 export function canPerform(actor: TaskActor, task: TaskParties, action: TaskAction): boolean {
   const isMaker = !!actor.employeeId && actor.employeeId === task.makerEmployeeId;
@@ -84,16 +87,15 @@ export function canPerform(actor: TaskActor, task: TaskParties, action: TaskActi
     case "wait_client":
     case "wait_team":
     case "submit":
-      return actor.isAssignee || isMaker || can(actor.role, "tasks.review");
+      return actor.isAssignee || isMaker || can(actor.member ?? actor.role, "tasks.review");
     case "approve":
     case "request_changes":
-      if (isMaker) return false;
-      if (task.checkerEmployeeId) return isChecker || can(actor.role, "org.manage");
-      return can(actor.role, "tasks.review");
+      if (task.checkerEmployeeId) return isChecker || can(actor.member ?? actor.role, "org.manage");
+      return !isMaker && can(actor.member ?? actor.role, "tasks.review");
     case "cancel":
-      return can(actor.role, "tasks.cancel");
+      return can(actor.member ?? actor.role, "tasks.cancel");
     case "reopen":
-      return can(actor.role, "tasks.review");
+      return can(actor.member ?? actor.role, "tasks.review");
   }
 }
 

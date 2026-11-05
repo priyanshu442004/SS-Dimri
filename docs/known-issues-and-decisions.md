@@ -55,3 +55,17 @@ Ordered by impact. "Current behaviour" is reversible; nothing below is enforced 
 8. **Deactivation workflow**: show open work when disabling a person and offer reassignment (K-7).
 9. **Scheduler** for reminders and overdue notices once external channels exist (L-4).
 10. **Nonce-based CSP** (L-11).
+
+## Client feedback of 5 Nov 2026: decisions taken
+
+| Point | Decision |
+|---|---|
+| Voice notes | Recorded in the browser (MP4 where supported, otherwise WebM), up to 5 minutes, stored privately like any attachment. A task may have a voice note instead of a typed title. Team members are notified. |
+| Maker and checker | May now be the same person. With no checker named, the old rule stays: a maker cannot approve their own work. |
+| Allocation in hours | `first_half_hours` / `second_half_hours` replace the percentage. Each half's capacity comes from the timing policy (default 3.5 h and 5 h). Both blank = full day. `allocation_percent` stays in the table, converted at migration, so nothing is lost; drop it once the firm is happy. |
+| Timesheet | The Team Timesheet workbook's Daily Log columns are all in the system. Reviewer and Escalate To come from the allocation (Reports To, Team Leader), then the person's manager, then the owner. Penalties are calculated and reported (₹100 per breach, editable in Settings); they do not deduct from payroll. |
+| Compliance | Selecting a module shows that module's compliances. The tracker follows `Compliance_Tracker.xlsx`. **Open:** the feedback says a new column was "updated in Excel file", but that updated file was not among the files received. Until it arrives: the master pack's "Applies to SSDA itself?" column is added, and an administrator or lead can add any further column on the tracker. |
+| Delete rights | Hard delete with a preview of what goes with the record, a typed name for clients and staff, and an audit entry. A client's timesheet hours stay with the people who worked them (the client's name is kept as text). Sequential codes now continue after the highest used, so a deletion can never cause a collision. |
+| Client import | **Open:** the structure "shared in the group" was not among the files received, so columns follow the master pack's "12. Client Details" sheet, are recognised by heading, and can be re-mapped on screen. Existing clients are never overwritten. |
+| Payroll | Support staff need "attendance and payroll", and no payroll module existed, so one is added: pay from attendance and approved leave, marked provisional until the Leave & Timing Policy is confirmed. It does not cover PF, ESI, TDS, bonuses or holiday calendars. |
+| Hindi | A switch in the portal header, remembered per device. The public website stays English. Text is translated in the project's JSX runtime (`src/lib/i18n`), so new English text works unchanged and falls back to English until a Hindi entry is added. Names, client data, emails and Excel exports stay as they are. Browser-tab titles stay in English. |

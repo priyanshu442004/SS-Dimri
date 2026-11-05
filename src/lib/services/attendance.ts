@@ -2,13 +2,14 @@ import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { BusinessRuleError, zCheckbox, zIsoDate, zOptionalText } from "@/lib/actions";
-import { dateOnly, hhmmToMinutes, isoDateInTz, minutesOfDayInTz, todayDateOnly } from "@/lib/dates";
-import type { PolicyParams } from "@/lib/domain/attendance-policy";
+import { addDays, dateOnly, hhmmToMinutes, isoDateInTz, minutesOfDayInTz, toIsoDate, todayDateOnly } from "@/lib/dates";
+import { evaluateDay, type PolicyParams } from "@/lib/domain/attendance-policy";
 import type { AppContext } from "@/lib/session";
 import { can } from "@/lib/permissions";
 import { audit } from "./audit";
 import { hasFile, storeUpload } from "./files";
 import { notifyEmployees, notifyRoles } from "./notifications";
+import { nextTemporaryEmployeeCode } from "./codes";
 
 export async function getPolicy(organizationId: string) {
   const p = await prisma.attendancePolicy.upsert({ where: { organizationId }, update: {}, create: { organizationId } });
@@ -35,6 +36,38 @@ export const markSchema = z.object({
   longitude: coord(-180, 180),
   lateReason: zOptionalText(500),
 });
+
+/**
+ * The owner and administrators often sign in without a staff record, which is all that
+ * stood between them and marking attendance. Create it (approved, linked to their login)
+ * the first time they mark in, so their attendance works like everyone else's.
+ */
+export async function ensureAdminEmployee(ctx: AppContext): Promise<AppContext> {
+  if (ctx.employee || !can(ctx, "org.manage")) return ctx;
+  const parts = ctx.user.name.trim().split(/\s+/);
+  const firstName = parts[0] || "Administrator";
+  const lastName = parts.length > 1 ? parts.slice(1).join(" ") : null;
+  const employee = await prisma.$transaction(async (tx) => {
+    const emp = await tx.employee.create({
+      data: {
+        organizationId: ctx.organization.id,
+        temporaryEmployeeCode: await nextTemporaryEmployeeCode(tx, ctx.organization.id),
+        firstName,
+        lastName,
+        email: ctx.user.email,
+        officialEmail: ctx.user.email,
+        approvalStatus: "APPROVED",
+        approvedAt: new Date(),
+        approvedById: ctx.user.id,
+        employmentStatus: "ACTIVE",
+      },
+    });
+    await tx.organizationMembership.update({ where: { id: ctx.membershipId }, data: { employeeId: emp.id } });
+    await audit(tx, ctx, "employee.self_linked", "employee", emp.id);
+    return emp;
+  });
+  return { ...ctx, employee: { id: employee.id, firstName, lastName, approvalStatus: "APPROVED", onboardingSubmittedAt: null } };
+}
 
 /** Self-service mark in / mark out. Time comes from the server clock, never from the device. */
 export async function markAttendance(ctx: AppContext, kind: "in" | "out", v: z.infer<typeof markSchema>, fd: FormData) {
@@ -177,7 +210,7 @@ export async function decideLeave(ctx: AppContext, requestId: string, approve: b
   if (!r) throw new BusinessRuleError("Leave request not found or already decided.");
   if (r.employeeId === ctx.employee?.id) throw new BusinessRuleError("You cannot decide your own leave request.");
   // Owners/admins decide any request; managers and seniors only their own reportees.
-  if (!can(ctx.role, "org.manage")) {
+  if (!can(ctx, "org.manage")) {
     const reports = ctx.employee
       ? await prisma.employeeReportingRelationship.count({ where: { employeeId: r.employeeId, managerId: ctx.employee.id } })
       : 0;
@@ -201,4 +234,85 @@ export async function decideLeave(ctx: AppContext, requestId: string, approve: b
 
 export function todayIso(ctx: AppContext) {
   return isoDateInTz(new Date(), ctx.organization.timezone);
+}
+
+// ---------------------------------------------------------------- team view & export
+
+export const ATTENDANCE_FILTERS = ["PRESENT", "ABSENT", "HALF_DAY", "LEAVE", "NOT_MARKED", "LATE"] as const;
+export type AttendanceFilter = (typeof ATTENDANCE_FILTERS)[number];
+export const MAX_RANGE_DAYS = 92;
+
+export type TeamFilters = { from: string; to: string; q: string; status: AttendanceFilter | ""; departmentId: string };
+
+/** Query-string values → safe filters. A single day when no range is given; future days are not counted. */
+export function parseTeamFilters(sp: Record<string, string | string[] | undefined>, today: string): TeamFilters {
+  const iso = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "");
+  const to = iso(sp.to) || iso(sp.date) || today;
+  let from = iso(sp.from) || iso(sp.date) || to;
+  if (from > to) from = to;
+  const earliest = toIsoDate(addDays(dateOnly(to), -(MAX_RANGE_DAYS - 1)));
+  if (from < earliest) from = earliest;
+  const status = ATTENDANCE_FILTERS.find((s) => s === sp.status) ?? "";
+  return {
+    from,
+    to,
+    q: typeof sp.q === "string" ? sp.q.trim().slice(0, 80) : "",
+    status,
+    departmentId: typeof sp.department === "string" && /^[0-9a-f-]{36}$/i.test(sp.department) ? sp.department : "",
+  };
+}
+
+/** One row per employee per day in the period. Sundays appear only when something was recorded. */
+export async function teamAttendanceRows(ctx: AppContext, policy: PolicyParams, f: TeamFilters) {
+  const organizationId = ctx.organization.id;
+  const tz = ctx.organization.timezone;
+  const today = todayDateOnly(tz);
+  const from = dateOnly(f.from);
+  const to = dateOnly(f.to);
+  const text = f.q ? { contains: f.q, mode: "insensitive" as const } : undefined;
+  const [employees, records, leaves] = await Promise.all([
+    prisma.employee.findMany({
+      where: {
+        organizationId,
+        approvalStatus: "APPROVED",
+        employmentStatus: { not: "EXITED" },
+        ...(f.departmentId ? { departmentId: f.departmentId } : {}),
+        ...(text ? { OR: [{ firstName: text }, { lastName: text }, { permanentEmployeeCode: text }] } : {}),
+      },
+      orderBy: { firstName: "asc" },
+      select: { id: true, firstName: true, lastName: true, permanentEmployeeCode: true, temporaryEmployeeCode: true, attendanceProfile: true, designation: { select: { name: true } }, department: { select: { name: true } } },
+    }),
+    prisma.attendanceRecord.findMany({ where: { organizationId, attendanceDate: { gte: from, lte: to } } }),
+    prisma.leaveRequest.findMany({ where: { organizationId, status: "APPROVED", fromDate: { lte: to }, toDate: { gte: from } }, select: { employeeId: true, fromDate: true, toDate: true } }),
+  ]);
+  const recBy = new Map(records.map((r) => [`${r.employeeId}|${toIsoDate(r.attendanceDate)}`, r]));
+  const rows = [];
+  for (let d = from; d <= to && d <= today; d = addDays(d, 1)) {
+    const iso = toIsoDate(d);
+    for (const e of employees) {
+      const record = recBy.get(`${e.id}|${iso}`) ?? null;
+      if (!record && d.getUTCDay() === 0) continue;
+      const onLeave = leaves.some((l) => l.employeeId === e.id && l.fromDate <= d && l.toDate >= d);
+      const evaluation = record ? evaluateDay({ dayOfMonth: d.getUTCDate(), status: record.status, timeIn: record.timeIn, timeOut: record.timeOut }, e.attendanceProfile, policy, tz) : null;
+      const state: AttendanceFilter = record ? (record.status as AttendanceFilter) : onLeave ? "LEAVE" : "NOT_MARKED";
+      rows.push({ key: `${e.id}|${iso}`, date: d, employee: e, record, approvedLeave: !record && onLeave, state, isLate: !!evaluation?.isLate, workedMinutes: evaluation?.workedMinutes ?? null });
+    }
+  }
+  const counts = {
+    total: rows.length,
+    PRESENT: rows.filter((r) => r.state === "PRESENT" || r.state === "HALF_DAY").length,
+    ABSENT: rows.filter((r) => r.state === "ABSENT").length,
+    HALF_DAY: rows.filter((r) => r.state === "HALF_DAY").length,
+    LEAVE: rows.filter((r) => r.state === "LEAVE").length,
+    NOT_MARKED: rows.filter((r) => r.state === "NOT_MARKED").length,
+    LATE: rows.filter((r) => r.isLate).length,
+  };
+  const shown = rows.filter((r) => {
+    if (!f.status) return true;
+    if (f.status === "LATE") return r.isLate;
+    // "Present" counts half days too, as the tile does: they did attend.
+    if (f.status === "PRESENT") return r.state === "PRESENT" || r.state === "HALF_DAY";
+    return r.state === f.status;
+  });
+  return { rows: shown, counts, employeeCount: employees.length };
 }

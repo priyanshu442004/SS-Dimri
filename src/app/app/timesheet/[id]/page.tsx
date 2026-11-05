@@ -3,7 +3,10 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
-import { formatDate, formatDateTime, isoDateInTz, minutesToHhmm, toIsoDate } from "@/lib/dates";
+import { dateOnly, formatDate, formatDateTime, isoDateInTz, minutesToHhmm, toIsoDate } from "@/lib/dates";
+import { assessmentYears } from "@/lib/domain/timesheet";
+import { DeleteButton } from "@/components/delete-dialog";
+import { canDelete } from "@/lib/services/deletions";
 import { daysPending } from "@/lib/domain/derived";
 import { loadTimesheetEntryForCtx } from "@/lib/services/worklog";
 import { activeClientOptions, employeeOptions } from "@/lib/services/lookups";
@@ -41,8 +44,8 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
   });
 
   const own = e.employeeId === ctx.employee?.id;
-  const reviewer = can(ctx.role, "timesheet.review") && !own && e.status === "SUBMITTED";
-  const canCorrect = (own && e.status !== "REVIEWED") || can(ctx.role, "org.manage");
+  const reviewer = can(ctx, "timesheet.review") && !own && e.status === "SUBMITTED";
+  const canCorrect = (own && e.status !== "REVIEWED") || can(ctx, "org.manage");
   const [clients, workTypes, employees] = canCorrect || own
     ? await Promise.all([
         activeClientOptions(ctx.organization.id),
@@ -58,6 +61,7 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
       <PageHeader
         title={`${e.clientNameText ?? "Internal work"} — ${formatDate(e.workDate)}`}
         back={{ href: own ? `/app/timesheet?date=${toIsoDate(e.workDate)}` : "/app/timesheet?tab=tracker", label: "Timesheet" }}
+        actions={canDelete(ctx, "timesheet") && <DeleteButton entity="timesheet" id={e.id} redirectTo="/app/timesheet?tab=tracker" />}
         description={
           <span className="flex flex-wrap items-center gap-2">
             {e.employee.firstName} {e.employee.lastName} · entry #{e.serialNumber} <StatusBadge status={e.status} />
@@ -75,14 +79,18 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
                 ["Client", e.client ? <Link key="c" href={`/app/clients/${e.client.id}`} className="text-brand-700 hover:underline">{e.client.tradeName}</Link> : e.clientNameText],
                 ["Related task", e.task ? <Link key="t" href={`/app/tasks/${e.task.id}`} className="text-brand-700 hover:underline">{e.task.title}</Link> : null],
                 ["Allocation", e.teamAllocation ? <Link key="a" href={`/app/allocations/${e.teamAllocation.id}`} className="text-brand-700 hover:underline">View allocation</Link> : null],
-                ["Place of work", e.placeOfWork],
-                ["Type of work", e.typeOfWork],
+                ["Resource type", e.resourceType],
+                ["Nature of work", e.typeOfWork],
+                ["Assessment year", e.assessmentYear],
+                ["Work location", e.placeOfWork],
                 ["Bank name", e.bankName],
                 ["Period", e.periodFrom ? `${formatDate(e.periodFrom)} – ${formatDate(e.periodTo)}` : null],
                 ["Transactions / entries", e.transactionCount?.toString()],
-                ["Approximate time", e.approxMinutes ? minutesToHhmm(e.approxMinutes) : null],
+                ["Start – end time", e.startTime && e.endTime ? `${e.startTime} – ${e.endTime}` : null],
+                ["Hours invested", e.approxMinutes ? minutesToHhmm(e.approxMinutes) : null],
+                ["Submitted on", formatDateTime(e.createdAt)],
                 ["Status of work", e.workStatus ? humanize(e.workStatus) : null],
-                ["Details of work done", e.workDetails],
+                ["Task / compliance description", e.workDetails],
                 ["WhatsApp message", e.whatsappMessage],
               ]}
             />
@@ -103,7 +111,7 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
                 ))}
               </ul>
             )}
-            {(own || can(ctx.role, "pending.view_all")) && (
+            {(own || can(ctx, "pending.view_all")) && (
               <details className="rounded-md border border-line p-3">
                 <summary className="cursor-pointer text-sm font-medium text-brand-700">Add a follow-up linked to this entry</summary>
                 <div className="mt-3">
@@ -129,7 +137,9 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
                 clients={clients}
                 workTypes={workTypes.map((w) => ({ value: w.id, label: w.name }))}
                 needsReason={!own}
+                years={assessmentYears(dateOnly(isoDateInTz(new Date(), ctx.organization.timezone)))}
                 d={{
+                  resourceType: s(e.resourceType), assessmentYear: s(e.assessmentYear), startTime: s(e.startTime), endTime: s(e.endTime),
                   workDate: d(e.workDate), clientId: s(e.clientId), clientNameText: e.clientId ? "" : s(e.clientNameText), placeOfWork: s(e.placeOfWork),
                   workTypeId: s(e.workTypeId), bankName: s(e.bankName), periodFrom: d(e.periodFrom), periodTo: d(e.periodTo),
                   transactionCount: s(e.transactionCount), hours: e.approxMinutes ? String(Math.floor(e.approxMinutes / 60)) : "",
@@ -145,7 +155,7 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
           <Card title="Review">
             <DetailList
               items={[
-                ["Status", <StatusBadge key="s" status={e.status} />],
+                ["Review status", <StatusBadge key="s" status={e.status} label={e.status === "REVIEWED" ? "Checked – OK" : e.status === "RETURNED" ? "Checked – Needs correction" : "Pending"} />],
                 ["Reviewed by", e.reviewedBy ? `${e.reviewedBy.name} · ${formatDateTime(e.reviewedAt)}` : null],
                 ["Review remark", e.reviewNote],
               ]}

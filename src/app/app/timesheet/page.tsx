@@ -4,39 +4,37 @@ import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import { addDays, dateOnly, formatDate, formatDateTime, isoDateInTz, minutesToHhmm, toIsoDate } from "@/lib/dates";
+import { assessmentYears, isLateReview, isLateSubmission, OVERDUE_HOURS, slaOf, type Sla } from "@/lib/domain/timesheet";
+import { timesheetExportHref, timesheetReviewers } from "@/lib/services/timesheet-report";
+import { DeleteButton } from "@/components/delete-dialog";
+import { canDelete } from "@/lib/services/deletions";
 import { activeClientOptions, employeeOptions } from "@/lib/services/lookups";
 import { taskScope } from "@/lib/services/tasks";
 import { ActionButton } from "@/components/action-button";
 import { BarList, ChartCard } from "@/components/charts";
-import { Badge, Card, EmptyState, PageHeader, Stat, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, DownloadButton, EmptyState, PageHeader, Stat, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
 import { addTimesheetAction, deleteTimesheetAction, reviewTimesheetAction } from "../worklog-actions";
 import { ReviewForm, TimesheetForm } from "../worklog-forms";
-import { CircleAlert, Clock, ListChecks, TimerReset, Users } from "lucide-react";
+import { CircleAlert, Clock, IndianRupee, ListChecks, TimerReset, Users } from "lucide-react";
 
-// Review window for a submitted entry, as in the team timesheet: within 24 h is
-// on time, 24–36 h is due soon, after 36 h it is overdue (escalated).
-const DUE_SOON_HOURS = 24;
-const OVERDUE_HOURS = 36;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f-]{36}$/i;
 
-type Sla = "WITHIN" | "DUE_SOON" | "OVERDUE";
-function slaOf(submittedAt: Date, now: Date): Sla {
-  const hours = (now.getTime() - submittedAt.getTime()) / 3_600_000;
-  return hours > OVERDUE_HOURS ? "OVERDUE" : hours > DUE_SOON_HOURS ? "DUE_SOON" : "WITHIN";
-}
 function SlaBadge({ sla }: { sla: Sla }) {
-  return sla === "OVERDUE" ? <Badge tone="danger">Overdue · over {OVERDUE_HOURS} h</Badge>
+  return sla === "OVERDUE" ? <Badge tone="danger">Escalated – overdue</Badge>
     : sla === "DUE_SOON" ? <Badge tone="warn">Due soon</Badge>
-    : <Badge tone="ok">Within {DUE_SOON_HOURS} h</Badge>;
+    : sla === "REVIEWED" ? <Badge tone="neutral">Reviewed</Badge>
+    : <Badge tone="ok">Within window</Badge>;
 }
+const REVIEW_LABEL: Record<string, string> = { SUBMITTED: "Pending", REVIEWED: "Checked – OK", RETURNED: "Checked – Needs correction", DRAFT: "Draft" };
+const inr = (n: number) => `₹ ${n.toLocaleString("en-IN")}`;
 const nameOf = (e: { firstName: string; lastName: string | null }) => `${e.firstName} ${e.lastName ?? ""}`.trim();
 
 export default async function TimesheetPage({ searchParams }: PageProps<"/app/timesheet">) {
   const ctx = await requireCapability("timesheet.fill_own");
   const sp = await searchParams;
-  const viewAll = can(ctx.role, "timesheet.view_all");
-  const canReview = can(ctx.role, "timesheet.review");
+  const viewAll = can(ctx, "timesheet.view_all");
+  const canReview = can(ctx, "timesheet.review");
   const tz = ctx.organization.timezone;
   const today = isoDateInTz(new Date(), tz);
   const date = typeof sp.date === "string" && ISO.test(sp.date) ? sp.date : today;
@@ -55,6 +53,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
       <PageHeader icon={<Clock />}
         title="Timesheet"
         description={viewAll ? "Tracker of every entry the team logs, entries pending review, and the time dashboard." : "Your daily work log — record each piece of work you do."}
+        actions={viewAll && (tab === "tracker" || tab === "dashboard") && <DownloadButton href={timesheetExportHref({ from: typeof sp.from === "string" ? sp.from : undefined, to: typeof sp.to === "string" ? sp.to : undefined, date, employeeId, clientId, tab })}>Export to Excel</DownloadButton>}
       />
       {viewAll && (
         <TabNav
@@ -94,21 +93,23 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
           <span className="ml-auto text-muted">Total time: <strong className="text-ink">{minutesToHhmm(total)}</strong></span>
         </div>
         {entries.length > 0 && (
-          <Table minWidth={1000}>
-            <thead><tr><Th>#</Th><Th>Client</Th><Th>Place</Th><Th>Type of work</Th><Th>Bank</Th><Th>Period</Th><Th>Entries</Th><Th>Time</Th><Th>Details</Th><Th>Status</Th><Th /></tr></thead>
+          <Table minWidth={1240}>
+            <thead><tr><Th>#</Th><Th>Client</Th><Th>Resource type</Th><Th>Nature of work</Th><Th>AY</Th><Th>Location</Th><Th>Bank</Th><Th>Period</Th><Th>Start – end</Th><Th>Hours</Th><Th>Description</Th><Th>Review status</Th><Th /></tr></thead>
             <tbody>
               {entries.map((e) => (
                 <tr key={e.id}>
                   <Td><Link href={`/app/timesheet/${e.id}`} className="font-medium text-brand-700 hover:underline" aria-label={`Open entry ${e.serialNumber}`}>#{e.serialNumber}</Link></Td>
                   <Td>{e.clientNameText ?? "—"}</Td>
-                  <Td>{e.placeOfWork ?? "—"}</Td>
+                  <Td className="text-xs">{e.resourceType ?? "—"}</Td>
                   <Td>{e.typeOfWork ?? "—"}</Td>
-                  <Td>{e.bankName ?? "—"}</Td>
+                  <Td className="whitespace-nowrap text-xs">{e.assessmentYear ?? "—"}</Td>
+                  <Td className="text-xs">{e.placeOfWork ?? "—"}</Td>
+                  <Td className="text-xs">{e.bankName ?? "—"}</Td>
                   <Td className="text-xs">{e.periodFrom ? `${formatDate(e.periodFrom)} – ${formatDate(e.periodTo)}` : "—"}</Td>
-                  <Td>{e.transactionCount ?? "—"}</Td>
+                  <Td className="whitespace-nowrap text-xs">{e.startTime && e.endTime ? `${e.startTime} – ${e.endTime}` : "—"}</Td>
                   <Td>{e.approxMinutes ? minutesToHhmm(e.approxMinutes) : "—"}</Td>
                   <Td className="max-w-xs text-xs">{e.workDetails}{e.task && <div><Link href={`/app/tasks/${e.task.id}`} className="text-brand-700 hover:underline">{e.task.title}</Link></div>}</Td>
-                  <Td>{e.workStatus && <StatusBadge status={e.workStatus} />}<div className="mt-1"><StatusBadge status={e.status} /></div></Td>
+                  <Td>{e.workStatus && <StatusBadge status={e.workStatus} />}<div className="mt-1"><StatusBadge status={e.status} label={REVIEW_LABEL[e.status]} /></div></Td>
                   <Td>{e.status !== "REVIEWED" && <ActionButton variant="ghost" confirm="Remove this entry?" action={deleteTimesheetAction.bind(null, e.id)}>Remove</ActionButton>}</Td>
                 </tr>
               ))}
@@ -123,6 +124,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
             places={places.map((p) => p.label)}
             tasks={tasks.map((t) => ({ value: t.id, label: t.title }))}
             date={date}
+            years={assessmentYears(dateOnly(today))}
           />
         </Card>
       </div>
@@ -134,7 +136,6 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
     return (
       <form className="flex flex-wrap items-end gap-2">
         <input type="hidden" name="tab" value={tabKey} />
-        {clientId && <input type="hidden" name="client" value={clientId} />}
         {withPeriod && (
           <>
             <label className="text-sm"><span className="mb-1 block font-medium">From</span><input type="date" name="from" defaultValue={from} className="h-10 rounded-md border border-line bg-surface px-2 text-sm" /></label>
@@ -142,6 +143,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
           </>
         )}
         <TeamMemberSelect />
+        <ClientSelect />
         <button className="h-10 rounded-md border border-line bg-surface px-4 text-sm hover:bg-subtle">Show</button>
       </form>
     );
@@ -154,6 +156,18 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
         <select name="employee" defaultValue={employeeId} className="h-10 rounded-md border border-line bg-surface px-2 text-sm">
           <option value="">Everyone</option>
           {employees.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
+        </select>
+      </label>
+    );
+  }
+
+  async function ClientSelect() {
+    const clients = await activeClientOptions(ctx.organization.id);
+    return (
+      <label className="text-sm"><span className="mb-1 block font-medium">Client</span>
+        <select name="client" defaultValue={clientId} className="h-10 max-w-48 rounded-md border border-line bg-surface px-2 text-sm">
+          <option value="">All clients</option>
+          {clients.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
       </label>
     );
@@ -173,8 +187,15 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
       where,
       orderBy: [{ workDate: "desc" }, { employee: { firstName: "asc" } }, { serialNumber: "asc" }],
       take: 500,
-      include: { employee: { select: { firstName: true, lastName: true } } },
+      include: {
+        employee: { select: { firstName: true, lastName: true } },
+        reviewedBy: { select: { name: true } },
+      },
     });
+    const now = new Date();
+    const reviewers = await timesheetReviewers(ctx.organization.id, entries);
+    const penalty = (await prisma.organization.findUniqueOrThrow({ where: { id: ctx.organization.id }, select: { timesheetPenaltyRupees: true } })).timesheetPenaltyRupees;
+    const mayDelete = canDelete(ctx, "timesheet");
     const totals = new Map<string, number>();
     for (const e of entries) totals.set(nameOf(e.employee), (totals.get(nameOf(e.employee)) ?? 0) + (e.approxMinutes ?? 0));
     return (
@@ -187,8 +208,8 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
         )}
         {entries.length === 0 ? <EmptyState kind="calendar" title="No entries for this period" /> : (
           <ReviewForm action={reviewTimesheetAction}>
-            <Table minWidth={1100}>
-              <thead><tr>{canReview && <Th><span className="sr-only">Select</span></Th>}<Th>Date</Th><Th>Team member</Th><Th>Client</Th><Th>Place</Th><Th>Type of work</Th><Th>Period</Th><Th>Entries</Th><Th>Time</Th><Th>Details</Th><Th>Status</Th></tr></thead>
+            <Table minWidth={1720}>
+              <thead><tr>{canReview && <Th><span className="sr-only">Select</span></Th>}<Th>Date</Th><Th>Team member</Th><Th>Client</Th><Th>Resource type</Th><Th>Nature of work</Th><Th>AY</Th><Th>Location</Th><Th>Period</Th><Th>Start – end</Th><Th>Hours</Th><Th>Description</Th><Th>Submitted on</Th><Th>Reviewer (auto)</Th><Th>Review status</Th><Th>Reviewed by</Th><Th>SLA</Th><Th>Escalate to</Th><Th>Late submission</Th><Th>Late review</Th>{mayDelete && <Th />}</tr></thead>
               <tbody>
                 {entries.map((e) => (
                   <tr key={e.id}>
@@ -196,13 +217,23 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
                     <Td className="whitespace-nowrap"><Link href={`/app/timesheet/${e.id}`} className="font-medium text-brand-700 hover:underline">{formatDate(e.workDate)}</Link></Td>
                     <Td>{nameOf(e.employee)}</Td>
                     <Td>{e.clientNameText ?? "—"}</Td>
-                    <Td>{e.placeOfWork ?? "—"}</Td>
+                    <Td className="text-xs">{e.resourceType ?? "—"}</Td>
                     <Td>{e.typeOfWork ?? "—"}{e.bankName && <div className="text-xs text-muted">{e.bankName}</div>}</Td>
+                    <Td className="whitespace-nowrap text-xs">{e.assessmentYear ?? "—"}</Td>
+                    <Td className="text-xs">{e.placeOfWork ?? "—"}</Td>
                     <Td className="text-xs">{e.periodFrom ? `${formatDate(e.periodFrom)} – ${formatDate(e.periodTo)}` : "—"}</Td>
-                    <Td>{e.transactionCount ?? "—"}</Td>
+                    <Td className="whitespace-nowrap text-xs">{e.startTime && e.endTime ? `${e.startTime} – ${e.endTime}` : "—"}</Td>
                     <Td>{e.approxMinutes ? minutesToHhmm(e.approxMinutes) : "—"}</Td>
-                    <Td className="max-w-xs text-xs">{e.workDetails}{e.whatsappMessage && <div className="text-muted">WhatsApp: {e.whatsappMessage}</div>}</Td>
-                    <Td>{e.workStatus && <StatusBadge status={e.workStatus} />} <StatusBadge status={e.status} /></Td>
+                    <Td className="max-w-xs text-xs">{e.workDetails}{e.whatsappMessage && <div className="text-muted">WhatsApp: {e.whatsappMessage}</div>}{e.reviewNote && <div className="text-muted">Reviewer: {e.reviewNote}</div>}</Td>
+                    <Td className="whitespace-nowrap text-xs">{formatDateTime(e.createdAt, tz)}</Td>
+                    <Td className="text-xs">{reviewers.get(e.id)?.reviewer ?? "Not mapped"}</Td>
+                    <Td><StatusBadge status={e.status} label={REVIEW_LABEL[e.status]} />{e.workStatus && <div className="mt-1"><StatusBadge status={e.workStatus} /></div>}</Td>
+                    <Td className="text-xs">{e.reviewedBy ? <>{e.reviewedBy.name}<div className="text-muted">{e.reviewedAt ? formatDateTime(e.reviewedAt, tz) : ""}</div></> : "—"}</Td>
+                    <Td><SlaBadge sla={slaOf({ submittedAt: e.createdAt, status: e.status }, now)} /></Td>
+                    <Td className="text-xs">{reviewers.get(e.id)?.escalateTo ?? "Not mapped"}</Td>
+                    <Td className="text-xs">{isLateSubmission(isoDateInTz(e.createdAt, tz), toIsoDate(e.workDate)) ? <Badge tone="danger">{inr(penalty)}</Badge> : "—"}</Td>
+                    <Td className="text-xs">{isLateReview({ submittedAt: e.createdAt, reviewedAt: e.reviewedAt, status: e.status }, now) ? <Badge tone="danger">{inr(penalty)}</Badge> : "—"}</Td>
+                    {mayDelete && <Td><DeleteButton entity="timesheet" id={e.id} variant="ghost" /></Td>}
                   </tr>
                 ))}
               </tbody>
@@ -240,7 +271,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
     };
     for (const e of toReview) {
       const r = row(e.employee.id, nameOf(e.employee));
-      const sla = slaOf(e.createdAt, now);
+      const sla = slaOf({ submittedAt: e.createdAt, status: e.status }, now);
       r.awaiting++;
       if (sla === "DUE_SOON") r.dueSoon++;
       if (sla === "OVERDUE") r.overdue++;
@@ -252,7 +283,8 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
       for (const g of workPending) row(g.employeeId, (names.get(g.employeeId) ?? "—").split(" — ")[0]).workPending = g._count._all;
     }
     const summary = [...rows.values()].sort((a, b) => b.overdue - a.overdue || b.awaiting - a.awaiting || a.name.localeCompare(b.name));
-    const overdue = toReview.filter((e) => slaOf(e.createdAt, now) === "OVERDUE").length;
+    const overdue = toReview.filter((e) => slaOf({ submittedAt: e.createdAt, status: e.status }, now) === "OVERDUE").length;
+    const reviewers = await timesheetReviewers(ctx.organization.id, toReview);
     const daysWaiting = (d: Date) => Math.floor((now.getTime() - d.getTime()) / 86_400_000);
 
     return (
@@ -290,8 +322,8 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
           <h2 className="text-sm font-semibold text-ink">Waiting for review ({toReview.length})</h2>
           {toReview.length === 0 ? <p className="text-sm text-muted">No entries waiting for review.</p> : (
             <ReviewForm action={reviewTimesheetAction}>
-              <Table minWidth={1000}>
-                <thead><tr>{canReview && <Th><span className="sr-only">Select</span></Th>}<Th>Date</Th><Th>Team member</Th><Th>Client</Th><Th>Type of work</Th><Th>Time</Th><Th>Details</Th><Th>Submitted</Th><Th>Review window</Th></tr></thead>
+              <Table minWidth={1180}>
+                <thead><tr>{canReview && <Th><span className="sr-only">Select</span></Th>}<Th>Date</Th><Th>Team member</Th><Th>Client</Th><Th>Nature of work</Th><Th>Hours</Th><Th>Description</Th><Th>Submitted</Th><Th>Reviewer (auto)</Th><Th>Escalate to</Th><Th>SLA</Th></tr></thead>
                 <tbody>
                   {toReview.map((e) => (
                     <tr key={e.id}>
@@ -303,7 +335,9 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
                       <Td>{e.approxMinutes ? minutesToHhmm(e.approxMinutes) : "—"}</Td>
                       <Td className="max-w-xs text-xs">{e.workDetails ?? "—"}</Td>
                       <Td className="whitespace-nowrap text-xs">{formatDateTime(e.createdAt, tz)}</Td>
-                      <Td><SlaBadge sla={slaOf(e.createdAt, now)} /></Td>
+                      <Td className="text-xs">{reviewers.get(e.id)?.reviewer ?? "Not mapped"}</Td>
+                      <Td className="text-xs">{reviewers.get(e.id)?.escalateTo ?? "Not mapped"}</Td>
+                      <Td><SlaBadge sla={slaOf({ submittedAt: e.createdAt, status: e.status }, now)} /></Td>
                     </tr>
                   ))}
                 </tbody>
@@ -339,13 +373,15 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
   async function Dashboard() {
     const from = typeof sp.from === "string" && ISO.test(sp.from) ? sp.from : `${today.slice(0, 8)}01`;
     const to = typeof sp.to === "string" && ISO.test(sp.to) ? sp.to : today;
-    const scope: Prisma.TimesheetEntryWhereInput = { organizationId: ctx.organization.id, ...(employeeId ? { employeeId } : {}) };
+    const scope: Prisma.TimesheetEntryWhereInput = { organizationId: ctx.organization.id, ...(employeeId ? { employeeId } : {}), ...(clientId ? { clientId } : {}) };
+    const now = new Date();
     const [entries, lastEntry, employees] = await Promise.all([
       prisma.timesheetEntry.findMany({
         where: { ...scope, workDate: { gte: dateOnly(from), lte: dateOnly(to) } },
         select: {
-          employeeId: true, workDate: true, createdAt: true, approxMinutes: true, status: true, clientId: true, clientNameText: true,
-          typeOfWork: true, placeOfWork: true, workType: { select: { name: true } },
+          id: true, employeeId: true, workDate: true, createdAt: true, approxMinutes: true, status: true, clientId: true, clientNameText: true,
+          typeOfWork: true, placeOfWork: true, assessmentYear: true, resourceType: true, reviewedAt: true, reviewedById: true, teamAllocationId: true,
+          workType: { select: { name: true } }, reviewedBy: { select: { name: true } },
         },
         take: 10_000,
       }),
@@ -367,6 +403,30 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
     const byMember = sumBy((e) => names.get(e.employeeId) ?? "—");
     const byWork = sumBy((e) => e.typeOfWork ?? e.workType?.name ?? "Not given");
     const byPlace = sumBy((e) => e.placeOfWork ?? "Not given");
+    const byYear = sumBy((e) => e.assessmentYear ?? "Not given");
+    const byResource = sumBy((e) => e.resourceType ?? "Not given");
+    const penalty = (await prisma.organization.findUniqueOrThrow({ where: { id: ctx.organization.id }, select: { timesheetPenaltyRupees: true } })).timesheetPenaltyRupees;
+
+    // Reviewer performance: entries reviewed by each person, what is still with them, and late reviews.
+    const assigned = await timesheetReviewers(ctx.organization.id, entries);
+    const perReviewer = new Map<string, { reviewed: number; pending: number; overdue: number; lateReviews: number }>();
+    const reviewerRow = (name: string) => {
+      if (!perReviewer.has(name)) perReviewer.set(name, { reviewed: 0, pending: 0, overdue: 0, lateReviews: 0 });
+      return perReviewer.get(name)!;
+    };
+    for (const e of entries) {
+      const responsible = assigned.get(e.id)?.reviewer ?? "Not mapped";
+      if (e.status === "SUBMITTED") {
+        const row = reviewerRow(responsible);
+        row.pending++;
+        if (slaOf({ submittedAt: e.createdAt, status: e.status }, now) === "OVERDUE") { row.overdue++; row.lateReviews++; }
+      } else if (e.reviewedBy) {
+        const row = reviewerRow(e.reviewedBy.name);
+        row.reviewed++;
+        if (isLateReview({ submittedAt: e.createdAt, reviewedAt: e.reviewedAt, status: e.status }, now)) row.lateReviews++;
+      }
+    }
+    const reviewerStats = [...perReviewer.entries()].map(([name, r]) => ({ name, ...r })).sort((a, b) => b.overdue - a.overdue || b.reviewed - a.reviewed);
     const table = (rows: { label: string; value: number }[], head: string) => ({ head: [head, "Hours"], rows: rows.map((r) => [r.label, minutesToHhmm(r.value)]) });
 
     const members = (employeeId ? employees.filter((o) => o.value === employeeId) : employees).map((o) => {
@@ -402,17 +462,27 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
           <Stat label="Waiting for review" value={entries.filter((e) => e.status === "SUBMITTED").length} icon={<TimerReset />} href="/app/timesheet?tab=pending" tone="info" />
           <Stat label="Late submissions" value={entries.filter(isLate).length} hint="Not logged on the day of work" icon={<CircleAlert />} tone={entries.some(isLate) ? "warn" : "neutral"} />
         </div>
+        <Card title="Penalty summary" icon={<IndianRupee />}>
+          <p className="mb-3 text-xs text-muted">{inr(penalty)} per breach, as in the Team Timesheet: late submission when an entry is not filled in on the day of work, late review when it is not reviewed within {OVERDUE_HOURS} hours.</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Stat label="Late submission penalties" value={inr(entries.filter(isLate).length * penalty)} tone={entries.some(isLate) ? "warn" : "neutral"} />
+            <Stat label="Late review penalties" value={inr(reviewerStats.reduce((s, r) => s + r.lateReviews, 0) * penalty)} tone={reviewerStats.some((r) => r.lateReviews) ? "warn" : "neutral"} />
+            <Stat label="Grand total" value={inr((entries.filter(isLate).length + reviewerStats.reduce((s, r) => s + r.lateReviews, 0)) * penalty)} />
+          </div>
+        </Card>
 
         <div className="grid gap-4 lg:grid-cols-2">
           <ChartCard title="Hours by client" table={table(byClient, "Client")}><BarList data={byClient.slice(0, 12)} format="minutes" /></ChartCard>
           <ChartCard title="Hours by team member" table={table(byMember, "Team member")}><BarList data={byMember} format="minutes" /></ChartCard>
           <ChartCard title="Hours by type of work" table={table(byWork, "Type of work")}><BarList data={byWork.slice(0, 12)} format="minutes" /></ChartCard>
-          <ChartCard title="Hours by place of work" table={table(byPlace, "Place of work")}><BarList data={byPlace} format="minutes" /></ChartCard>
+          <ChartCard title="Hours by work location" table={table(byPlace, "Work location")}><BarList data={byPlace} format="minutes" /></ChartCard>
+          <ChartCard title="Hours by assessment year" table={table(byYear, "Assessment year")}><BarList data={byYear} format="minutes" /></ChartCard>
+          <ChartCard title="Hours by resource type" table={table(byResource, "Resource type")}><BarList data={byResource} format="minutes" /></ChartCard>
         </div>
 
         <Card title="Team member scorecard" padded={false}>
           <Table minWidth={860}>
-            <thead><tr><Th>Team member</Th><Th>Hours</Th><Th>Entries</Th><Th>Last entry</Th><Th>Reviewed OK</Th><Th>Returned</Th><Th>Waiting for review</Th><Th>Late submissions</Th></tr></thead>
+            <thead><tr><Th>Team member</Th><Th>Hours</Th><Th>Entries</Th><Th>Last entry</Th><Th>Reviewed OK</Th><Th>Returned</Th><Th>Waiting for review</Th><Th>Late submissions</Th><Th>Penalty</Th></tr></thead>
             <tbody>
               {members.map((m) => (
                 <tr key={m.id}>
@@ -424,10 +494,31 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
                   <Td>{m.returned ? <Badge tone="warn">{m.returned}</Badge> : 0}</Td>
                   <Td>{m.awaiting}</Td>
                   <Td>{m.late ? <Badge tone="danger">{m.late}</Badge> : 0}</Td>
+                  <Td>{m.late ? inr(m.late * penalty) : "—"}</Td>
                 </tr>
               ))}
             </tbody>
           </Table>
+        </Card>
+
+        <Card title="Reviewer performance" padded={false}>
+          {reviewerStats.length === 0 ? <p className="p-4 text-sm text-muted">No reviews in this period.</p> : (
+            <Table minWidth={680}>
+              <thead><tr><Th>Reviewer</Th><Th>Entries reviewed</Th><Th>Still pending</Th><Th>Currently overdue</Th><Th>Late reviews</Th><Th>Penalty</Th></tr></thead>
+              <tbody>
+                {reviewerStats.map((r) => (
+                  <tr key={r.name}>
+                    <Td className="font-medium">{r.name}</Td>
+                    <Td>{r.reviewed}</Td>
+                    <Td>{r.pending}</Td>
+                    <Td>{r.overdue ? <Badge tone="danger">{r.overdue}</Badge> : 0}</Td>
+                    <Td>{r.lateReviews}</Td>
+                    <Td>{r.lateReviews ? inr(r.lateReviews * penalty) : "—"}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
         </Card>
 
         {matrix.length > 0 && topClients.length > 0 && (

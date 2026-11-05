@@ -13,6 +13,8 @@ import { decisionEmail, invitationEmail, sendMail, type MailResult } from "./mai
 import { createPasswordLink } from "./password-links";
 import { hasFile, storeUpload } from "./files";
 import { notifyEmployees, notifyRoles } from "./notifications";
+import { nextTemporaryEmployeeCode } from "./codes";
+import { can, SUPPORT_STAFF_MODULES } from "@/lib/permissions";
 
 // ------------------------------------------------------------- admin: invite staff
 
@@ -27,6 +29,8 @@ export const createEmployeeSchema = z.object({
   email: z.email("Enter a valid email").transform((v) => v.trim().toLowerCase()),
   mobile: mobileSchema,
   role: z.enum(["STAFF", "SENIOR", "MANAGER", "ADMIN"]),
+  /** FULL = everything the role allows; SUPPORT = attendance and payroll only (peon, driver). */
+  moduleAccess: z.enum(["FULL", "SUPPORT"]).default("FULL"),
 });
 
 export const INVITATION_VALID_DAYS = 7;
@@ -58,17 +62,18 @@ export async function createEmployeeLogin(ctx: AppContext, v: z.infer<typeof cre
   if (await prisma.user.findUnique({ where: { email: v.email }, select: { id: true } })) {
     throw new BusinessRuleError("An account with this email already exists.");
   }
+  if (v.role === "ADMIN" && !can(ctx, "org.manage")) throw new BusinessRuleError("Only an administrator can invite another administrator.");
   const tempPassword = generateTemporaryPassword();
   const expiresAt = new Date(Date.now() + INVITATION_VALID_DAYS * 86_400_000);
   const { firstName, lastName } = splitName(v.fullName);
-  const count = await prisma.employee.count({ where: { organizationId: ctx.organization.id } });
+  const support = v.moduleAccess === "SUPPORT";
 
   const created = await prisma.$transaction(async (tx) => {
     const user = await createCredentialUser(tx, { name: v.fullName, email: v.email, password: tempPassword });
     const emp = await tx.employee.create({
       data: {
         organizationId: ctx.organization.id,
-        temporaryEmployeeCode: `TMP-${String(count + 1).padStart(3, "0")}`,
+        temporaryEmployeeCode: await nextTemporaryEmployeeCode(tx, ctx.organization.id),
         firstName,
         lastName,
         email: v.email,
@@ -77,9 +82,9 @@ export async function createEmployeeLogin(ctx: AppContext, v: z.infer<typeof cre
       },
     });
     await tx.organizationMembership.create({
-      data: { organizationId: ctx.organization.id, userId: user.id, employeeId: emp.id, role: v.role, mustChangePassword: true, tempPasswordExpiresAt: expiresAt },
+      data: { organizationId: ctx.organization.id, userId: user.id, employeeId: emp.id, role: v.role, mustChangePassword: true, tempPasswordExpiresAt: expiresAt, moduleRestricted: support, allowedModules: support ? SUPPORT_STAFF_MODULES : [] },
     });
-    await audit(tx, ctx, "employee.invited", "employee", emp.id, { role: v.role });
+    await audit(tx, ctx, "employee.invited", "employee", emp.id, { role: v.role, moduleAccess: v.moduleAccess });
     return { employeeId: emp.id, userId: user.id };
   });
   // After the commit: an email failure is recorded and can be retried, never undoes the invitation.
@@ -294,10 +299,11 @@ const DECIDABLE = ["UNDER_REVIEW", "ON_HOLD", "PENDING"];
 export async function decideOnboarding(ctx: AppContext, employeeId: string, v: z.infer<typeof decisionSchema>) {
   const emp = await prisma.employee.findFirst({
     where: { id: employeeId, organizationId: ctx.organization.id },
-    include: { membership: { select: { userId: true, user: { select: { email: true } } } } },
+    include: { membership: { select: { userId: true, role: true, user: { select: { email: true } } } } },
   });
   if (!emp) throw new BusinessRuleError("Employee not found.");
   if (emp.id === ctx.employee?.id) throw new BusinessRuleError("You cannot decide your own onboarding.");
+  if (emp.membership?.role === "ADMIN" && !can(ctx, "org.manage")) throw new BusinessRuleError("Only an administrator can approve another administrator.");
   if (!DECIDABLE.includes(emp.approvalStatus)) throw new BusinessRuleError(`This person is already ${emp.approvalStatus === "APPROVED" ? "approved" : "rejected"}.`);
   if (!emp.onboardingSubmittedAt) throw new BusinessRuleError("This person has not submitted their details yet.");
   if (v.decision === "HOLD" && emp.approvalStatus === "ON_HOLD") throw new BusinessRuleError("Already on hold.");

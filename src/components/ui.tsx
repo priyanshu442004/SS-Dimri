@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { clsx } from "clsx";
-import { ArrowUpRight, CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { ArrowUpRight, CircleAlert, CircleCheck, Download, Info, TriangleAlert } from "lucide-react";
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { EmptyArt, type EmptyKind } from "@/components/empty-art";
 
@@ -42,6 +42,16 @@ export function LinkButton({
   ...props
 }: ComponentProps<typeof Link> & { variant?: Variant; size?: "sm" | "md" }) {
   return <Link className={buttonClass(variant, size, className)} {...props} />;
+}
+
+/** A file download styled as a button: a plain anchor, since a client-side Link cannot download. */
+export function DownloadButton({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    // eslint-disable-next-line @next/next/no-html-link-for-pages -- downloads a file from a route handler
+    <a href={href} download className={buttonClass("secondary", "md")}>
+      <Download className="size-4" aria-hidden /> {children}
+    </a>
+  );
 }
 
 // ---------------------------------------------------------------- layout
@@ -128,7 +138,7 @@ function Spark({ values }: { values: number[] }) {
   );
 }
 
-export function Stat({ label, value, href, hint, icon, tone = "neutral", spark }: {
+export function Stat({ label, value, href, hint, icon, tone = "neutral", spark, active }: {
   label: string;
   value: ReactNode;
   href?: string;
@@ -136,6 +146,8 @@ export function Stat({ label, value, href, hint, icon, tone = "neutral", spark }
   icon?: ReactNode;
   tone?: StatTone;
   spark?: number[];
+  /** This tile's list is the one showing below. */
+  active?: boolean;
 }) {
   const t = STAT_TONE[tone];
   const body = (
@@ -153,7 +165,7 @@ export function Stat({ label, value, href, hint, icon, tone = "neutral", spark }
   );
   const cls = "group relative block overflow-hidden rounded-xl border border-line bg-surface px-4 py-3.5";
   return href ? (
-    <Link href={href} data-spotlight className={clsx(cls, "transition-[border-color,box-shadow,translate] duration-300 hover:-translate-y-0.5 hover:border-ink/25 hover:shadow-[0_14px_30px_-22px_rgb(15_29_51/.5)] active:translate-y-0")}
+    <Link href={href} scroll={!active} aria-current={active ? "true" : undefined} data-spotlight className={clsx(cls, active && "border-ink ring-2 ring-ink/10", "transition-[border-color,box-shadow,translate] duration-300 hover:-translate-y-0.5 hover:border-ink/25 hover:shadow-[0_14px_30px_-22px_rgb(15_29_51/.5)] active:translate-y-0")}
       style={{ "--spot": "rgb(42 120 214 / .07)" } as CSSProperties}>
       {body}
     </Link>

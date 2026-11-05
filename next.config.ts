@@ -13,7 +13,7 @@ const csp = [
   "img-src 'self' data: blob: https://*.amazonaws.com",
   "font-src 'self'",
   `connect-src 'self'${dev ? " ws: wss:" : ""}`,
-  "media-src 'self' blob:",
+  "media-src 'self' blob: https://*.amazonaws.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -26,8 +26,8 @@ const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  // Geolocation and camera are used only by the attendance page (same origin).
-  { key: "Permissions-Policy", value: "geolocation=(self), camera=(self), microphone=()" },
+  // Geolocation and camera: attendance page. Microphone: task voice notes. Same origin only.
+  { key: "Permissions-Policy", value: "geolocation=(self), camera=(self), microphone=(self)" },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
 ];
 

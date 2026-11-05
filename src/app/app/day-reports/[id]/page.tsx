@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import { formatDate, formatDateTime, minutesToHhmm } from "@/lib/dates";
+import { DeleteButton } from "@/components/delete-dialog";
+import { canDelete } from "@/lib/services/deletions";
 import { Card, Notice, PageHeader, StatusBadge } from "@/components/ui";
 import { acknowledgeDayReportAction } from "../../worklog-actions";
 import { DayReportReviewForm } from "../form";
@@ -18,7 +20,7 @@ export default async function DayReportDetail({ params }: PageProps<"/app/day-re
     where: {
       id,
       organizationId: ctx.organization.id,
-      ...(can(ctx.role, "dayreport.view_all") ? {} : { OR: [{ reportingEmployeeId: me }, { recipients: { some: { recipientEmployeeId: me } } }] }),
+      ...(can(ctx, "dayreport.view_all") ? {} : { OR: [{ reportingEmployeeId: me }, { recipients: { some: { recipientEmployeeId: me } } }] }),
     },
     include: {
       reportingEmployee: { select: { id: true, firstName: true, lastName: true, membership: { select: { userId: true } } } },
@@ -62,6 +64,7 @@ export default async function DayReportDetail({ params }: PageProps<"/app/day-re
       <PageHeader
         title={`Day report — ${formatDate(r.reportDate)}`}
         back={{ href: "/app/day-reports", label: "Day reports" }}
+        actions={canDelete(ctx, "dayreport") && <DeleteButton entity="dayreport" id={r.id} redirectTo="/app/day-reports" />}
         description={<span className="flex items-center gap-2">{r.reportingEmployee.firstName} {r.reportingEmployee.lastName} <StatusBadge status={r.status} />{r.submittedAt && <span>· submitted {formatDateTime(r.submittedAt)}</span>}</span>}
       />
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">

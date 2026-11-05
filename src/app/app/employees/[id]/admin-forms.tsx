@@ -1,6 +1,7 @@
 "use client";
 
 import { ActionForm, SelectField, SubmitButton, TextArea, TextField, type FormState } from "@/components/form";
+import { PeoplePicker } from "@/components/pickers";
 
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
 type Option = { value: string; label: string };
@@ -60,18 +61,7 @@ export function AccessForm({
           { value: "STANDARD", label: "Standard (9h)" }, { value: "ONSITE", label: "Onsite (8h)" },
           { value: "FAR_CLIENT", label: "Far-off client (8h30 on 1st–15th)" }, { value: "REDUCED_HOURS", label: "Allowed 8h30 all month" },
         ]} />
-      <fieldset>
-        <legend className="mb-1 text-sm font-medium">Whom to report (select one or more)</legend>
-        <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-line p-2">
-          {colleagues.map((c) => (
-            <label key={c.value} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="managerIds[]" value={c.value} defaultChecked={defaults.managerIds.includes(c.value)} className="accent-brand-700" />
-              {c.label}
-            </label>
-          ))}
-          {colleagues.length === 0 && <p className="text-xs text-muted">No other employees yet.</p>}
-        </div>
-      </fieldset>
+      <PeoplePicker label="Whom to report (select one or more)" name="managerIds[]" options={colleagues} defaultValue={defaults.managerIds} />
       <SubmitButton>Save</SubmitButton>
     </ActionForm>
   );

@@ -7,6 +7,7 @@ import { encryptWithLast4 } from "@/lib/security/encryption";
 import type { AppContext } from "@/lib/session";
 import { aadhaarSchema, gstinSchema, mobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
 import { audit } from "./audit";
+import { nextClientCode } from "./codes";
 import { hasFile, storeUpload } from "./files";
 import { notifyRoles } from "./notifications";
 
@@ -114,11 +115,11 @@ export async function registerClient(ctx: AppContext, v: z.infer<typeof fullRegi
 
   const client = await prisma.$transaction(
     async (tx) => {
-      const count = await tx.client.count({ where: { organizationId } });
+      const clientCode = await nextClientCode(tx, organizationId);
       const client = await tx.client.create({
         data: {
           organizationId,
-          clientCode: `CL-${String(count + 1).padStart(3, "0")}`,
+          clientCode,
           tradeName: v.tradeName,
           legalName: v.legalName,
           address: v.address,

@@ -12,18 +12,21 @@ const ORIGIN = `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: "tests/e2e",
-  timeout: 180_000, // several browser contexts per test against a remote database
+  timeout: Number(process.env.E2E_TEST_TIMEOUT ?? 180_000), // several browser contexts per test against a remote database
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
   reporter: [["list"]],
   use: {
     baseURL: ORIGIN,
+    actionTimeout: 45_000,
     channel: "chrome",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     // Attendance uses geolocation; grant a fixed location (Naraina, New Delhi).
-    permissions: ["geolocation"],
+    permissions: ["geolocation", "microphone"],
+    // A synthetic microphone, so voice notes can be recorded without hardware.
+    launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] },
     geolocation: { latitude: 28.6304, longitude: 77.1425 },
     timezoneId: "Asia/Kolkata",
   },
@@ -36,6 +39,6 @@ export default defineConfig({
     env: { AUTH_SIGNIN_LIMIT_PER_MINUTE: "200", BETTER_AUTH_URL: ORIGIN, MAIL_CAPTURE_DIR: "test-results/mail" },
     url: `${ORIGIN}/api/health`,
     reuseExistingServer: false,
-    timeout: 180_000, // several browser contexts per test against a remote database
+    timeout: Number(process.env.E2E_TEST_TIMEOUT ?? 180_000), // several browser contexts per test against a remote database
   },
 });

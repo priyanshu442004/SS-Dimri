@@ -2,24 +2,26 @@ import "server-only";
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { BusinessRuleError, zCheckbox, zOptionalText, zRequiredText } from "@/lib/actions";
+import { BusinessRuleError, zCheckbox, zOptionalText } from "@/lib/actions";
 import { can } from "@/lib/permissions";
 import { availableActions, canPerform, nextStatus, OPEN_STATUSES, type TaskAction, type TaskStatus } from "@/lib/domain/task-workflow";
 import type { AppContext } from "@/lib/session";
 import { audit } from "./audit";
 import { hasFile, storeUpload } from "./files";
 import { notifyClientUsers, notifyEmployees, notifyUsers } from "./notifications";
+import { deliverComplianceNotices } from "./compliance";
 
-/** Tasks the caller may see. Team members see only tasks assigned to them (or where they are maker/checker). */
+/** Tasks the caller may see. Team members see tasks they created, or where they are assignee, maker or checker. */
 export function taskScope(ctx: AppContext): Prisma.TaskWhereInput {
-  if (can(ctx.role, "tasks.view_all")) return { organizationId: ctx.organization.id };
+  if (can(ctx, "tasks.view_all")) return { organizationId: ctx.organization.id };
   const me = ctx.employee?.id ?? "00000000-0000-0000-0000-000000000000";
   return {
     organizationId: ctx.organization.id,
-    OR: [{ assignments: { some: { employeeId: me, removedAt: null } } }, { makerEmployeeId: me }, { checkerEmployeeId: me }],
+    OR: [{ assignments: { some: { employeeId: me, removedAt: null } } }, { makerEmployeeId: me }, { checkerEmployeeId: me }, { createdById: ctx.user.id }],
   };
 }
 
+export const MAX_REMINDERS = 10;
 const zDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Enter date and time");
 /** <input type="datetime-local"> value interpreted in the firm's timezone (IST, fixed +05:30). */
 export function localDateTimeToUtc(v: string) {
@@ -27,7 +29,8 @@ export function localDateTimeToUtc(v: string) {
 }
 
 export const taskSchema = z.object({
-  title: zRequiredText(200),
+  /** May be left blank when a voice note says it all. */
+  title: zOptionalText(200),
   description: zOptionalText(5000),
   clientId: z.uuid().optional(),
   clientServiceId: z.uuid().optional(),
@@ -40,7 +43,7 @@ export const taskSchema = z.object({
   checkerEmployeeId: z.uuid().optional(),
   writingForRemark: zOptionalText(2000),
   writingFromRemark: zOptionalText(2000),
-  remindAt: zDateTime.optional(),
+  "remindAt[]": z.array(zDateTime).max(MAX_REMINDERS, `At most ${MAX_REMINDERS} reminders`).default([]),
   clientVisible: zCheckbox.optional(),
 });
 
@@ -51,7 +54,11 @@ async function assertEmployees(organizationId: string, ids: (string | undefined)
 }
 
 export async function createTask(ctx: AppContext, v: z.infer<typeof taskSchema>, fd: FormData) {
-  if (v.makerEmployeeId && v.makerEmployeeId === v.checkerEmployeeId) throw new BusinessRuleError("Maker and checker must be different people.");
+  const voiceNotes = fd.getAll("voiceNotes").filter(hasFile);
+  if (!v.title && !voiceNotes.length) throw new BusinessRuleError("Give the task a title, or record a voice note.");
+  const title = v.title ?? `Voice note task · ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: "Asia/Kolkata" })}`;
+  const reminderTimes = [...new Set(v["remindAt[]"])].map(localDateTimeToUtc);
+  if (reminderTimes.some((at) => at < new Date())) throw new BusinessRuleError("Reminders must be in the future.");
   await assertEmployees(ctx.organization.id, [...v["assigneeIds[]"], v.makerEmployeeId, v.checkerEmployeeId]);
   if (v.clientId && !(await prisma.client.findFirst({ where: { id: v.clientId, organizationId: ctx.organization.id }, select: { id: true } }))) {
     throw new BusinessRuleError("Client not found.");
@@ -68,13 +75,14 @@ export async function createTask(ctx: AppContext, v: z.infer<typeof taskSchema>,
     const t = await tx.task.create({
       data: {
         organizationId: ctx.organization.id,
-        title: v.title,
+        title,
         description: v.description,
         clientId: v.clientId,
         clientServiceId: v.clientServiceId,
         priority: v.priority,
         isAsap: !!v.isAsap,
-        clientVisible: !!v.clientVisible && !!v.clientId,
+        // Sharing with a client stays a review-level decision.
+        clientVisible: !!v.clientVisible && !!v.clientId && can(ctx, "tasks.review"),
         startAt,
         dueAt,
         status: assignees.length ? "ASSIGNED" : "PENDING",
@@ -86,7 +94,7 @@ export async function createTask(ctx: AppContext, v: z.infer<typeof taskSchema>,
         createdById: ctx.user.id,
         assignments: { create: assignees.map((employeeId) => ({ employeeId, assignedById: ctx.user.id })) },
         activities: { create: { actorUserId: ctx.user.id, type: "CREATED", toValue: assignees.length ? "ASSIGNED" : "PENDING" } },
-        reminders: v.remindAt ? { create: { remindAt: localDateTimeToUtc(v.remindAt), createdById: ctx.user.id } } : undefined,
+        reminders: reminderTimes.length ? { create: reminderTimes.map((remindAt) => ({ remindAt, createdById: ctx.user.id })) } : undefined,
       },
     });
     await notifyEmployees(tx, ctx.organization.id, assignees, {
@@ -101,6 +109,7 @@ export async function createTask(ctx: AppContext, v: z.infer<typeof taskSchema>,
   for (const f of fd.getAll("attachments")) {
     if (hasFile(f)) await addAttachment(ctx, task.id, f);
   }
+  for (const f of voiceNotes) await addAttachment(ctx, task.id, f);
   return task;
 }
 
@@ -112,7 +121,7 @@ export async function loadTaskForCtx(ctx: AppContext, taskId: string) {
 }
 
 function actorFor(ctx: AppContext, task: { assignments: { employeeId: string }[] }) {
-  return { role: ctx.role, employeeId: ctx.employee?.id ?? null, isAssignee: task.assignments.some((a) => a.employeeId === ctx.employee?.id) };
+  return { role: ctx.role, member: ctx, employeeId: ctx.employee?.id ?? null, isAssignee: task.assignments.some((a) => a.employeeId === ctx.employee?.id) };
 }
 
 export async function taskActionsFor(ctx: AppContext, task: NonNullable<Awaited<ReturnType<typeof loadTaskForCtx>>>) {
@@ -181,7 +190,7 @@ export async function addRemark(ctx: AppContext, taskId: string, note: string, c
 
 /** Share or unshare a task with the client, or ask the client to review delivered work. */
 export async function setClientSharing(ctx: AppContext, taskId: string, v: { clientVisible: boolean; requestReview: boolean }) {
-  if (!can(ctx.role, "tasks.review")) throw new BusinessRuleError("You cannot change client sharing.");
+  if (!can(ctx, "tasks.review")) throw new BusinessRuleError("You cannot change client sharing.");
   const task = await loadTaskForCtx(ctx, taskId);
   if (!task || !task.clientId) throw new BusinessRuleError("Only tasks linked to a client can be shared.");
   await prisma.$transaction(async (tx) => {
@@ -199,18 +208,35 @@ export async function setClientSharing(ctx: AppContext, taskId: string, v: { cli
 export async function addAttachment(ctx: AppContext, taskId: string, file: File) {
   const task = await loadTaskForCtx(ctx, taskId);
   if (!task) throw new BusinessRuleError("Task not found.");
-  const stored = await storeUpload(ctx, file, { area: "tasks", ownerId: task.id });
+  const stored = await storeUpload(ctx, file, { area: "tasks", ownerId: task.id, allowAudio: true });
+  const isAudio = stored.mimeType.startsWith("audio/");
+  // The recorder puts the length in the file name: voice-note-42s.m4a
+  const seconds = isAudio ? Number(/-(\d+)s\.\w+$/.exec(file.name)?.[1]) || null : null;
   await prisma.$transaction([
-    prisma.taskAttachment.create({ data: { taskId: task.id, fileId: stored.id, kind: stored.mimeType.startsWith("image/") ? "IMAGE" : "DOCUMENT", caption: file.name.slice(0, 200) } }),
-    prisma.taskActivity.create({ data: { taskId: task.id, actorUserId: ctx.user.id, type: "ATTACHMENT_ADDED", toValue: file.name.slice(0, 200) } }),
+    prisma.taskAttachment.create({
+      data: { taskId: task.id, fileId: stored.id, kind: isAudio ? "AUDIO" : stored.mimeType.startsWith("image/") ? "IMAGE" : "DOCUMENT", caption: isAudio ? "Voice note" : file.name.slice(0, 200), durationSeconds: seconds },
+    }),
+    prisma.taskActivity.create({ data: { taskId: task.id, actorUserId: ctx.user.id, type: "ATTACHMENT_ADDED", toValue: isAudio ? "a voice note" : file.name.slice(0, 200) } }),
   ]);
+  if (isAudio) await notifyTaskTeam(ctx, task.id, `New voice note on: ${task.title}`);
+}
+
+/** Tell the rest of the task team (assignees, maker, checker), never the author. */
+async function notifyTaskTeam(ctx: AppContext, taskId: string, title: string, body?: string) {
+  const team = await prisma.task.findUniqueOrThrow({
+    where: { id: taskId },
+    select: { makerEmployeeId: true, checkerEmployeeId: true, assignments: { where: { removedAt: null }, select: { employeeId: true } } },
+  });
+  const others = [...team.assignments.map((a) => a.employeeId), team.makerEmployeeId, team.checkerEmployeeId].filter((x): x is string => !!x && x !== ctx.employee?.id);
+  await prisma.$transaction((tx) => notifyEmployees(tx, ctx.organization.id, [...new Set(others)], { type: "task.remark", title, body, link: `/app/tasks/${taskId}` }));
 }
 
 export async function setAssignees(ctx: AppContext, taskId: string, employeeIds: string[], makerId?: string, checkerId?: string) {
-  if (!can(ctx.role, "tasks.create")) throw new BusinessRuleError("You cannot change assignments.");
+  if (!can(ctx, "tasks.create")) throw new BusinessRuleError("You cannot change assignments.");
   const task = await loadTaskForCtx(ctx, taskId);
   if (!task) throw new BusinessRuleError("Task not found.");
-  if (makerId && makerId === checkerId) throw new BusinessRuleError("Maker and checker must be different people.");
+  // Team members can re-assign only tasks they created themselves.
+  if (!can(ctx, "tasks.review") && task.createdById !== ctx.user.id) throw new BusinessRuleError("Only the person who created this task, or a lead, can change who works on it.");
   await assertEmployees(ctx.organization.id, [...employeeIds, makerId, checkerId]);
   const current = new Set(task.assignments.map((a) => a.employeeId));
   const next = new Set(employeeIds);
@@ -241,6 +267,26 @@ export async function setAssignees(ctx: AppContext, taskId: string, employeeIds:
   });
 }
 
+/** Add one or more reminders. "me" reminds only the person setting it; "team" everyone on the task. */
+export async function addReminders(ctx: AppContext, taskId: string, times: string[], audience: "me" | "team", note?: string) {
+  const task = await loadTaskForCtx(ctx, taskId);
+  if (!task) throw new BusinessRuleError("Task not found.");
+  const at = [...new Set(times)].map(localDateTimeToUtc);
+  if (at.some((d) => d < new Date())) throw new BusinessRuleError("Choose times in the future.");
+  const existing = await prisma.taskReminder.count({ where: { taskId: task.id, status: "SCHEDULED" } });
+  if (existing + at.length > MAX_REMINDERS) throw new BusinessRuleError(`A task can have at most ${MAX_REMINDERS} scheduled reminders.`);
+  await prisma.taskReminder.createMany({
+    data: at.map((remindAt) => ({ taskId: task.id, remindAt, note, createdById: ctx.user.id, recipientEmployeeId: audience === "me" ? ctx.employee?.id : null })),
+  });
+}
+
+export async function cancelReminder(ctx: AppContext, taskId: string, reminderId: string) {
+  const task = await loadTaskForCtx(ctx, taskId);
+  if (!task) throw new BusinessRuleError("Task not found.");
+  const res = await prisma.taskReminder.updateMany({ where: { id: reminderId, taskId: task.id, status: "SCHEDULED" }, data: { status: "CANCELLED" } });
+  if (res.count !== 1) throw new BusinessRuleError("This reminder has already gone out or was removed.");
+}
+
 /**
  * Turn due task reminders into in-app notifications. Called on page load, so
  * reminders work without a scheduler; an external channel (email/WhatsApp)
@@ -248,16 +294,19 @@ export async function setAssignees(ctx: AppContext, taskId: string, employeeIds:
  */
 export async function deliverDueReminders(organizationId: string) {
   await deliverOverdueNotices(organizationId);
+  await deliverComplianceNotices(organizationId);
   const due = await prisma.taskReminder.findMany({
     where: { status: "SCHEDULED", remindAt: { lte: new Date() }, task: { organizationId } },
     take: 50,
-    include: { task: { select: { id: true, title: true, status: true, assignments: { where: { removedAt: null }, select: { employeeId: true } } } } },
+    include: { task: { select: { id: true, title: true, status: true, makerEmployeeId: true, checkerEmployeeId: true, assignments: { where: { removedAt: null }, select: { employeeId: true } } } } },
   });
   for (const r of due) {
     await prisma.$transaction(async (tx) => {
       const claimed = await tx.taskReminder.updateMany({ where: { id: r.id, status: "SCHEDULED" }, data: { status: "SENT", sentAt: new Date() } });
       if (claimed.count !== 1 || ["COMPLETED", "CANCELLED"].includes(r.task.status)) return;
-      const targets = r.recipientEmployeeId ? [r.recipientEmployeeId] : r.task.assignments.map((a) => a.employeeId);
+      const targets = r.recipientEmployeeId
+        ? [r.recipientEmployeeId]
+        : [...new Set([...r.task.assignments.map((a) => a.employeeId), r.task.makerEmployeeId, r.task.checkerEmployeeId].filter((x): x is string => !!x))];
       const members = await tx.organizationMembership.findMany({ where: { organizationId, employeeId: { in: targets } }, select: { userId: true } });
       const userIds = members.map((m) => m.userId);
       if (!userIds.length && r.createdById) userIds.push(r.createdById);

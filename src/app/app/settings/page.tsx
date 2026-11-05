@@ -115,7 +115,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/set
       <div className="max-w-4xl space-y-4">
         <Notice tone="warn">
           The firm has two versions of the Leave & Timing Policy that differ on overtime (actual minutes vs. 2.5h/5h slabs) and on Sunday rules.
-          These settings drive indicative attendance figures only. No salary deduction or overtime payment is calculated until the policy is confirmed — see docs/requirements-audit.md.
+          These settings drive attendance figures and the Payroll page, which stays marked provisional until the policy is confirmed. Overtime is not paid through Payroll.
         </Notice>
         <Card>
           <PolicyForm
@@ -131,7 +131,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/set
     const [designations, workTypes, org] = await Promise.all([
       prisma.designation.findMany({ where: { organizationId: ctx.organization.id }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { _count: { select: { employees: true } } } }),
       prisma.workType.findMany({ where: { organizationId: ctx.organization.id }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { _count: { select: { timesheetEntries: true } } } }),
-      prisma.organization.findUniqueOrThrow({ where: { id: ctx.organization.id }, select: { pendingDaysBasis: true, timezone: true, approvalGraceDays: true } }),
+      prisma.organization.findUniqueOrThrow({ where: { id: ctx.organization.id }, select: { pendingDaysBasis: true, timezone: true, approvalGraceDays: true, timesheetPenaltyRupees: true } }),
     ]);
     const list = (kind: "designation" | "work_type", rows: { id: string; name: string; isActive: boolean; used: number; extra?: string | null }[]) => (
       <ul className="mb-4 divide-y divide-line text-sm">
@@ -155,7 +155,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/set
           <ListItemForm action={addListItemAction.bind(null, "work_type")} />
         </Card>
         <div className="space-y-6">
-          <Card title="Workflow preferences"><PreferencesForm action={savePreferencesAction} basis={org.pendingDaysBasis} graceDays={String(org.approvalGraceDays)} /></Card>
+          <Card title="Workflow preferences"><PreferencesForm action={savePreferencesAction} basis={org.pendingDaysBasis} graceDays={String(org.approvalGraceDays)}  penalty={String(org.timesheetPenaltyRupees)} /></Card>
           <Card title="Time zone">
             <p className="text-sm">{org.timezone}</p>
             <p className="mt-1 text-xs text-muted">All dates, attendance cut-offs and reports use this zone. It is fixed for the firm (India Standard Time) and not editable here.</p>

@@ -18,7 +18,7 @@ Sources: the handwritten notes and DFD, the nine Google Drive references ([requi
 | R4 | Constitution types: Proprietor, Firm, Company, Trust, HUF, each with its representative role (proprietor, partner, director, trustee, karta) | `constitutions` master; `constitution_members.role` validated against the constitution |
 | R5 | Seven days = trial/probation for a new employee | `organizations.default_probation_days` (default 7), copied per employee; editable |
 | R6 | Staff get their ID from the administrator; temporary ID until approval, then a permanent ID | Onboarding state machine; unique `permanent_employee_code` |
-| R7 | Maker/checker: a maker never approves their own work | `canPerform` (unit-tested) |
+| R7 | Maker/checker: a named checker approves, and one person may hold both jobs when deputed alone (client feedback, 5 Nov 2026). With no checker named, a maker cannot approve their own work | `canPerform` (unit-tested) |
 | R8 | No task deletion by team members (cancel keeps history) | No delete action exists for anyone |
 | R9 | Pending items are either *with the client* or *with a team member* | `pending_items.pending_with` enum |
 | R10 | Client report built from source records; dues listed separately (13A/13B) | `buildClientReport` |

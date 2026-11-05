@@ -23,6 +23,20 @@ const SIGNATURES: { mime: string; ext: string; test: (b: Buffer) => boolean }[] 
   },
 ];
 
+// Voice notes. Accepted only when the caller asks for them (see validateUpload).
+const AUDIO_SIGNATURES: { mime: string; ext: string; test: (b: Buffer) => boolean }[] = [
+  { mime: "audio/webm", ext: "webm", test: (b) => b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3 },
+  { mime: "audio/ogg", ext: "ogg", test: (b) => b.subarray(0, 4).toString("latin1") === "OggS" },
+  { mime: "audio/mp4", ext: "m4a", test: (b) => b.subarray(4, 8).toString("latin1") === "ftyp" },
+  { mime: "audio/mpeg", ext: "mp3", test: (b) => b.subarray(0, 3).toString("latin1") === "ID3" || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0) },
+  { mime: "audio/wav", ext: "wav", test: (b) => b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WAVE" },
+];
+
+export function detectAudioType(buf: Buffer) {
+  const sig = AUDIO_SIGNATURES.find((s) => s.test(buf));
+  return sig ? { mime: sig.mime, ext: sig.ext } : null;
+}
+
 const OFFICE_TYPES: Record<string, string> = {
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -50,10 +64,10 @@ export type UploadOwner = { organization: { id: string }; user: { id: string } }
  * Checks size and real file type (from content) without storing anything, so a
  * form can reject a bad file before it creates any records.
  */
-export async function validateUpload(file: File, opts: { imagesOnly?: boolean } = {}) {
+export async function validateUpload(file: File, opts: { imagesOnly?: boolean; allowAudio?: boolean } = {}) {
   if (file.size > MAX_UPLOAD_BYTES) throw new BusinessRuleError(`“${file.name}” is larger than 10 MB.`);
   const buf = Buffer.from(await file.arrayBuffer());
-  const type = detectFileType(buf, file.name);
+  const type = detectFileType(buf, file.name) ?? (opts.allowAudio ? detectAudioType(buf) : null);
   if (!type) throw new BusinessRuleError(`“${file.name}” is not a supported file. Upload a PDF, JPG, PNG, WEBP, DOCX or XLSX file.`);
   if (opts.imagesOnly && !type.mime.startsWith("image/")) throw new BusinessRuleError(`“${file.name}” must be an image (JPG, PNG or WEBP).`);
   return { buf, type };
@@ -66,7 +80,7 @@ export async function validateUpload(file: File, opts: { imagesOnly?: boolean } 
 export async function storeUpload(
   ctx: UploadOwner,
   file: File,
-  opts: { area: StorageArea; ownerId: string; imagesOnly?: boolean },
+  opts: { area: StorageArea; ownerId: string; imagesOnly?: boolean; allowAudio?: boolean },
 ) {
   const { buf, type } = await validateUpload(file, opts);
 

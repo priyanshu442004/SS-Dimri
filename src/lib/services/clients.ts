@@ -13,13 +13,14 @@ import { aadhaarSchema, gstinSchema, intlMobileSchema, mobileSchema, panSchema, 
 import type { AppContext } from "@/lib/session";
 import { createCredentialUser } from "./accounts";
 import { audit } from "./audit";
+import { nextClientCode } from "./codes";
 import { hasFile, storeUpload } from "./files";
 import { notifyClientUsers, notifyRoles } from "./notifications";
 import { createPasswordLink } from "./password-links";
 
 /** Clients the caller may see. Team members see only clients they are allocated to or have tasks for. */
 export function clientScope(ctx: AppContext): Prisma.ClientWhereInput {
-  if (can(ctx.role, "clients.view_all")) return { organizationId: ctx.organization.id };
+  if (can(ctx, "clients.view_all")) return { organizationId: ctx.organization.id };
   const me = ctx.employee?.id ?? "00000000-0000-0000-0000-000000000000";
   return {
     organizationId: ctx.organization.id,
@@ -59,11 +60,11 @@ export const quickRegistrationSchema = z.object({
 export async function quickRegisterClient(ctx: AppContext, v: z.infer<typeof quickRegistrationSchema>) {
   const services = await prisma.service.findMany({ where: { id: { in: v["serviceIds[]"] }, organizationId: ctx.organization.id }, select: { id: true } });
   return prisma.$transaction(async (tx) => {
-    const count = await tx.client.count({ where: { organizationId: ctx.organization.id } });
+    const clientCode = await nextClientCode(tx, ctx.organization.id);
     const client = await tx.client.create({
       data: {
         organizationId: ctx.organization.id,
-        clientCode: `CL-${String(count + 1).padStart(3, "0")}`,
+        clientCode,
         tradeName: v.tradeName,
         legalName: v.legalName,
         constitutionId: v.constitutionId,
@@ -175,7 +176,7 @@ export const transitionSchema = z.object({
 export async function transitionClient(ctx: AppContext, clientId: string, action: ClientAction, reason?: string) {
   const client = await getClientForCtx(ctx, clientId);
   if (!client) throw new BusinessRuleError("Client not found.");
-  const to = clientTransition(client.status as ClientStatus, action, ctx.role);
+  const to = clientTransition(client.status as ClientStatus, action, ctx);
   if (!to) throw new BusinessRuleError("This change is not allowed for the client's current status or your role.");
   if (action === "reject" && !reason) throw new BusinessRuleError("Give a reason for rejection.");
   await prisma.$transaction(async (tx) => {

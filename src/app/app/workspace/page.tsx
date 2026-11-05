@@ -5,7 +5,7 @@ import { myOverview } from "@/lib/services/dashboard";
 import { Greeting, MyDay } from "../dashboard-sections";
 
 export default async function Workspace() {
-  const ctx = await requireCapability("app.use");
+  const ctx = await requireCapability("dashboard.use");
   const [data, charts] = await Promise.all([myOverview(ctx), myAnalytics(ctx)]);
   return (
     <>
