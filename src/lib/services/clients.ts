@@ -8,11 +8,12 @@ import { BusinessRuleError, zCheckbox, zIsoDate, zMoney, zOptionalText, zRequire
 import { dateOnly } from "@/lib/dates";
 import { clientTransition, type ClientAction, type ClientStatus } from "@/lib/domain/client-workflow";
 import { can } from "@/lib/permissions";
-import { encryptWithLast4 } from "@/lib/security/encryption";
+import { encryptField, encryptWithLast4 } from "@/lib/security/encryption";
 import { aadhaarSchema, gstinSchema, intlMobileSchema, mobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
 import type { AppContext } from "@/lib/session";
 import { createCredentialUser } from "./accounts";
 import { audit } from "./audit";
+import { clientComplianceFields, saveClientCompliances } from "./client-compliances";
 import { nextClientCode } from "./codes";
 import { hasFile, storeUpload } from "./files";
 import { notifyClientUsers, notifyRoles } from "./notifications";
@@ -55,6 +56,7 @@ export const quickRegistrationSchema = z.object({
   contactMobile: intlMobileSchema.optional(),
   contactEmail: z.email().optional(),
   "serviceIds[]": z.array(z.uuid()).default([]),
+  ...clientComplianceFields,
 });
 
 export async function quickRegisterClient(ctx: AppContext, v: z.infer<typeof quickRegistrationSchema>) {
@@ -80,6 +82,7 @@ export async function quickRegisterClient(ctx: AppContext, v: z.infer<typeof qui
         },
       },
     });
+    await saveClientCompliances(tx, client.id, v["departments[]"], v["complianceItemIds[]"]);
     await audit(tx, ctx, "client.quick_registered", "client", client.id);
     await notifyRoles(tx, ctx.organization.id, ["OWNER", "ADMIN"], {
       type: "client.pending_approval",
@@ -112,6 +115,20 @@ export const clientDetailsSchema = z.object({
   TURNOVER: z.uuid().optional(),
   PRIORITY: z.uuid().optional(),
   markComplete: zCheckbox.optional(),
+  /** Present when the form showed the department / compliance picker. */
+  compliancesShown: zCheckbox.optional(),
+  ...clientComplianceFields,
+  state: zOptionalText(60),
+  dateOfBirth: zIsoDate.optional(),
+  itFileNo: zOptionalText(40),
+  masterRemark: zOptionalText(1000),
+  gstUserId: zOptionalText(120),
+  incomeTaxUserId: zOptionalText(120),
+  tracesUserId: zOptionalText(120),
+  /** Typed only to set or change; never shown back. */
+  gstPassword: zOptionalText(200),
+  incomeTaxPassword: zOptionalText(200),
+  tracesPassword: zOptionalText(200),
 });
 
 const BASES = ["GST_STATUS", "BILLING_BASIS", "PLACE_OF_WORK", "TURNOVER", "PRIORITY"] as const;
@@ -141,6 +158,16 @@ export async function saveClientDetails(ctx: AppContext, clientId: string, v: z.
         msmeRegistrationNumber: v.msmeRegistrationNumber ?? null,
         esiNumber: v.esiNumber ?? null,
         pfNumber: v.pfNumber ?? null,
+        state: v.state ?? null,
+        dateOfBirth: v.dateOfBirth ? dateOnly(v.dateOfBirth) : null,
+        itFileNo: v.itFileNo ?? null,
+        masterRemark: v.masterRemark ?? null,
+        gstUserId: v.gstUserId ?? null,
+        incomeTaxUserId: v.incomeTaxUserId ?? null,
+        tracesUserId: v.tracesUserId ?? null,
+        ...(v.gstPassword ? { gstPasswordEncrypted: encryptField(v.gstPassword) } : {}),
+        ...(v.incomeTaxPassword ? { incomeTaxPasswordEncrypted: encryptField(v.incomeTaxPassword) } : {}),
+        ...(v.tracesPassword ? { tracesPasswordEncrypted: encryptField(v.tracesPassword) } : {}),
         ...(uploads.profilePicture ? { profilePictureFileId: uploads.profilePicture } : {}),
         ...(uploads.msmeCertificate ? { msmeCertificateFileId: uploads.msmeCertificate } : {}),
         ...(uploads.esiCertificate ? { esiCertificateFileId: uploads.esiCertificate } : {}),
@@ -162,6 +189,7 @@ export async function saveClientDetails(ctx: AppContext, clientId: string, v: z.
         await tx.clientClassification.deleteMany({ where: { clientId: client.id, basis } });
       }
     }
+    if (v.compliancesShown) await saveClientCompliances(tx, client.id, v["departments[]"], v["complianceItemIds[]"]);
     await audit(tx, ctx, "client.details_updated", "client", client.id);
   });
 }

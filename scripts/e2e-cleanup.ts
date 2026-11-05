@@ -40,6 +40,7 @@ async function main() {
       prisma.leaveBalance.deleteMany({ where: org }),
       prisma.pendingItem.deleteMany({ where: org }),
       prisma.timesheetEntry.deleteMany({ where: org }),
+      prisma.trackerLine.deleteMany({ where: org }),
       prisma.dayReportRecipient.deleteMany({ where: { dayReport: org } }),
       prisma.dayReport.deleteMany({ where: org }),
       prisma.taskReview.deleteMany({ where: byTask }),

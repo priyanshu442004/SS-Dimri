@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { clsx } from "clsx";
-import { CircleAlert, CircleCheck, Copy, FileSpreadsheet, TriangleAlert, Upload } from "lucide-react";
+import { CircleAlert, CircleCheck, Copy, FileSpreadsheet, Merge, TriangleAlert, Upload } from "lucide-react";
 import { Badge, buttonClass, Card, Notice, Stat, Table, Td, Th } from "@/components/ui";
 import { inputCls } from "@/components/form";
 import { toast } from "@/components/toaster";
@@ -19,6 +19,7 @@ export function ImportFlow({ canApprove }: { canApprove: boolean }) {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
   const [activate, setActivate] = useState(true);
+  const [fillMissing, setFillMissing] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [pending, start] = useTransition();
   const input = useRef<HTMLInputElement>(null);
@@ -28,6 +29,7 @@ export function ImportFlow({ canApprove }: { canApprove: boolean }) {
     fd.set("file", f);
     if (m) fd.set("mapping", JSON.stringify(m));
     if (activate) fd.set("activate", "on");
+    if (fillMissing) fd.set("fillMissing", "on");
     return fd;
   };
 
@@ -79,7 +81,7 @@ export function ImportFlow({ canApprove }: { canApprove: boolean }) {
     <div className="space-y-6">
       <Card title="1. Choose your Excel file" icon={<FileSpreadsheet />}>
         <p className="mb-3 text-sm text-muted">
-          Use the firm&apos;s client sheet, or start from our template. Columns are recognised by their heading, in any order, and a title row above the headings is fine.
+          Use the firm&apos;s Client Master (one row per GSTIN), or start from our template. Columns are recognised by their heading, in any order, and the title rows above the headings are fine. Rows with the same PAN become one client with all its GSTINs. Passwords are stored encrypted.
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <label className={buttonClass("primary", "md", "cursor-pointer")}>
@@ -123,25 +125,28 @@ export function ImportFlow({ canApprove }: { canApprove: boolean }) {
             </div>
           </Card>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Stat label="Ready to import" value={preview.ready} icon={<CircleCheck />} tone="ok" hint={`of ${preview.totalRows} rows`} />
-            <Stat label="Already registered" value={preview.duplicates} icon={<Copy />} tone={preview.duplicates ? "info" : "neutral"} hint="Skipped, never overwritten" />
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <Stat label="New clients" value={preview.ready} icon={<CircleCheck />} tone="ok" hint={`from ${preview.totalRows} rows`} />
+            <Stat label="Same PAN, merged" value={preview.merged} icon={<Merge />} tone={preview.merged ? "info" : "neutral"} hint="Added to that client as GSTINs" />
+            <Stat label="Already registered" value={preview.duplicates} icon={<Copy />} tone={preview.duplicates ? "info" : "neutral"} hint={fillMissing ? "Only missing details filled in" : "Skipped, never overwritten"} />
             <Stat label="With errors" value={preview.failed} icon={<CircleAlert />} tone={preview.failed ? "danger" : "neutral"} hint="Skipped" />
             <Stat label="With warnings" value={preview.warnings} icon={<TriangleAlert />} tone={preview.warnings ? "warn" : "neutral"} hint="Imported without the bad value" />
           </div>
 
           <Card title="3. Check the rows" padded={false}>
             <Table minWidth={760}>
-              <thead><tr><Th>Row</Th><Th>Client</Th><Th>GSTIN / PAN</Th><Th>Contact</Th><Th>Result</Th></tr></thead>
+              <thead><tr><Th>Row</Th><Th>Client</Th><Th>GSTIN / PAN</Th><Th>Departments</Th><Th>Contact</Th><Th>Result</Th></tr></thead>
               <tbody>
                 {preview.rows.map((r) => (
                   <tr key={r.row}>
                     <Td className="text-xs text-muted">{r.row}</Td>
                     <Td className="font-medium">{r.values.tradeName ?? "—"}{r.values.clientCode && <div className="font-mono text-xs font-normal text-muted">{r.values.clientCode}</div>}</Td>
                     <Td className="text-xs">{[...r.values.gstins, r.values.pan].filter(Boolean).join(", ") || "—"}</Td>
+                    <Td className="text-xs">{r.values.departmentList?.join(", ") || "—"}</Td>
                     <Td className="text-xs">{[r.values.contactName, r.values.contactMobile].filter(Boolean).join(" · ") || "—"}</Td>
                     <Td className="text-xs">
                       {r.errors.length > 0 ? <Badge tone="danger">{r.errors[0]}</Badge>
+                        : r.mergedInto ? <Badge tone="info">Same PAN as row {r.mergedInto}: added there</Badge>
                         : r.duplicateOf ? <Badge tone="info">Already registered: {r.duplicateOf}</Badge>
                         : <Badge tone="ok">Will be imported</Badge>}
                       {r.warnings.map((w) => <p key={w} className="mt-1 text-warn">{w}</p>)}
@@ -162,8 +167,14 @@ export function ImportFlow({ canApprove }: { canApprove: boolean }) {
             ) : (
               <p className="mb-3 text-sm text-muted">Imported clients go to the approval queue for an administrator.</p>
             )}
-            <button type="button" onClick={run} disabled={pending || !hasName || preview.ready === 0} className={buttonClass("primary", "md")}>
-              {pending ? "Working…" : `Import ${preview.ready} ${preview.ready === 1 ? "client" : "clients"}`}
+            {preview.duplicates > 0 && (
+              <label className="mb-3 flex items-start gap-2 text-sm">
+                <input type="checkbox" checked={fillMissing} onChange={(e) => setFillMissing(e.target.checked)} className="mt-0.5 size-4 accent-ink" />
+                <span>For the {preview.duplicates} already registered, fill in only what they are missing (new GSTINs, departments, empty fields). Saved values are never changed.</span>
+              </label>
+            )}
+            <button type="button" onClick={run} disabled={pending || !hasName || (preview.ready === 0 && !(fillMissing && preview.duplicates))} className={buttonClass("primary", "md")}>
+              {pending ? "Working… this can take a minute for a long sheet" : `Import ${preview.ready} ${preview.ready === 1 ? "client" : "clients"}${fillMissing && preview.duplicates ? ` and update ${preview.duplicates}` : ""}`}
             </button>
           </Card>
         </>

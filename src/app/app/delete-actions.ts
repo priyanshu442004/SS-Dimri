@@ -6,7 +6,7 @@ import { actionContext } from "@/lib/session";
 import type { DeletionEntity, DeletionPreview } from "@/lib/deletion-types";
 import { canDelete, deleteRecord, previewDeletion } from "@/lib/services/deletions";
 
-const ENTITIES: DeletionEntity[] = ["client", "employee", "task", "allocation", "timesheet", "attendance", "leave", "pending", "observation", "due", "dayreport", "compliance"];
+const ENTITIES: DeletionEntity[] = ["client", "employee", "task", "allocation", "timesheet", "attendance", "leave", "pending", "observation", "due", "dayreport", "compliance", "trackerline"];
 
 async function guarded(entity: DeletionEntity, id: string) {
   if (!ENTITIES.includes(entity) || !/^[0-9a-f-]{36}$/i.test(id)) throw new BusinessRuleError("This record was not found.");

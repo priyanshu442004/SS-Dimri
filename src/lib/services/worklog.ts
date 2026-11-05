@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db";
 import { BusinessRuleError, zCheckbox, zIsoDate, zOptionalText } from "@/lib/actions";
 import { dateOnly } from "@/lib/dates";
 import { minutesBetween, RESOURCE_TYPES } from "@/lib/domain/timesheet";
+import { BRANCHES, needsBankName } from "@/lib/domain/tracker";
+import { checkPendingDates, pendingAndIssueData, pendingAndIssueFields, syncTrackerFromLog } from "./tracker";
 import { can } from "@/lib/permissions";
 import type { AppContext } from "@/lib/session";
 import { audit } from "./audit";
@@ -46,11 +48,33 @@ export const timesheetSchema = z.object({
   startTime: zTime.optional(),
   endTime: zTime.optional(),
   workDetails: zOptionalText(4000),
-  workStatus: z.enum(["COMPLETED", "IN_PROGRESS", "PENDING"]).optional(),
+  workStatus: z.enum(["NOT_STARTED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "PENDING"]).optional(),
   whatsappMessage: zOptionalText(2000),
+  branch: z.enum(BRANCHES).optional(),
+  trackerLineId: z.uuid().optional(),
+  ...pendingAndIssueFields,
 });
+type TimesheetInput = z.infer<typeof timesheetSchema>;
 
-export async function addTimesheetEntry(ctx: AppContext, v: z.infer<typeof timesheetSchema>) {
+/** The Team Daily Work Log's mandatory columns: Date, Client, Type of Work, Period From / To, Time; Bank Name for bank work. */
+function checkLogRules(v: TimesheetInput, typeOfWork: string | null | undefined, minutes: number | null) {
+  if (!typeOfWork) throw new BusinessRuleError("Choose the type of work.");
+  if (!v.periodFrom || !v.periodTo) throw new BusinessRuleError("Enter the period from and to that the work covers.");
+  if (v.periodTo < v.periodFrom) throw new BusinessRuleError("Period to is before period from.");
+  if (!minutes) throw new BusinessRuleError("Enter the time taken.");
+  if (needsBankName(typeOfWork) && !v.bankName) throw new BusinessRuleError("Bank Name is required for bank and card work.");
+  checkPendingDates(v);
+}
+
+/** The tracker line the entry points at must be this firm's. */
+async function trackerLineFor(ctx: AppContext, id?: string) {
+  if (!id) return null;
+  const line = await prisma.trackerLine.findFirst({ where: { id, organizationId: ctx.organization.id }, select: { id: true } });
+  if (!line) throw new BusinessRuleError("That Tracker Ref No. was not found.");
+  return line.id;
+}
+
+export async function addTimesheetEntry(ctx: AppContext, v: TimesheetInput) {
   const employeeId = requireEmployee(ctx);
   if (!v.clientId && !v.clientNameText) throw new BusinessRuleError("Select a client or type the client name.");
   if (v.periodFrom && v.periodTo && v.periodTo < v.periodFrom) throw new BusinessRuleError("Period to is before period from.");
@@ -67,8 +91,20 @@ export async function addTimesheetEntry(ctx: AppContext, v: z.infer<typeof times
     : null;
   const serial = v.serialNumber ?? (await prisma.timesheetEntry.count({ where: { employeeId, workDate: day } })) + 1;
   const minutes = minutesFrom(v);
-  return prisma.timesheetEntry.create({
+  const typeOfWork = workType?.name ?? v.typeOfWork;
+  checkLogRules(v, typeOfWork, minutes);
+  const lineId = await trackerLineFor(ctx, v.trackerLineId);
+  const pending = pendingAndIssueData(v);
+  return prisma.$transaction(async (tx) => {
+    const trackerLineId = await syncTrackerFromLog(tx, ctx.organization.id, {
+      employeeId, workDate: day, clientId: client?.id ?? null, clientNameText: client?.tradeName ?? v.clientNameText ?? null, branch: v.branch ?? null,
+      typeOfWork: typeOfWork ?? null, bankName: v.bankName ?? null, periodFrom: dateOnly(v.periodFrom!), periodTo: dateOnly(v.periodTo!), workStatus: v.workStatus ?? null, ...pending,
+    }, lineId);
+    return tx.timesheetEntry.create({
     data: {
+      ...pending,
+      branch: v.branch,
+      trackerLineId,
       organizationId: ctx.organization.id,
       employeeId,
       serialNumber: serial,
@@ -95,6 +131,7 @@ export async function addTimesheetEntry(ctx: AppContext, v: z.infer<typeof times
       whatsappMessage: v.whatsappMessage,
       status: "SUBMITTED",
     },
+    });
   });
 }
 
@@ -159,7 +196,7 @@ export async function reviewTimesheetEntry(ctx: AppContext, entryId: string, dec
 
 export const entryCorrectionSchema = timesheetSchema.extend({ reason: zOptionalText(500) });
 
-const AUDITED_FIELDS = ["workDate", "clientNameText", "placeOfWork", "typeOfWork", "bankName", "periodFrom", "periodTo", "transactionCount", "approxMinutes", "resourceType", "assessmentYear", "startTime", "endTime", "workDetails", "workStatus", "whatsappMessage"] as const;
+const AUDITED_FIELDS = ["branch", "issueLevel", "issueDetails", "issueStatus", "clientPendingItem", "clientRaisedOn", "clientDueBy", "clientPendingStatus", "teamPendingItem", "teamRaisedOn", "teamDueBy", "teamPendingStatus", "workDate", "clientNameText", "placeOfWork", "typeOfWork", "bankName", "periodFrom", "periodTo", "transactionCount", "approxMinutes", "resourceType", "assessmentYear", "startTime", "endTime", "workDetails", "workStatus", "whatsappMessage"] as const;
 
 /**
  * Correct an entry. The employee may correct their own entry until it is
@@ -174,13 +211,16 @@ export async function correctTimesheetEntry(ctx: AppContext, entryId: string, v:
   if (!own && !admin) throw new BusinessRuleError("You can only correct your own entries.");
   if (!admin && e.status === "REVIEWED") throw new BusinessRuleError("Reviewed entries can only be corrected by an administrator.");
   if (!own && !v.reason) throw new BusinessRuleError("Give a reason for correcting another person's entry.");
-  if (v.periodFrom && v.periodTo && v.periodTo < v.periodFrom) throw new BusinessRuleError("Period to is before period from.");
   const client = v.clientId ? await prisma.client.findFirst({ where: { id: v.clientId, organizationId: ctx.organization.id }, select: { id: true, tradeName: true } }) : null;
   if (v.clientId && !client) throw new BusinessRuleError("Client not found.");
   if (!client && !v.clientNameText) throw new BusinessRuleError("Select a client or type the client name.");
   const workType = v.workTypeId ? await prisma.workType.findFirst({ where: { id: v.workTypeId, organizationId: ctx.organization.id } }) : null;
   const minutes = minutesFrom(v);
+  checkLogRules(v, workType?.name ?? v.typeOfWork, minutes);
+  const lineId = (await trackerLineFor(ctx, v.trackerLineId)) ?? e.trackerLineId;
   const next = {
+    ...pendingAndIssueData(v),
+    branch: v.branch ?? null,
     workDate: dateOnly(v.workDate),
     clientId: client?.id ?? null,
     clientNameText: client?.tradeName ?? v.clientNameText ?? null,
@@ -204,10 +244,14 @@ export async function correctTimesheetEntry(ctx: AppContext, entryId: string, v:
   const changes = AUDITED_FIELDS.filter((k) => String(fmt(e[k])) !== String(fmt(next[k]))).map((k) => ({ field: k, from: fmt(e[k]), to: fmt(next[k]) }));
   if (changes.length === 0) throw new BusinessRuleError("Nothing was changed.");
   await prisma.$transaction(async (tx) => {
+    const trackerLineId = await syncTrackerFromLog(tx, ctx.organization.id, {
+      employeeId: e.employeeId, workDate: next.workDate, clientId: next.clientId, clientNameText: next.clientNameText, branch: next.branch, typeOfWork: next.typeOfWork,
+      bankName: next.bankName, periodFrom: next.periodFrom, periodTo: next.periodTo, workStatus: next.workStatus, ...pendingAndIssueData(v),
+    }, lineId);
     await tx.timesheetEntry.update({
       where: { id: e.id },
       // An employee's correction (re)submits the entry for review.
-      data: { ...next, ...(own && e.status !== "REVIEWED" ? { status: "SUBMITTED" as const } : {}) },
+      data: { ...next, trackerLineId, ...(own && e.status !== "REVIEWED" ? { status: "SUBMITTED" as const } : {}) },
     });
     await audit(tx, ctx, "timesheet.corrected", "timesheet_entry", e.id, { reason: v.reason ?? null, changes } as Prisma.InputJsonValue);
   });

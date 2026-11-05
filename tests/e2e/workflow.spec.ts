@@ -44,7 +44,32 @@ async function pick(scope: Page | Locator, label: string, name: string, typed = 
   const box = scope.getByRole("combobox", { name: label, exact: true }).last();
   await box.click();
   await box.fill(typed);
-  await box.page().getByRole("option", { name }).first().click({ timeout: 20_000 });
+  await box.page().getByRole("listbox").getByRole("option", { name }).first().click({ timeout: 20_000 });
+}
+
+/** One Team Daily Work Log row: the workbook's mandatory columns, and whatever else is given. */
+async function logWork(page: Page, o: { client?: string; ref?: string; type: string; bank?: string; hours?: string; minutes?: string; details?: string; txns?: string; clientPending?: string; teamPending?: string; status?: string }) {
+  if (o.ref) await page.getByLabel("Tracker Ref No.").selectOption({ label: o.ref });
+  else await pick(page, "Client", o.client!);
+  await page.getByLabel("Type of work").selectOption({ label: o.type });
+  if (o.bank) await page.getByLabel("Bank name", { exact: true }).fill(o.bank);
+  if (!o.ref) {
+    await page.getByLabel("Period from").fill("2026-10-01");
+    await page.getByLabel("Period to").fill("2026-10-31");
+  }
+  if (o.txns) await page.getByLabel("No. of transactions / entries").fill(o.txns);
+  if (o.hours) await page.getByLabel("Or hours").fill(o.hours);
+  if (o.minutes) await page.getByLabel("Minutes").fill(o.minutes);
+  if (o.status) await page.getByLabel("Status of work").selectOption({ label: o.status });
+  if (o.details) await page.getByLabel("Elaboration / details of work done").fill(o.details);
+  if (o.clientPending) {
+    await page.getByLabel("Pending item – client").fill(o.clientPending);
+    await page.getByLabel("Raised on – client").fill("2026-11-01");
+    await page.getByLabel("Due by – client").fill("2026-11-03");
+  }
+  if (o.teamPending) await page.getByLabel("Pending item – team").fill(o.teamPending);
+  await page.getByRole("button", { name: "Add entry" }).click();
+  await expect(page.getByText("Entry added.")).toBeVisible();
 }
 
 async function signOut(page: Page) {
@@ -609,19 +634,23 @@ test("team member: attendance with location, timesheet, pending item and day rep
   await expect(page.getByText(/Marked in/)).toBeVisible();
 
   await page.goto("/app/timesheet");
-  // Staff see only their own daily log, without the team views or the old Communication tab.
-  await expect(page.getByRole("navigation", { name: "Sections" })).toHaveCount(0);
+  // Staff see the Team Daily Work Log's three sheets, not the tracker.
+  const sections = page.getByRole("navigation", { name: "Sections" });
+  for (const name of ["Daily Log", "Day Report", "Pending Tracker"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
+  await expect(sections.getByRole("link", { name: "Tracker", exact: true })).toHaveCount(0);
   await page.goto("/app/timesheet?tab=dashboard"); // a staff member asking for a team view still gets the daily log
-  await expect(page.getByRole("heading", { name: "Team member scorecard" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Team workload" })).toHaveCount(0);
+  // Bank work needs the bank name.
   await pick(page, "Client", clientName);
-  await page.getByLabel("Work location").fill("Client Office (Onsite)");
-  await page.getByLabel("Nature of work").selectOption({ label: "Bank Statement Posting" });
-  await page.getByLabel("Bank name (bank / card work)").fill("HDFC Bank");
-  await page.getByLabel("No. of transactions / entries").fill("120");
-  await page.getByLabel("Or hours").fill("3");
-  await page.getByLabel("Minutes").fill("30");
+  await page.getByLabel("Type of work").selectOption({ label: "Bank Statement Posting" });
+  await page.getByLabel("Period from").fill("2026-10-01");
+  await page.getByLabel("Period to").fill("2026-10-31");
+  await page.getByLabel("Or hours").fill("1");
   await page.getByRole("button", { name: "Add entry" }).click();
-  await expect(page.getByText("Entry added.")).toBeVisible();
+  await expect(page.getByText("Bank Name is required for bank and card work.")).toBeVisible();
+  await page.goto("/app/timesheet");
+  await page.getByLabel("Place of work").selectOption("Client Office");
+  await logWork(page, { client: clientName, type: "Bank Statement Posting", bank: "HDFC Bank", txns: "120", hours: "3", minutes: "30" });
 
   await page.goto("/app/pending?tab=daily");
   await page.getByRole("combobox", { name: "Client", exact: true }).last().selectOption({ label: clientName });
@@ -645,16 +674,16 @@ test("senior returns a timesheet entry, the team member corrects it, and the sen
   // Leads get the three team views; the staff member's entry shows in each.
   await seniorPage.goto("/app/timesheet");
   const sections = seniorPage.getByRole("navigation", { name: "Sections" });
-  for (const name of ["Tracker", "Pending", "Dashboard", "My daily log"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
+  for (const name of ["Tracker", "Dashboard", "Client Pending Report", "Team daily log", "Hours & reviews", "My daily log"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
   await expect(sections.getByRole("link", { name: /Communication/ })).toHaveCount(0);
   await seniorPage.goto("/app/timesheet?tab=pending");
   await expect(seniorPage.getByRole("heading", { name: /Waiting for review \([1-9]/ })).toBeVisible();
   await expect(seniorPage.getByText("Within window").first()).toBeVisible();
-  await seniorPage.goto("/app/timesheet?tab=dashboard");
+  await seniorPage.goto("/app/timesheet?tab=hours");
   await expect(seniorPage.getByRole("heading", { name: "Team member scorecard" })).toBeVisible();
   await expect(seniorPage.getByText("3h 30m").first()).toBeVisible();
-  await seniorPage.goto("/app/timesheet?tab=tracker");
-  await seniorPage.locator('tbody a[href^="/app/timesheet/"]').first().click();
+  await seniorPage.goto("/app/timesheet?tab=log");
+  await seniorPage.locator('tbody a[href^="/app/timesheet/0"]').first().click();
   await seniorPage.waitForURL(/\/app\/timesheet\/[0-9a-f-]+$/);
   const entryUrl = seniorPage.url();
   await seniorPage.getByRole("button", { name: "Checked – Needs correction" }).click();
@@ -1082,27 +1111,22 @@ test("point 4 timesheet carries the workbook's fields, review roles, penalties a
   const page = await (await browser.newContext()).newPage();
   await signIn(page, staff.email, staff.password);
   await page.goto("/app/timesheet");
-  await pick(page, "Client", clientName);
+  await page.getByText("More (optional)").click();
   await page.getByLabel("Resource type").selectOption("Dedicated");
-  await page.getByLabel("Nature of work").selectOption({ label: "GSTR-1 Compilation" });
   await page.getByLabel("Assessment year (AY)").selectOption("AY 2026-27");
-  await page.getByLabel("Work location").fill("Other Client Site");
   await page.getByLabel("Start time").fill("10:00");
   await page.getByLabel("End time").fill("12:30");
   await expect(page.getByText("Hours invested: 2h 30m")).toBeVisible();
-  await page.getByLabel("Task / compliance description").fill("GSTR-1 working for September");
-  await page.getByRole("button", { name: "Add entry" }).click();
-  await expect(page.getByText("Entry added.")).toBeVisible();
-  await expect(page.getByText("10:00 – 12:30")).toBeVisible();
+  await logWork(page, { client: clientName, type: "GST Work", details: "GSTR-1 working for September" });
 
   const lead = await (await browser.newContext()).newPage();
   await signIn(lead, senior.email, senior.password);
-  await lead.goto(`/app/timesheet?tab=tracker`);
+  await lead.goto(`/app/timesheet?tab=log`);
   await expect(lead.getByText("GSTR-1 working for September")).toBeVisible();
   await expect(lead.getByRole("columnheader", { name: "Reviewer (auto)" })).toBeVisible();
   await expect(lead.getByRole("columnheader", { name: "Escalate to" })).toBeVisible();
   await expect(lead.getByRole("columnheader", { name: "Late submission" })).toBeVisible();
-  await lead.goto("/app/timesheet?tab=dashboard");
+  await lead.goto("/app/timesheet?tab=hours");
   await expect(lead.getByRole("heading", { name: "Penalty summary" })).toBeVisible();
   await expect(lead.getByRole("heading", { name: "Reviewer performance" })).toBeVisible();
   await expect(lead.getByRole("heading", { name: "Hours by assessment year" })).toBeVisible();
@@ -1110,11 +1134,11 @@ test("point 4 timesheet carries the workbook's fields, review roles, penalties a
   const res = await lead.request.get(href!);
   expect(res.status()).toBe(200);
   const rows = readFirstSheet(new Uint8Array(await res.body()));
-  for (const col of ["Resource Type", "Nature of Work", "Assessment Year (AY)", "Start Time", "End Time", "Hours Invested", "Reviewer (auto)", "SLA Status", "Escalate To (Level 2)", "Late Submission Penalty (Rs) - Junior", "Reviewed By (actual)"]) {
+  for (const col of ["Date of Visit / Work", "Client Name", "Branch", "Tracker Ref No.", "Type of Work", "Approx. Time Taken (Hrs)", "Issue Level", "Pending Item – Client", "Days Pending – Team", "Resource Type", "Assessment Year (AY)", "Start Time", "Reviewer (auto)", "SLA Status", "Escalate To", "Reviewed By (actual)"]) {
     expect(rows[1], col).toContain(col);
   }
   const row = rows.find((r) => r.includes("GSTR-1 working for September"))!;
-  expect(row[rows[1].indexOf("Hours Invested")]).toBe("2.5");
+  expect(row[rows[1].indexOf("Approx. Time Taken (Hrs)")]).toBe("2.5");
   expect(row[rows[1].indexOf("Assessment Year (AY)")]).toBe("AY 2026-27");
 });
 
@@ -1242,7 +1266,7 @@ test("point 7 import clients from Excel: template, preview, column matching, dup
   await page.waitForURL(/\/app\/clients\/import/);
   const template = await page.request.get("/app/clients/import/template");
   expect(template.status()).toBe(200);
-  expect(readFirstSheet(new Uint8Array(await template.body()))[0]).toContain("Client Name");
+  expect(readFirstSheet(new Uint8Array(await template.body()))[1]).toEqual(expect.arrayContaining(["Name", "Legal Name (as per PAN)", "GSTIN", "PAN", "Applicable Department", "GST Password"]));
 
   // A sheet in the firm's own layout, with a title row and columns the import must ignore.
   const gstin = `07AAAAA${String(Date.now()).slice(-4)}A1Z5`;
@@ -1386,6 +1410,134 @@ test("visual check screenshots at desktop, tablet and phone widths", async ({ br
 });
 
 
+test("round 2: workflow tracker ↔ daily log, client pending report, compliances by department, Client Master import", async ({ browser }) => {
+  const page = await (await browser.newContext()).newPage();
+  await signIn(page, owner.email, owner.password);
+  const tag = `${run}.${Date.now().toString(36)}`; // unique per attempt, so a re-run on the same data never matches old rows
+
+  // A manager defines work in the tracker and gives it to Sonu as Maker.
+  await page.goto("/app/timesheet?tab=tracker");
+  const add = page.locator("form", { has: page.getByRole("button", { name: "Add to tracker" }) });
+  await pick(add, "Client", clientName);
+  await add.getByLabel("Type of work").selectOption("Bank Reconciliation");
+  await add.getByRole("button", { name: "Add to tracker" }).click();
+  await expect(page.getByText("Bank Name is required for bank and card work.")).toBeVisible();
+  await add.getByLabel("Bank name", { exact: true }).fill("HDFC Bank");
+  await add.getByLabel("Period from").fill("2026-10-01");
+  await add.getByLabel("Pending item – client").fill(`October bank statement ${tag}`);
+  await add.getByLabel("Raised on – client").fill("2026-11-01");
+  await add.getByLabel("Due by – client").fill("2026-11-03");
+  await add.getByLabel("Remarks (internal)").fill(`Internal note ${tag}`);
+  await pick(add, "Maker", "Sonu Kumar — Executive", "Sonu");
+  await add.getByRole("button", { name: "Add to tracker" }).click();
+  const added = page.getByText(/Added [A-Z0-9]+-\d{3} to the tracker\./);
+  await expect(added).toBeVisible();
+  const ref = (await added.textContent())!.match(/[A-Z0-9]+-\d{3}/)![0];
+  const row = page.locator("tbody tr", { hasText: ref });
+  await expect(row.getByText("Awaiting Data")).toBeVisible();
+  await expect(row.getByText("CLIENT DELAY")).toBeVisible();
+
+  // Sonu sees it in the timesheet and logs against the Ref No.; the client sent part of it.
+  const sonu = await (await browser.newContext()).newPage();
+  await signIn(sonu, staff.email, staff.password);
+  await sonu.goto("/app/timesheet");
+  const given = sonu.locator("tbody tr", { hasText: ref });
+  await given.getByRole("link", { name: "Log work on this" }).click();
+  await expect(sonu.getByRole("heading", { name: new RegExp(`Log work on ${ref}`) })).toBeVisible();
+  await expect(sonu.getByLabel("Bank name", { exact: true })).toHaveValue("HDFC Bank");
+  await sonu.getByLabel("Period to").fill("2026-10-31");
+  await sonu.getByLabel("Status of work").selectOption({ label: "In Progress" });
+  await sonu.getByLabel("Status – client").selectOption("Partial");
+  await sonu.getByLabel("Or hours").fill("1");
+  await sonu.getByRole("button", { name: "Add entry" }).click();
+  await expect(sonu.getByText("Entry added.")).toBeVisible();
+  // Work logged without a Ref No. arrives in the tracker as new.
+  await sonu.goto("/app/timesheet");
+  await logWork(sonu, { client: clientName, type: "GST Work", hours: "1", teamPending: `Reconcile ITC ${tag}` });
+  await sonu.goto("/app/timesheet?tab=mine");
+  await expect(sonu.getByText(`Reconcile ITC ${tag}`)).toBeVisible();
+  await expect(sonu.getByText(`October bank statement ${tag}`)).toBeVisible();
+  await sonu.goto("/app/timesheet?tab=day");
+  await expect(sonu.getByRole("heading", { name: "DAILY WORK REPORT" })).toBeVisible();
+  await expect(sonu.getByRole("cell", { name: "GST Work" }).first()).toBeVisible();
+  await sonu.context().close();
+
+  await page.goto(`/app/timesheet?tab=tracker&client=${encodeURIComponent(clientName)}`);
+  await expect(row.getByText("Partial Data")).toHaveCount(0);
+  await expect(row.getByText("Maker In Progress")).toBeVisible();
+  // The work logged without a Ref No. is on a line (new, or matched on client + type + period).
+  const logged = page.locator("tbody tr", { hasText: `Reconcile ITC ${tag}` });
+  await expect(logged).toHaveCount(1);
+  const fresh = logged.filter({ hasText: "New from log" });
+  if (await fresh.count()) { // on a re-run with the same data the matched line may already be reviewed
+    await fresh.getByRole("button", { name: "Mark reviewed" }).click();
+    await expect(fresh).toHaveCount(0);
+  }
+  const xlsx = await page.request.get(`/app/timesheet/export?sheet=tracker&client=${encodeURIComponent(clientName)}`);
+  expect(xlsx.status()).toBe(200);
+  const sheet = readFirstSheet(new Uint8Array(await xlsx.body()));
+  expect(sheet[1]).toEqual(expect.arrayContaining(["Tracker Ref No.", "Work Status (auto)", "Timeline Flag (auto)", "Days Pending (Due − Raised)"]));
+  expect(sheet.find((r) => r.includes(ref))).toEqual(expect.arrayContaining(["Maker In Progress", "2"]));
+
+  // The letter to the client: the open item, no internal remarks.
+  await page.goto(`/app/timesheet?tab=report&client=${encodeURIComponent(clientName)}`);
+  await expect(page.getByRole("heading", { name: "PENDING INFORMATION / DOCUMENTS LIST" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: `October bank statement ${tag}` })).toBeVisible();
+  await expect(page.getByText(`Internal note ${tag}`)).toHaveCount(0);
+  await page.goto("/app/timesheet?tab=dashboard");
+  await expect(page.getByRole("heading", { name: "Team workload" })).toBeVisible();
+
+  // Client registration: picking GST lists every GST compliance, ticked.
+  await page.goto("/app/clients/new/quick");
+  await page.getByLabel("Trade name").fill(`Compliance Client ${tag}`);
+  await page.locator("label", { hasText: /^GST\d*$/ }).click();
+  const gst = page.locator("fieldset", { hasText: "GST compliances" });
+  await expect(gst.getByRole("checkbox", { name: /GSTR-3B \(monthly\)/ })).toBeChecked();
+  const total = await gst.locator('input[name="complianceItemIds[]"]').count();
+  expect(total).toBeGreaterThan(5);
+  await gst.getByRole("checkbox", { name: /GSTR-3B \(monthly\)/ }).uncheck();
+  await page.getByRole("button", { name: "Submit for approval" }).click();
+  await page.waitForURL(/\/app\/clients\/[0-9a-f-]{36}/);
+  await expect(page.getByRole("heading", { name: `Compliances (${total - 1})` })).toBeVisible();
+
+  // Remark (If Date Extend) on the due-date calendar.
+  await page.goto("/app/compliances?tab=calendar&dept=GST");
+  await expect(page.getByRole("columnheader", { name: "Remark (If Date Extend)" })).toBeVisible();
+  const ext = page.getByLabel(/^Extended date for /).first();
+  await ext.fill("Extended to 15 Dec 2026");
+  await ext.locator("xpath=..").getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Extended date saved.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel(/^Extended date for /).first()).toHaveValue("Extended to 15 Dec 2026");
+
+  // Client Master import: one row per GSTIN, same PAN = one client; the firm's own row is skipped.
+  const letters = (n: number) => Array.from({ length: n }, () => String.fromCharCode(65 + Math.floor(Math.random() * 26))).join("");
+  const pan = () => `${letters(5)}${String(Math.floor(Math.random() * 9000) + 1000)}${letters(1)}`;
+  const [p1, p2] = [pan(), pan()];
+  const header = ["S.No.", "Name", "Legal Name (as per PAN)", "Address", "GSTIN", "PAN", "Constitution of Business", "GST User ID", "GST Password", "Income Tax User ID", "Income Tax Password", "TRACES User ID", "TRACES Password", "State", "TAN", "Mobile", "Email", "DOB", "IT File No.", "Applicable Department", "Remark"];
+  const line = (n: number, name: string, gstin: string, p: string, dept: string, pw = "") => [n, name, "", "Delhi", gstin, p, "Partnership", "", pw, p, "", "", "", "Delhi", "", "9876543210", "", "01/04/2015", `SSDA-${n}`, dept, ""];
+  const file = buildXlsx([{ name: "Client Master", rows: [
+    ["S S DIMRI & ASSOCIATES – CLIENT MASTER"], ["One row per GSTIN"], [], header,
+    line(1, `E2E Firm ${run}`, "", "", "GST"),
+    line(2, `Master Two GST ${tag}`, `07${p1}1Z5`, p1, "GST, Income Tax", "Secret-Pw-1"),
+    line(3, `Master Two GST ${tag}`, `06${p1}1Z5`, p1, "GST, Day Book"),
+    line(4, `Master Other ${tag}`, "", p2, "TDS"),
+  ] }]);
+  await page.goto("/app/clients/import");
+  await page.locator('input[type="file"]').setInputFiles({ name: "SSDA_Client_Master.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(file) });
+  await expect(page.getByText(/Same PAN as row [67]: added there/)).toBeVisible();
+  await expect(page.getByText("This row is the firm itself, not a client")).toBeVisible();
+  await expect(page.getByText("Secret-Pw-1")).toHaveCount(0);
+  await page.getByRole("button", { name: "Import 2 clients" }).click();
+  await expect(page.getByText(/2 clients imported\. 1 more row was the same PAN and added as GSTINs\./).first()).toBeVisible();
+  await page.goto(`/app/clients?q=${encodeURIComponent(`Master Two GST ${tag}`)}`);
+  await page.getByRole("link", { name: `Master Two GST ${tag}` }).last().click();
+  await expect(page.getByText(`07${p1}1Z5, 06${p1}1Z5`)).toBeVisible();
+  await expect(page.getByText("GST, Income Tax, Day Book")).toBeVisible();
+  await expect(page.getByText("(password saved)")).toBeVisible();
+  await expect(page.getByText("Secret-Pw-1")).toHaveCount(0);
+});
+
 // Last, because they remove people and clients the tests above use.
 test("point 1 several reminders all fire; compliance reminder and escalation reach the right people", async ({ browser }) => {
   const page = await (await browser.newContext()).newPage();
@@ -1430,10 +1582,7 @@ test("point 6 deleting a staff member and clients with real history: nothing bre
   const lead = await (await browser.newContext()).newPage();
   await signIn(lead, senior.email, senior.password);
   await lead.goto("/app/timesheet?tab=daily");
-  await pick(lead, "Client", clientName);
-  await lead.getByLabel("Or hours").fill("2");
-  await lead.getByRole("button", { name: "Add entry" }).click();
-  await expect(lead.getByText("Entry added.")).toBeVisible();
+  await logWork(lead, { client: clientName, type: "TDS Work", hours: "2" });
 
   const remove = async (name: string) => {
     await page.getByRole("button", { name: "Delete", exact: true }).first().click();

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import { formatDate, formatDateTime, toIsoDate } from "@/lib/dates";
+import { complianceChoices } from "@/lib/services/client-compliances";
 import { clientActions, type ClientStatus } from "@/lib/domain/client-workflow";
 import { daysPending, isTaskOverdue } from "@/lib/domain/derived";
 import { clientScope } from "@/lib/services/clients";
@@ -178,10 +179,12 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
 type FullClient = NonNullable<Awaited<ReturnType<typeof getFull>>>;
 
 async function DetailsFormLoader({ clientId, c }: { clientId: string; c: FullClient }) {
-  const [constitutions, natures, options] = await Promise.all([
+  const [constitutions, natures, options, choices, chosen] = await Promise.all([
     prisma.constitution.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.businessNature.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     prisma.classificationOption.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+    complianceChoices(),
+    prisma.clientCompliance.findMany({ where: { clientId }, select: { complianceItemId: true } }),
   ]);
   const cls = Object.fromEntries(c.classifications.map((x) => [x.basis, x.optionId]));
   return (
@@ -193,7 +196,11 @@ async function DetailsFormLoader({ clientId, c }: { clientId: string; c: FullCli
         primaryBusinessNatureId: c.primaryBusinessNatureId ?? "", secondaryBusinessNatureId: c.secondaryBusinessNatureId ?? "",
         isMsme: c.isMsme === null ? "" : c.isMsme ? "yes" : "no", msmeRegistrationNumber: c.msmeRegistrationNumber ?? "",
         esiNumber: c.esiNumber ?? "", pfNumber: c.pfNumber ?? "", ...cls,
+        gstUserId: c.gstUserId ?? "", incomeTaxUserId: c.incomeTaxUserId ?? "", tracesUserId: c.tracesUserId ?? "",
+        gstPasswordSet: c.gstPasswordEncrypted ? "1" : "", incomeTaxPasswordSet: c.incomeTaxPasswordEncrypted ? "1" : "", tracesPasswordSet: c.tracesPasswordEncrypted ? "1" : "",
+        state: c.state ?? "", dateOfBirth: c.dateOfBirth ? toIsoDate(c.dateOfBirth) : "", itFileNo: c.itFileNo ?? "", masterRemark: c.masterRemark ?? "",
       }}
+      compliances={{ ...choices, chosenDepartments: c.departments, chosenIds: chosen.map((x) => x.complianceItemId) }}
       constitutions={constitutions.map((x) => ({ value: x.id, label: x.name }))}
       natures={natures.map((x) => ({ value: x.id, label: x.label }))}
       classifications={options.map((o) => ({ value: o.id, label: o.label, basis: o.basis }))}
@@ -240,9 +247,31 @@ async function Overview({ c, role, edit, viewAll, basis }: { basis: "CALENDAR" |
               ["Place of work", cls("PLACE_OF_WORK")],
               ["GST status", cls("GST_STATUS")],
               ["Priority", cls("PRIORITY")],
+              ["State", c.state],
+              ["Date of birth / incorporation", c.dateOfBirth ? formatDate(c.dateOfBirth) : null],
+              ["IT file no.", c.itFileNo],
+              ["Departments", c.departments.join(", ")],
+              ["Portal logins", ([["GST", c.gstUserId, c.gstPasswordEncrypted], ["Income Tax", c.incomeTaxUserId, c.incomeTaxPasswordEncrypted], ["TRACES", c.tracesUserId, c.tracesPasswordEncrypted]] as const).filter(([, id, pw]) => id || pw).map(([k, id, pw]) => `${k}: ${id ?? "—"}${pw ? " (password saved)" : ""}`).join(" · ")],
+              ["Remark", c.masterRemark],
               ["Primary contact", c.contacts[0] ? `${c.contacts[0].name} ${c.contacts[0].mobile ?? ""}` : null],
             ]}
           />
+        </Card>
+        <Card title={`Compliances (${c.compliances.length})`} actions={<Link className="text-sm text-brand-700 hover:underline" href="/app/compliances">Compliance tracker</Link>}>
+          {c.compliances.length === 0 ? <p className="text-sm text-muted">No compliances chosen yet.{edit && " Pick the departments under Details."}</p> : (
+            <div className="space-y-3 text-sm">
+              {[...new Set(c.compliances.map((x) => x.item.department))].map((dept) => (
+                <div key={dept}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">{dept}</p>
+                  <ul className="mt-1 flex flex-wrap gap-1.5">
+                    {c.compliances.filter((x) => x.item.department === dept).map((x) => (
+                      <li key={x.id}><Badge tone="neutral">{x.item.name}{x.item.frequency ? ` · ${x.item.frequency}` : ""}</Badge></li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
         <Card title="Open tasks" actions={<Link className="text-sm text-brand-700 hover:underline" href={`/app/tasks?client=${c.id}`}>All tasks</Link>}>
           {tasks.length === 0 ? <p className="text-sm text-muted">No open tasks.</p> : (
@@ -328,6 +357,7 @@ async function getFull(id: string) {
       documents: { include: { file: { select: { id: true, originalFileName: true, createdAt: true } } } },
       teamAllocations: { where: { status: { in: ["ACTIVE", "PLANNED"] } }, include: { employee: { include: { designation: true } } } },
       approvedBy: { select: { name: true } }, rejectedBy: { select: { name: true } },
+      compliances: { include: { item: { select: { department: true, name: true, frequency: true, sortOrder: true } } }, orderBy: { item: { sortOrder: "asc" } } },
     },
   });
 }

@@ -8,6 +8,7 @@ import { assessmentYears } from "@/lib/domain/timesheet";
 import { DeleteButton } from "@/components/delete-dialog";
 import { canDelete } from "@/lib/services/deletions";
 import { daysPending } from "@/lib/domain/derived";
+import { STATUS_OF_WORK_LABEL } from "@/lib/domain/tracker";
 import { loadTimesheetEntryForCtx } from "@/lib/services/worklog";
 import { activeClientOptions, employeeOptions } from "@/lib/services/lookups";
 import { Badge, Card, DetailList, humanize, Notice, PageHeader, StatusBadge } from "@/components/ui";
@@ -30,6 +31,7 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
       client: { select: { id: true, tradeName: true } },
       task: { select: { id: true, title: true, status: true } },
       teamAllocation: { select: { id: true } },
+      trackerLine: { select: { id: true, refNo: true } },
       reviewedBy: { select: { name: true } },
       pendingItems: {
         orderBy: { requestedOn: "asc" },
@@ -46,13 +48,17 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
   const own = e.employeeId === ctx.employee?.id;
   const reviewer = can(ctx, "timesheet.review") && !own && e.status === "SUBMITTED";
   const canCorrect = (own && e.status !== "REVIEWED") || can(ctx, "org.manage");
-  const [clients, workTypes, employees] = canCorrect || own
+  const [clients, workTypes, employees, lines] = canCorrect || own
     ? await Promise.all([
         activeClientOptions(ctx.organization.id),
         prisma.workType.findMany({ where: { organizationId: ctx.organization.id, OR: [{ isActive: true }, ...(e.workTypeId ? [{ id: e.workTypeId }] : [])] }, orderBy: { sortOrder: "asc" } }),
         employeeOptions(ctx.organization.id),
+        prisma.trackerLine.findMany({
+          where: { organizationId: ctx.organization.id, OR: [{ makerEmployeeId: e.employeeId }, { checkerEmployeeId: e.employeeId }, ...(e.trackerLineId ? [{ id: e.trackerLineId }] : [])] },
+          orderBy: { refNo: "asc" }, take: 300, select: { id: true, refNo: true, clientName: true, typeOfWork: true },
+        }),
       ])
-    : [[], [], []];
+    : [[], [], [], []];
   const d = (x: Date | null) => (x ? toIsoDate(x) : "");
   const s = (x: unknown) => (x === null || x === undefined ? "" : String(x));
 
@@ -60,8 +66,8 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
     <>
       <PageHeader
         title={`${e.clientNameText ?? "Internal work"} — ${formatDate(e.workDate)}`}
-        back={{ href: own ? `/app/timesheet?date=${toIsoDate(e.workDate)}` : "/app/timesheet?tab=tracker", label: "Timesheet" }}
-        actions={canDelete(ctx, "timesheet") && <DeleteButton entity="timesheet" id={e.id} redirectTo="/app/timesheet?tab=tracker" />}
+        back={{ href: own ? `/app/timesheet?tab=daily&date=${toIsoDate(e.workDate)}` : "/app/timesheet?tab=log", label: "Timesheet" }}
+        actions={canDelete(ctx, "timesheet") && <DeleteButton entity="timesheet" id={e.id} redirectTo="/app/timesheet?tab=log" />}
         description={
           <span className="flex flex-wrap items-center gap-2">
             {e.employee.firstName} {e.employee.lastName} · entry #{e.serialNumber} <StatusBadge status={e.status} />
@@ -78,6 +84,11 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
               items={[
                 ["Client", e.client ? <Link key="c" href={`/app/clients/${e.client.id}`} className="text-brand-700 hover:underline">{e.client.tradeName}</Link> : e.clientNameText],
                 ["Related task", e.task ? <Link key="t" href={`/app/tasks/${e.task.id}`} className="text-brand-700 hover:underline">{e.task.title}</Link> : null],
+                ["Tracker Ref No.", e.trackerLine ? (can(ctx, "timesheet.view_all") ? <Link key="r" href={`/app/timesheet/tracker/${e.trackerLine.id}`} className="font-mono text-brand-700 hover:underline">{e.trackerLine.refNo}</Link> : e.trackerLine.refNo) : null],
+                ["Branch", e.branch],
+                ["Issue", e.issueLevel || e.issueDetails ? [e.issueLevel, e.issueDetails, e.issueStatus].filter(Boolean).join(" · ") : null],
+                ["Pending with client", e.clientPendingItem ? `${e.clientPendingItem} (raised ${formatDate(e.clientRaisedOn)}, due ${formatDate(e.clientDueBy)}, ${e.clientPendingStatus ?? "Open"})` : null],
+                ["Pending with team", e.teamPendingItem ? `${e.teamPendingItem} (raised ${formatDate(e.teamRaisedOn)}, due ${formatDate(e.teamDueBy)}, ${e.teamPendingStatus ?? "Open"})` : null],
                 ["Allocation", e.teamAllocation ? <Link key="a" href={`/app/allocations/${e.teamAllocation.id}`} className="text-brand-700 hover:underline">View allocation</Link> : null],
                 ["Resource type", e.resourceType],
                 ["Nature of work", e.typeOfWork],
@@ -89,7 +100,7 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
                 ["Start – end time", e.startTime && e.endTime ? `${e.startTime} – ${e.endTime}` : null],
                 ["Hours invested", e.approxMinutes ? minutesToHhmm(e.approxMinutes) : null],
                 ["Submitted on", formatDateTime(e.createdAt)],
-                ["Status of work", e.workStatus ? humanize(e.workStatus) : null],
+                ["Status of work", e.workStatus ? (STATUS_OF_WORK_LABEL[e.workStatus] ?? humanize(e.workStatus)) : null],
                 ["Task / compliance description", e.workDetails],
                 ["WhatsApp message", e.whatsappMessage],
               ]}
@@ -136,6 +147,7 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
                 action={correctEntryAction.bind(null, e.id)}
                 clients={clients}
                 workTypes={workTypes.map((w) => ({ value: w.id, label: w.name }))}
+                lines={lines.map((l) => ({ value: l.id, label: `${l.refNo} · ${l.clientName} · ${l.typeOfWork}` }))}
                 needsReason={!own}
                 years={assessmentYears(dateOnly(isoDateInTz(new Date(), ctx.organization.timezone)))}
                 d={{
@@ -144,7 +156,10 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
                   workTypeId: s(e.workTypeId), bankName: s(e.bankName), periodFrom: d(e.periodFrom), periodTo: d(e.periodTo),
                   transactionCount: s(e.transactionCount), hours: e.approxMinutes ? String(Math.floor(e.approxMinutes / 60)) : "",
                   minutes: e.approxMinutes ? String(e.approxMinutes % 60) : "", workStatus: s(e.workStatus), workDetails: s(e.workDetails),
-                  whatsappMessage: s(e.whatsappMessage),
+                  whatsappMessage: s(e.whatsappMessage), branch: s(e.branch), trackerLineId: s(e.trackerLineId),
+                  issueLevel: s(e.issueLevel), issueDetails: s(e.issueDetails), issueStatus: s(e.issueStatus),
+                  clientPendingItem: s(e.clientPendingItem), clientRaisedOn: d(e.clientRaisedOn), clientDueBy: d(e.clientDueBy), clientPendingStatus: s(e.clientPendingStatus),
+                  teamPendingItem: s(e.teamPendingItem), teamRaisedOn: d(e.teamRaisedOn), teamDueBy: d(e.teamDueBy), teamPendingStatus: s(e.teamPendingStatus),
                 }}
               />
             </Card>

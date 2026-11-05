@@ -23,6 +23,7 @@ import {
   timesheetSchema,
   updatePendingItem,
 } from "@/lib/services/worklog";
+import { createTrackerLine, markTrackerLineReviewed, trackerLineSchema, updateTrackerLine } from "@/lib/services/tracker";
 
 export async function addTimesheetAction(_p: ActionState, fd: FormData): Promise<ActionState> {
   const parsed = parseForm(timesheetSchema, fd);
@@ -128,5 +129,39 @@ export async function correctEntryAction(entryId: string, _p: ActionState, fd: F
     await correctTimesheetEntry(ctx, entryId, parsed.data);
     revalidatePath(`/app/timesheet/${entryId}`);
     return { ok: true, message: "Entry corrected. The change is recorded in its history." };
+  });
+}
+
+// ------------------------------------------------------------ Accounting Workflow Tracker
+
+export async function createTrackerLineAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(trackerLineSchema, fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const ctx = await actionContext("timesheet.view_all");
+    const line = await createTrackerLine(ctx, parsed.data);
+    revalidatePath("/app/timesheet");
+    return { ok: true, message: `Added ${line.refNo} to the tracker.` };
+  });
+}
+
+export async function updateTrackerLineAction(id: string, _p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(trackerLineSchema, fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const ctx = await actionContext("timesheet.view_all");
+    await updateTrackerLine(ctx, id, parsed.data);
+    revalidatePath("/app/timesheet");
+    revalidatePath(`/app/timesheet/tracker/${id}`);
+    return { ok: true, message: "Tracker line saved." };
+  });
+}
+
+export async function markTrackerLineReviewedAction(id: string): Promise<ActionState> {
+  return safeAction(async () => {
+    const ctx = await actionContext("timesheet.view_all");
+    await markTrackerLineReviewed(ctx, id);
+    revalidatePath("/app/timesheet");
+    revalidatePath(`/app/timesheet/tracker/${id}`);
   });
 }

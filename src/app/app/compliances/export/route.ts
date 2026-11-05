@@ -25,7 +25,8 @@ export async function GET(request: Request) {
     }),
     prisma.complianceColumn.findMany({ where: { organizationId: ctx.organization.id }, orderBy: { sortOrder: "asc" } }),
   ]);
-  const header = ["S.No", "Client Name", "Module", "Compliance / License Type", "Issuing Authority", "License / Reg. No.", "Due Date", "Renewal Frequency", "Responsible Person", "Reminder Lead Days", "Days Remaining", "Status", "Action Taken (Y/N)", "Action Taken Date", "Escalated", ...columns.map((c) => c.label), "Remarks"];
+  const extended = new Map((await prisma.organizationComplianceSetting.findMany({ where: { organizationId: ctx.organization.id, extendedDateRemark: { not: null } }, select: { complianceItemId: true, extendedDateRemark: true } })).map((x) => [x.complianceItemId, x.extendedDateRemark!]));
+  const header = ["S.No", "Client Name", "Module", "Compliance / License Type", "Issuing Authority", "License / Reg. No.", "Due Date", "Remark (If Date Extend)", "Renewal Frequency", "Responsible Person", "Reminder Lead Days", "Days Remaining", "Status", "Action Taken (Y/N)", "Action Taken Date", "Escalated", ...columns.map((c) => c.label), "Remarks"];
   const rows = entries.map((e, i) => {
     const custom = (e.customValues ?? {}) as Record<string, string>;
     return [
@@ -36,6 +37,7 @@ export async function GET(request: Request) {
       e.issuingAuthority ?? "",
       e.registrationNumber ?? "",
       e.dueDate,
+      (e.complianceItemId && extended.get(e.complianceItemId)) || "",
       e.frequency ?? "",
       e.responsible ? `${e.responsible.firstName} ${e.responsible.lastName ?? ""}`.trim() : "",
       e.reminderLeadDays,

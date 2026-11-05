@@ -31,6 +31,7 @@ const RIGHT: Record<DeletionEntity, Capability> = {
   due: "records.delete",
   dayreport: "records.delete",
   compliance: "records.delete",
+  trackerline: "records.delete",
 };
 
 export const canDelete = (ctx: AppContext, entity: DeletionEntity) => can(ctx, RIGHT[entity]);
@@ -325,6 +326,15 @@ async function simpleEntry(ctx: AppContext, entity: DeletionEntity, id: string):
       const c = await prisma.complianceEntry.findFirst({ where: { id, organizationId }, select: { complianceType: true } });
       if (!c) break;
       return { title: `Delete “${c.complianceType}” from the tracker?`, remove: (tx) => tx.complianceEntry.delete({ where: { id } }) };
+    }
+    case "trackerline": {
+      const l = await prisma.trackerLine.findFirst({ where: { id, organizationId }, select: { refNo: true, clientName: true, _count: { select: { entries: true } } } });
+      if (!l) break;
+      return {
+        title: `Delete tracker line ${l.refNo} (${l.clientName})?`,
+        lines: l._count.entries ? [`${l._count.entries} timesheet entries logged against it stay, without the Ref No.`] : [],
+        remove: (tx) => tx.trackerLine.delete({ where: { id } }),
+      };
     }
   }
   throw new BusinessRuleError("This record was not found. It may already have been deleted.");

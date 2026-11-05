@@ -12,7 +12,8 @@ export type DeletionEntity =
   | "observation"
   | "due"
   | "dayreport"
-  | "compliance";
+  | "compliance"
+  | "trackerline";
 
 export type DeletionPreview = {
   title: string;

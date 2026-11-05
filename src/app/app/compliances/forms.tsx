@@ -116,6 +116,16 @@ export function AddColumnForm({ action }: { action: Act }) {
   );
 }
 
+/** "Remark (If Date Extend)": type the extended date, saved with the button. */
+export function ExtendedDateForm({ action, value, label }: { action: Act; value: string; label: string }) {
+  return (
+    <ActionForm action={action} className="flex items-end gap-1.5 space-y-0">
+      <input name="remark" defaultValue={value} aria-label={label} placeholder="e.g. Extended to 15 Dec 2026" maxLength={300} className="h-8 w-48 rounded-md border border-line bg-surface px-2 text-xs" />
+      <SubmitButton size="sm" variant="secondary">Save</SubmitButton>
+    </ActionForm>
+  );
+}
+
 /** Yes / No for "Applies to the firm itself?", saved as soon as it changes. */
 export function AppliesToFirmSelect({ action, value, label }: { action: Act; value: boolean; label: string }) {
   const [current, setCurrent] = useState(value ? "yes" : "no");

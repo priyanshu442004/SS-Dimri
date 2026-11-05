@@ -1,12 +1,12 @@
 // Client import from Excel (pure): recognise columns, clean values, flag problems.
-// Column names follow the firm's "12. Client Details" sheet; common variants are matched
-// too, and anything unrecognised can be mapped by hand on the preview screen.
+// Column names follow the firm's SSDA_Client_Master sheet (and the older "12. Client Details");
+// common variants are matched too, and anything unrecognised can be mapped by hand.
 
 export const IMPORT_FIELDS = {
   clientCode: { label: "Client code", aliases: ["client code", "code", "client id", "client no", "client number"] },
   tradeName: { label: "Client name", aliases: ["client name (as used in office)", "client name", "name of client", "trade name", "name", "client", "business name", "party name"] },
-  legalName: { label: "Legal name", aliases: ["legal name (as per pan / gst)", "legal name", "name as per pan", "name as per gst", "registered name"] },
-  constitution: { label: "Constitution", aliases: ["constitution", "entity type", "type of entity", "legal status", "status of assessee"] },
+  legalName: { label: "Legal name", aliases: ["legal name (as per pan)", "legal name (as per pan / gst)", "legal name", "name as per pan", "name as per gst", "registered name"] },
+  constitution: { label: "Constitution", aliases: ["constitution of business", "constitution", "entity type", "type of entity", "legal status", "status of assessee"] },
   businessNature: { label: "Nature of business", aliases: ["nature of business", "business nature", "line of business", "industry"] },
   gstin: { label: "GSTIN", aliases: ["gstin", "gst no", "gst number", "gst", "gstin no", "gst registration no"] },
   pan: { label: "PAN", aliases: ["pan", "pan no", "pan number"] },
@@ -20,7 +20,21 @@ export const IMPORT_FIELDS = {
   billingBasis: { label: "Billing basis", aliases: ["billing basis", "billing", "billing type"] },
   fee: { label: "Fee (₹)", aliases: ["fee (₹)", "fee", "fees", "agreed fee", "fee (rs)", "fee rs", "monthly fee"] },
   status: { label: "Status", aliases: ["status", "client status"] },
+  state: { label: "State", aliases: ["state", "state name"] },
+  dateOfBirth: { label: "DOB / incorporation date", aliases: ["dob", "date of birth", "date of incorporation", "dob / doi", "doi"] },
+  itFileNo: { label: "IT file no.", aliases: ["it file no", "it file number", "file no", "income tax file no"] },
+  departments: { label: "Applicable department", aliases: ["applicable department", "applicable departments", "department", "departments"] },
+  remark: { label: "Remark", aliases: ["remark", "remarks", "note", "notes"] },
+  gstUserId: { label: "GST user ID", aliases: ["gst user id", "gst username", "gst login id"] },
+  gstPassword: { label: "GST password", aliases: ["gst password"] },
+  incomeTaxUserId: { label: "Income Tax user ID", aliases: ["income tax user id", "it user id", "income tax username"] },
+  incomeTaxPassword: { label: "Income Tax password", aliases: ["income tax password", "it password"] },
+  tracesUserId: { label: "TRACES user ID", aliases: ["traces user id", "traces username"] },
+  tracesPassword: { label: "TRACES password", aliases: ["traces password"] },
 } as const;
+
+/** Columns that hold secrets: stored encrypted, never sent back to the browser. */
+export const SECRET_FIELDS = ["gstPassword", "incomeTaxPassword", "tracesPassword"] as const;
 
 export type ImportField = keyof typeof IMPORT_FIELDS;
 export type ColumnMapping = (ImportField | "")[];
@@ -96,12 +110,26 @@ export function normalizeMobile(raw: string): string | null {
   return /^[6-9]\d{9}$/.test(ten) ? ten : null;
 }
 
-export type ParsedClient = Partial<Record<ImportField, string>> & { gstins: string[] };
+export type ParsedClient = Partial<Record<ImportField, string>> & { gstins: string[]; departmentList: string[] };
+
+/** DD/MM/YYYY (or an Excel ISO date) → YYYY-MM-DD. */
+export function parseSheetDate(raw: string): string | null {
+  const t = raw.trim();
+  let y: number, m: number, d: number;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
+  const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t);
+  if (iso) [y, m, d] = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
+  else if (dmy) [d, m, y] = [Number(dmy[1]), Number(dmy[2]), Number(dmy[3])];
+  else return null;
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d || y < 1850 || y > 2100) return null;
+  return date.toISOString().slice(0, 10);
+}
 export type RowResult = { row: number; values: ParsedClient; errors: string[]; warnings: string[] };
 
 /** Turns one sheet row into clean values. Errors stop a row; warnings drop the bad value only. */
 export function parseRow(row: string[], mapping: ColumnMapping, rowNumber: number): RowResult {
-  const values: ParsedClient = { gstins: [] };
+  const values: ParsedClient = { gstins: [], departmentList: [] };
   const errors: string[] = [];
   const warnings: string[] = [];
   mapping.forEach((f, i) => {
@@ -132,10 +160,50 @@ export function parseRow(row: string[], mapping: ColumnMapping, rowNumber: numbe
     values.contactEmail = values.contactEmail.toLowerCase();
     if (!EMAIL.test(values.contactEmail)) { warnings.push(`Email ${values.contactEmail} is not valid and was skipped`); delete values.contactEmail; }
   }
+  if (values.dateOfBirth) {
+    const iso = parseSheetDate(values.dateOfBirth);
+    if (iso) values.dateOfBirth = iso;
+    else { warnings.push(`DOB "${values.dateOfBirth}" is not a date (DD/MM/YYYY) and was skipped`); delete values.dateOfBirth; }
+  }
+  if (values.departments) values.departmentList = [...new Set(values.departments.split(/[,;/\n]+/).map((x) => x.trim()).filter(Boolean))];
   if (values.fee) {
     const n = Number(values.fee.replace(/[₹,\s]|rs\.?/gi, ""));
     if (Number.isFinite(n) && n >= 0) values.fee = String(n);
     else { warnings.push(`Fee "${values.fee}" is not a number and was skipped`); delete values.fee; }
   }
   return { row: rowNumber, values, errors, warnings };
+}
+
+export type MergedRow = RowResult & { mergedInto?: number };
+
+/**
+ * The Client Master has one row per GSTIN, matched on PAN. Rows with the same PAN are one
+ * client: the first row keeps its values, later rows add their GSTINs, departments and any
+ * value the first row left empty, and are marked as merged. A row without a PAN joins an
+ * earlier row of the same name; the same name with a different PAN stays a separate client.
+ */
+export function mergeRowsByPan(rows: RowResult[]): MergedRow[] {
+  const out: MergedRow[] = rows.map((r) => ({ ...r, values: { ...r.values, gstins: [...r.values.gstins], departmentList: [...r.values.departmentList] } }));
+  const byPan = new Map<string, MergedRow>();
+  const byName = new Map<string, MergedRow[]>();
+  const nameKey = (v: ParsedClient) => (v.tradeName ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  for (const r of out) {
+    if (r.errors.length) continue;
+    const v = r.values;
+    const sameName = byName.get(nameKey(v)) ?? [];
+    const target = v.pan ? byPan.get(v.pan) : sameName.length === 1 ? sameName[0] : sameName.find((x) => !x.values.pan);
+    if (target) {
+      const t = target.values;
+      t.gstins = [...new Set([...t.gstins, ...v.gstins])];
+      t.departmentList = [...new Set([...t.departmentList, ...v.departmentList])];
+      for (const [k, val] of Object.entries(v) as [ImportField, string][]) {
+        if (typeof val === "string" && val && !t[k]) t[k] = val;
+      }
+      r.mergedInto = target.row;
+      continue;
+    }
+    if (v.pan) byPan.set(v.pan, r);
+    byName.set(nameKey(v), [...sameName, r]);
+  }
+  return out;
 }

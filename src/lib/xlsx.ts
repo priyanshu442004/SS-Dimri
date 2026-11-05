@@ -156,6 +156,11 @@ export class XlsxReadError extends Error {}
 
 /** Read the first worksheet as rows of text. Blank rows are kept out; cells are trimmed. */
 export function readFirstSheet(data: Uint8Array): string[][] {
+  return readFirstSheetNumbered(data).map((r) => r.cells);
+}
+
+/** As readFirstSheet, with each row's number as Excel shows it (blank rows skipped, numbers kept). */
+export function readFirstSheetNumbered(data: Uint8Array): { n: number; cells: string[] }[] {
   let files: Record<string, Uint8Array>;
   try {
     files = unzipSync(data);
@@ -177,9 +182,12 @@ export function readFirstSheet(data: Uint8Array): string[][] {
   const shared = sharedXml ? [...sharedXml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>|<si\b[^>]*\/>/g)].map((m) => (m[1] ? textOf(m[1]) : "")) : [];
   const dates = dateStyles(read("xl/styles.xml"));
 
-  const rows: string[][] = [];
-  for (const rowMatch of sheet.matchAll(/<row\b[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g)) {
-    const body = rowMatch[1];
+  const rows: { n: number; cells: string[] }[] = [];
+  let lastRow = 0;
+  for (const rowMatch of sheet.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+    const n = Number(/\br="(\d+)"/.exec(rowMatch[1])?.[1] ?? lastRow + 1);
+    lastRow = n;
+    const body = rowMatch[2];
     if (!body) continue;
     const row: string[] = [];
     let next = 0;
@@ -205,7 +213,7 @@ export function readFirstSheet(data: Uint8Array): string[][] {
       row[col] = value.trim();
     }
     for (let i = 0; i < row.length; i++) row[i] ??= "";
-    if (row.some((c) => c !== "")) rows.push(row);
+    if (row.some((c) => c !== "")) rows.push({ n, cells: row });
   }
   return rows;
 }

@@ -155,6 +155,19 @@ export async function setAppliesToFirm(ctx: AppContext, complianceItemId: string
   });
 }
 
+/** "Remark (If Date Extend)": the extended due date the department notified, in the firm's words. */
+export async function setExtendedDateRemark(ctx: AppContext, complianceItemId: string, remark: string | undefined) {
+  if (!(await prisma.complianceItem.findUnique({ where: { id: complianceItemId }, select: { id: true } }))) throw new BusinessRuleError("Select a valid compliance.");
+  await prisma.$transaction(async (tx) => {
+    await tx.organizationComplianceSetting.upsert({
+      where: { organizationId_complianceItemId: { organizationId: ctx.organization.id, complianceItemId } },
+      update: { extendedDateRemark: remark ?? null },
+      create: { organizationId: ctx.organization.id, complianceItemId, extendedDateRemark: remark ?? null },
+    });
+    await audit(tx, ctx, "compliance.date_extended", "compliance_item", complianceItemId, { remark: remark ?? null });
+  });
+}
+
 /**
  * One-time reminder when a row comes within its lead days, and one-time escalation to the
  * owner and administrators when it is within 7 days and not done (the workbook's

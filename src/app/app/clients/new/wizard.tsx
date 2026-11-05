@@ -10,6 +10,7 @@ import { toast } from "@/components/toaster";
 import { PeopleEditor, ROLE_LABEL, emptyPerson, peopleToJson, personErrors, type ConstitutionOption, type Person } from "@/components/representatives";
 import { mobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
 import { fullRegisterClientAction } from "../actions";
+import { CompliancePicker, type ComplianceOption } from "@/components/compliance-picker";
 
 // Full client registration by the firm's staff (Clients → New client).
 
@@ -22,7 +23,7 @@ const STEPS = ["Business identity", "Constitution & people", "GST registrations"
 const FIELD_STEP: Record<string, number> = {
   tradeName: 0, legalName: 0, address: 0, pan: 0, tan: 0, primaryBusinessNatureId: 0, contactName: 0, contactMobile: 0, contactEmail: 0, contactDesignation: 0,
   constitutionId: 1, people: 1, gstins: 2,
-  isMsme: 3, msmeRegistrationNumber: 3, esiNumber: 3, pfNumber: 3,
+  isMsme: 3, msmeRegistrationNumber: 3, esiNumber: 3, pfNumber: 3, "departments[]": 3, "complianceItemIds[]": 3,
   "serviceIds[]": 4, natureOfClient: 4,
 };
 
@@ -59,10 +60,11 @@ function SelectAll({ ids, chosen, onToggle, label, className }: { ids: string[];
   );
 }
 
-export function BusinessWizard({ constitutions, natures, services }: {
+export function BusinessWizard({ constitutions, natures, services, compliances }: {
   constitutions: ConstitutionOption[];
   natures: Option[];
   services: (Option & { group: string; description: string })[];
+  compliances: { items: ComplianceOption[]; departments: string[] };
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(fullRegisterClientAction, {});
   // Server-side problems with the submission are announced as a toast (step checks stay inline).
@@ -213,6 +215,8 @@ export function BusinessWizard({ constitutions, natures, services }: {
       ["GSTINs", gstins.join(", "), 2],
       ["MSME", v("isMsme") === "yes" ? `Yes ${v("msmeRegistrationNumber")}` : v("isMsme") === "no" ? "No" : "", 3],
       ["ESI / PF", [v("esiNumber"), v("pfNumber")].filter(Boolean).join(" / "), 3],
+      ["Departments", fd.getAll("departments[]").join(", "), 3],
+      ["Compliances", fd.getAll("complianceItemIds[]").length ? `${fd.getAll("complianceItemIds[]").length} selected` : "", 3],
       ["Documents", files.join(", "), 3],
       ["Services", chosenNames.join(", "), 4],
     ]);
@@ -328,6 +332,10 @@ export function BusinessWizard({ constitutions, natures, services }: {
         {/* D — Compliance & documents */}
         <section hidden={step !== 3} className="grid gap-4 sm:grid-cols-2">
           <h2 className="text-lg font-semibold sm:col-span-2">D · Compliance and documents</h2>
+          <div className="sm:col-span-2">
+            <p className="mb-3 text-sm text-muted">Pick the departments the client is with. Every compliance of a department is listed and ticked; untick what does not apply.</p>
+            <CompliancePicker items={compliances.items} departments={compliances.departments} />
+          </div>
           <Field label="MSME (Udyam) registered?" name="isMsme">
             <select id="f-isMsme" name="isMsme" defaultValue="" className={input}><option value="">Select…</option><option value="yes">Yes</option><option value="no">No</option></select>
           </Field>

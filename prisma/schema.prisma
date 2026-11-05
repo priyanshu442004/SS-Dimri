@@ -337,7 +337,10 @@ enum LeaveRequestStatus {
 enum WorkStatus {
   COMPLETED
   IN_PROGRESS
+  /// Older entries only; the Team Daily Work Log uses Not Started / In Progress / On Hold / Completed.
   PENDING
+  NOT_STARTED
+  ON_HOLD
 }
 
 /// Pending tracker category: 12A Daily / 12B Communication.
@@ -620,6 +623,7 @@ model Constitution {
 // =============================================================================
 
 model Organization {
+  trackerLines          TrackerLine[]
   id                    String                @id @default(uuid(7)) @db.Uuid
   tradeName             String                @map("trade_name")
   legalName             String?               @map("legal_name")
@@ -944,6 +948,22 @@ model Client {
   observations              ClientObservation[]
   complianceEntries         ComplianceEntry[]
 
+  // Client Master columns.
+  state                      String?            @map("state")
+  dateOfBirth                DateTime?          @map("date_of_birth") @db.Date
+  itFileNo                   String?            @map("it_file_no")
+  masterRemark               String?            @map("master_remark") @db.Text
+  /// Applicable departments: "GST", "Income Tax", "TDS", "Day Book"…
+  departments                String[]           @default([])
+  gstUserId                  String?            @map("gst_user_id")
+  gstPasswordEncrypted       String?            @map("gst_password_encrypted") @db.Text
+  incomeTaxUserId            String?            @map("income_tax_user_id")
+  incomeTaxPasswordEncrypted String?            @map("income_tax_password_encrypted") @db.Text
+  tracesUserId               String?            @map("traces_user_id")
+  tracesPasswordEncrypted    String?            @map("traces_password_encrypted") @db.Text
+  compliances                ClientCompliance[]
+  trackerLines               TrackerLine[]
+
   @@unique([organizationId, clientCode])
   @@index([organizationId, status])
   @@index([organizationId, tradeName])
@@ -1181,8 +1201,10 @@ model EmployeeNatureOption {
 }
 
 model Employee {
-  id             String @id @default(uuid(7)) @db.Uuid
-  organizationId String @map("organization_id") @db.Uuid
+  trackerLinesAsMaker   TrackerLine[] @relation("TrackerMaker")
+  trackerLinesAsChecker TrackerLine[] @relation("TrackerChecker")
+  id                    String        @id @default(uuid(7)) @db.Uuid
+  organizationId        String        @map("organization_id") @db.Uuid
 
   // Temporary -> permanent identifier workflow
   temporaryEmployeeCode String         @map("temporary_employee_code")
@@ -1836,43 +1858,58 @@ model LeaveRequest {
 // =============================================================================
 
 model TimesheetEntry {
-  id               String      @id @default(uuid(7)) @db.Uuid
-  organizationId   String      @map("organization_id") @db.Uuid
-  employeeId       String      @map("employee_id") @db.Uuid
+  id                  String       @id @default(uuid(7)) @db.Uuid
+  organizationId      String       @map("organization_id") @db.Uuid
+  employeeId          String       @map("employee_id") @db.Uuid
   /// Serial number as entered on the sheet.
-  serialNumber     Int?        @map("serial_number")
+  serialNumber        Int?         @map("serial_number")
   /// Date of visit / work date.
-  workDate         DateTime    @map("work_date") @db.Date
-  clientId         String?     @map("client_id") @db.Uuid
+  workDate            DateTime     @map("work_date") @db.Date
+  clientId            String?      @map("client_id") @db.Uuid
   /// Free-text client name when the client is not (yet) registered.
-  clientNameText   String?     @map("client_name_text")
-  clientServiceId  String?     @map("client_service_id") @db.Uuid
-  taskId           String?     @map("task_id") @db.Uuid
-  teamAllocationId String?     @map("team_allocation_id") @db.Uuid
-  placeOfWork      String?     @map("place_of_work")
-  typeOfWork       String?     @map("type_of_work")
+  clientNameText      String?      @map("client_name_text")
+  clientServiceId     String?      @map("client_service_id") @db.Uuid
+  taskId              String?      @map("task_id") @db.Uuid
+  teamAllocationId    String?      @map("team_allocation_id") @db.Uuid
+  placeOfWork         String?      @map("place_of_work")
+  typeOfWork          String?      @map("type_of_work")
   /// Bank name — for bank/card work.
-  bankName         String?     @map("bank_name")
-  periodFrom       DateTime?   @map("period_from") @db.Date
-  periodTo         DateTime?   @map("period_to") @db.Date
+  bankName            String?      @map("bank_name")
+  periodFrom          DateTime?    @map("period_from") @db.Date
+  periodTo            DateTime?    @map("period_to") @db.Date
   /// Number of transactions / entries.
-  transactionCount Int?        @map("transaction_count")
+  transactionCount    Int?         @map("transaction_count")
   /// Approximate time taken, in minutes.
-  approxMinutes    Int?        @map("approx_minutes")
+  approxMinutes       Int?         @map("approx_minutes")
   /// "Message through WhatsApp".
-  whatsappMessage  String?     @map("whatsapp_message") @db.Text
+  whatsappMessage     String?      @map("whatsapp_message") @db.Text
   /// 10B: details & status of work done.
-  workDetails      String?     @map("work_details") @db.Text
-  workStatus       WorkStatus? @map("work_status")
+  workDetails         String?      @map("work_details") @db.Text
+  workStatus          WorkStatus?  @map("work_status")
   /// Workbook columns: Dedicated / Shared / Backend Team.
-  resourceType     String?     @map("resource_type")
+  resourceType        String?      @map("resource_type")
   /// e.g. "AY 2026-27".
-  assessmentYear   String?     @map("assessment_year")
+  assessmentYear      String?      @map("assessment_year")
   /// This task's time block ("HH:MM" in the firm's timezone); hours derive from it.
-  startTime        String?     @map("start_time") @db.VarChar(5)
-  endTime          String?     @map("end_time") @db.VarChar(5)
-  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  startTime           String?      @map("start_time") @db.VarChar(5)
+  endTime             String?      @map("end_time") @db.VarChar(5)
+  // Team Daily Work Log columns.
+  branch              String?      @map("branch")
+  trackerLineId       String?      @map("tracker_line_id") @db.Uuid
+  trackerLine         TrackerLine? @relation(fields: [trackerLineId], references: [id], onDelete: SetNull)
+  issueLevel          String?      @map("issue_level")
+  issueDetails        String?      @map("issue_details") @db.Text
+  issueStatus         String?      @map("issue_status")
+  clientPendingItem   String?      @map("client_pending_item") @db.Text
+  clientRaisedOn      DateTime?    @map("client_raised_on") @db.Date
+  clientDueBy         DateTime?    @map("client_due_by") @db.Date
+  clientPendingStatus String?      @map("client_pending_status")
+  teamPendingItem     String?      @map("team_pending_item") @db.Text
+  teamRaisedOn        DateTime?    @map("team_raised_on") @db.Date
+  teamDueBy           DateTime?    @map("team_due_by") @db.Date
+  teamPendingStatus   String?      @map("team_pending_status")
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   employee       Employee        @relation(fields: [employeeId], references: [id], onDelete: Restrict)
@@ -1894,7 +1931,65 @@ model TimesheetEntry {
   @@index([employeeId, workDate])
   @@index([clientId, workDate])
   @@index([taskId])
+  @@index([trackerLineId])
   @@map("timesheet_entries")
+}
+
+/// One line of the Accounting Workflow Tracker. Tracker Ref No. is the key that links it to
+/// the Team Daily Work Log. Work Status and Timeline Flag are derived (lib/domain/tracker.ts).
+model TrackerLine {
+  id                  String     @id @default(uuid(7)) @db.Uuid
+  organizationId      String     @map("organization_id") @db.Uuid
+  refNo               String     @map("ref_no")
+  clientId            String?    @map("client_id") @db.Uuid
+  /// The name stays when the client record is deleted, as with timesheet entries.
+  clientName          String     @map("client_name")
+  branch              String?
+  typeOfWork          String     @map("type_of_work")
+  bankName            String?    @map("bank_name")
+  periodFrom          DateTime?  @map("period_from") @db.Date
+  /// Blank means "onwards".
+  periodTo            DateTime?  @map("period_to") @db.Date
+  statusOfWork        WorkStatus @default(NOT_STARTED) @map("status_of_work")
+  issueLevel          String?    @map("issue_level")
+  issueDetails        String?    @map("issue_details") @db.Text
+  issueStatus         String?    @map("issue_status")
+  clientPendingItem   String?    @map("client_pending_item") @db.Text
+  clientRaisedOn      DateTime?  @map("client_raised_on") @db.Date
+  clientDueBy         DateTime?  @map("client_due_by") @db.Date
+  clientPendingStatus String?    @map("client_pending_status")
+  teamPendingItem     String?    @map("team_pending_item") @db.Text
+  teamRaisedOn        DateTime?  @map("team_raised_on") @db.Date
+  teamDueBy           DateTime?  @map("team_due_by") @db.Date
+  teamPendingStatus   String?    @map("team_pending_status")
+  getFrom             String?    @map("get_from")
+  dateReceived        DateTime?  @map("date_received") @db.Date
+  makerEmployeeId     String?    @map("maker_employee_id") @db.Uuid
+  checkerEmployeeId   String?    @map("checker_employee_id") @db.Uuid
+  checkerStatus       String?    @map("checker_status")
+  workStartDate       DateTime?  @map("work_start_date") @db.Date
+  priority            String?
+  nextFollowUpOn      DateTime?  @map("next_follow_up_on") @db.Date
+  remarks             String?    @db.Text
+  /// MANAGER: defined in the tracker. LOG: came in from a team member's daily log.
+  source              String     @default("MANAGER")
+  /// Null = new from the daily log, not yet looked at by a senior.
+  reviewedAt          DateTime?  @map("reviewed_at") @db.Timestamptz(3)
+  createdById         String?    @map("created_by_id") @db.Uuid
+  createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  maker        Employee?        @relation("TrackerMaker", fields: [makerEmployeeId], references: [id], onDelete: SetNull)
+  checker      Employee?        @relation("TrackerChecker", fields: [checkerEmployeeId], references: [id], onDelete: SetNull)
+  entries      TimesheetEntry[]
+
+  @@unique([organizationId, refNo])
+  @@index([organizationId, clientName])
+  @@index([makerEmployeeId])
+  @@index([checkerEmployeeId])
+  @@map("tracker_lines")
 }
 
 /// Unified pending-work / follow-up record (10B), surfaced as
@@ -2191,6 +2286,7 @@ model ComplianceItem {
 
   entries  ComplianceEntry[]
   settings OrganizationComplianceSetting[]
+  clients  ClientCompliance[]
 
   @@index([department])
   @@map("compliance_items")
@@ -2198,17 +2294,33 @@ model ComplianceItem {
 
 /// Per-firm answer to "Applies to the firm itself?" for a compliance (master data column I).
 model OrganizationComplianceSetting {
-  id               String   @id @default(uuid(7)) @db.Uuid
-  organizationId   String   @map("organization_id") @db.Uuid
-  complianceItemId String   @map("compliance_item_id") @db.Uuid
-  appliesToFirm    Boolean  @default(false) @map("applies_to_firm")
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                 String   @id @default(uuid(7)) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  complianceItemId   String   @map("compliance_item_id") @db.Uuid
+  appliesToFirm      Boolean  @default(false) @map("applies_to_firm")
+  /// "Remark (If Date Extend)": the extended date, when the department extends this due date.
+  extendedDateRemark String?  @map("extended_date_remark") @db.Text
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   item         ComplianceItem @relation(fields: [complianceItemId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, complianceItemId])
   @@map("organization_compliance_settings")
+}
+
+/// The compliances that apply to a client, chosen at registration by department.
+model ClientCompliance {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  clientId         String   @map("client_id") @db.Uuid
+  complianceItemId String   @map("compliance_item_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  client Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  item   ComplianceItem @relation(fields: [complianceItemId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, complianceItemId])
+  @@map("client_compliances")
 }
 
 /// Extra column a firm adds to its compliance tracker; values live in compliance_entries.custom_values.

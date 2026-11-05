@@ -2,10 +2,13 @@
 
 import { ActionForm, FormError, PhoneField, SelectField, SubmitButton, TextArea, TextField, upperCaseInput } from "@/components/form";
 import { quickRegisterAction } from "../../actions";
+import { CompliancePicker, type ComplianceOption } from "@/components/compliance-picker";
 
 type Option = { value: string; label: string };
 
-export function QuickRegistrationForm({ constitutions, services }: { constitutions: Option[]; services: (Option & { group: string })[] }) {
+export function QuickRegistrationForm({ constitutions, services, compliances }: {
+  constitutions: Option[]; services: (Option & { group: string })[]; compliances: { items: ComplianceOption[]; departments: string[] };
+}) {
   const groups = [...new Set(services.map((s) => s.group))];
   return (
     <ActionForm action={quickRegisterAction}>
@@ -40,6 +43,7 @@ export function QuickRegistrationForm({ constitutions, services }: { constitutio
         </div>
         <FormError name="serviceIds[]" />
       </fieldset>
+      <CompliancePicker items={compliances.items} departments={compliances.departments} />
       <SubmitButton>Submit for approval</SubmitButton>
     </ActionForm>
   );

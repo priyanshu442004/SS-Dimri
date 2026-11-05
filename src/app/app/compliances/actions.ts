@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { parseForm, safeAction, type ActionState } from "@/lib/actions";
+import { parseForm, safeAction, zOptionalText, type ActionState } from "@/lib/actions";
 import { formatDate } from "@/lib/dates";
 import { actionContext } from "@/lib/session";
 import {
@@ -13,6 +13,7 @@ import {
   createComplianceEntry,
   removeComplianceColumn,
   setAppliesToFirm,
+  setExtendedDateRemark,
   updateComplianceEntry,
 } from "@/lib/services/compliance";
 
@@ -70,6 +71,19 @@ export async function removeComplianceColumnAction(id: string): Promise<ActionSt
 }
 
 const appliesSchema = z.object({ value: z.enum(["yes", "no"]) });
+
+const extendSchema = z.object({ remark: zOptionalText(300) });
+
+export async function setExtendedDateRemarkAction(itemId: string, _p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(extendSchema, fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const ctx = await actionContext("compliance.manage");
+    await setExtendedDateRemark(ctx, itemId, parsed.data.remark);
+    refresh();
+    return { ok: true, message: parsed.data.remark ? "Extended date saved." : "Remark cleared." };
+  });
+}
 
 export async function setAppliesToFirmAction(itemId: string, _p: ActionState, fd: FormData): Promise<ActionState> {
   const parsed = parseForm(appliesSchema, fd);

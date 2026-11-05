@@ -13,8 +13,8 @@ import { activeClientOptions, employeeOptions } from "@/lib/services/lookups";
 import { ActionButton } from "@/components/action-button";
 import { DeleteButton } from "@/components/delete-dialog";
 import { Badge, Card, DownloadButton, EmptyState, Notice, PageHeader, Stat, TabNav, Table, Td, Th } from "@/components/ui";
-import { addComplianceColumnAction, completeComplianceEntryAction, createComplianceEntryAction, removeComplianceColumnAction, setAppliesToFirmAction, updateComplianceEntryAction } from "./actions";
-import { AddColumnForm, AppliesToFirmSelect, ComplianceEntryForm } from "./forms";
+import { addComplianceColumnAction, completeComplianceEntryAction, createComplianceEntryAction, removeComplianceColumnAction, setAppliesToFirmAction, setExtendedDateRemarkAction, updateComplianceEntryAction } from "./actions";
+import { AddColumnForm, AppliesToFirmSelect, ComplianceEntryForm, ExtendedDateForm } from "./forms";
 
 const STATUS_TONE: Record<ComplianceStatus, "ok" | "warn" | "danger" | "info" | "neutral"> = { COMPLETED: "neutral", OVERDUE: "danger", DUE_THIS_WEEK: "warn", UPCOMING: "info", OK: "ok" };
 const STATUSES = Object.keys(COMPLIANCE_STATUS_LABELS) as ComplianceStatus[];
@@ -36,6 +36,7 @@ export default async function CompliancesPage({ searchParams }: PageProps<"/app/
   const tab = sp.tab === "calendar" ? "calendar" : "tracker";
   const status = STATUSES.find((s) => s === sp.status);
   const appliesTo = new Map(settings.map((s) => [s.complianceItemId, s.appliesToFirm]));
+  const extended = new Map(settings.filter((s) => s.extendedDateRemark).map((s) => [s.complianceItemId, s.extendedDateRemark!]));
 
   const href = (extra: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
@@ -69,7 +70,7 @@ export default async function CompliancesPage({ searchParams }: PageProps<"/app/
       {selected && (
         <Card title={selected.name} className="mb-6">
           <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            {([["Form / return", selected.form], ["Applicable to", selected.applicableTo], ["Frequency", selected.frequency], ["Due date", selected.dueDateRule], ["Late fee / penalty", selected.penalty], ["Remarks", selected.remarks]] as const).map(([k, v]) => (
+            {([["Form / return", selected.form], ["Applicable to", selected.applicableTo], ["Frequency", selected.frequency], ["Due date", selected.dueDateRule], ["Remark (If Date Extend)", extended.get(selected.id) ?? null], ["Late fee / penalty", selected.penalty], ["Remarks", selected.remarks]] as const).map(([k, v]) => (
               <div key={k} className="min-w-0"><dt className="text-xs font-medium text-muted">{k}</dt><dd className="mt-0.5 break-words">{v ?? "—"}</dd></div>
             ))}
           </dl>
@@ -91,7 +92,7 @@ export default async function CompliancesPage({ searchParams }: PageProps<"/app/
       <>
         <div className="mb-4"><Notice tone="warn">Due dates are as compiled in October 2026 and change by notification. Verify each year before relying on them.</Notice></div>
         <Table minWidth={1120}>
-          <thead><tr><Th>Compliance</Th><Th>Form</Th><Th>Applicable to</Th><Th>Frequency</Th><Th>Due date</Th><Th>Late fee / penalty</Th><Th>Applies to our firm?</Th></tr></thead>
+          <thead><tr><Th>Compliance</Th><Th>Form</Th><Th>Applicable to</Th><Th>Frequency</Th><Th>Due date</Th><Th>Remark (If Date Extend)</Th><Th>Late fee / penalty</Th><Th>Applies to our firm?</Th></tr></thead>
           <tbody>
             {shown.map((r) => (
               <tr key={r.id}>
@@ -100,6 +101,11 @@ export default async function CompliancesPage({ searchParams }: PageProps<"/app/
                 <Td className="text-xs">{r.applicableTo ?? "—"}</Td>
                 <Td className="text-xs">{r.frequency ?? "—"}</Td>
                 <Td className="text-xs">{r.dueDateRule ?? "—"}</Td>
+                <Td className="text-xs">
+                  {manage
+                    ? <ExtendedDateForm action={setExtendedDateRemarkAction.bind(null, r.id)} value={extended.get(r.id) ?? ""} label={`Extended date for ${r.name}`} />
+                    : extended.get(r.id) ? <span className="font-medium text-warn">{extended.get(r.id)}</span> : "—"}
+                </Td>
                 <Td className="text-xs">{r.penalty ?? "—"}</Td>
                 <Td className="text-xs">
                   {manage

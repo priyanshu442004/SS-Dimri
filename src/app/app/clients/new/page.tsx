@@ -3,12 +3,13 @@ import { prisma } from "@/lib/db";
 import { requireCapability } from "@/lib/session";
 import { PageHeader, buttonClass } from "@/components/ui";
 import { BusinessWizard } from "./wizard";
+import { complianceChoices } from "@/lib/services/client-compliances";
 import { Building2, Zap } from "lucide-react";
 
 // Full client registration by the firm, in six short sections.
 export default async function NewClientPage() {
   const ctx = await requireCapability("clients.register");
-  const [constitutions, natures, services] = await Promise.all([
+  const [constitutions, natures, services, choices] = await Promise.all([
     prisma.constitution.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true, representativeRole: true, allowsMultiple: true } }),
     prisma.businessNature.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" }, select: { id: true, label: true } }),
     prisma.service.findMany({
@@ -16,6 +17,7 @@ export default async function NewClientPage() {
       orderBy: [{ department: { name: "asc" } }, { name: "asc" }],
       select: { id: true, name: true, description: true, department: { select: { name: true } } },
     }),
+    complianceChoices(),
   ]);
   return (
     <>
@@ -30,6 +32,7 @@ export default async function NewClientPage() {
           constitutions={constitutions}
           natures={natures.map((n) => ({ value: n.id, label: n.label }))}
           services={services.map((s) => ({ value: s.id, label: s.name, group: s.department?.name ?? "Other", description: s.description ?? "" }))}
+          compliances={choices}
         />
       </div>
     </>

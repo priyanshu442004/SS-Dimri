@@ -2,6 +2,7 @@
 
 import { useId } from "react";
 import { ActionForm, Checkbox, SelectField, SubmitButton, TextArea, TextField, type FormState } from "@/components/form";
+import { CompliancePicker, type ComplianceOption } from "@/components/compliance-picker";
 
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
 type Option = { value: string; label: string };
@@ -25,10 +26,11 @@ const BASIS_LABELS: Record<string, string> = {
 };
 
 export function DetailsForm({
-  action, d, constitutions, natures, classifications, completedAt,
+  action, d, constitutions, natures, classifications, completedAt, compliances,
 }: {
   action: Act;
   d: Record<string, string>;
+  compliances: { items: ComplianceOption[]; departments: string[]; chosenDepartments: string[]; chosenIds: string[] };
   constitutions: Option[];
   natures: Option[];
   classifications: (Option & { basis: string })[];
@@ -48,6 +50,26 @@ export function DetailsForm({
         <SelectField label="Nature of business (primary)" name="primaryBusinessNatureId" defaultValue={d.primaryBusinessNatureId} options={natures} />
         <SelectField label="Nature of business (secondary)" name="secondaryBusinessNatureId" defaultValue={d.secondaryBusinessNatureId} options={natures} />
         <FileInput label="Profile picture / logo" name="profilePicture" accept="image/*" />
+        <TextField label="State" name="state" defaultValue={d.state} />
+        <TextField label="Date of birth / incorporation" name="dateOfBirth" type="date" defaultValue={d.dateOfBirth} />
+        <TextField label="IT file no." name="itFileNo" defaultValue={d.itFileNo} />
+        <TextArea label="Remark" name="masterRemark" rows={1} defaultValue={d.masterRemark} />
+      </fieldset>
+
+      <fieldset className="grid gap-4 sm:grid-cols-3">
+        <legend className="mb-2 text-sm font-semibold">Portal logins <span className="font-normal text-muted">(passwords are stored encrypted and never shown; type one only to set or change it)</span></legend>
+        <TextField label="GST user ID" name="gstUserId" defaultValue={d.gstUserId} autoComplete="off" />
+        <TextField label="Income Tax user ID" name="incomeTaxUserId" defaultValue={d.incomeTaxUserId} autoComplete="off" hint="Usually the PAN" />
+        <TextField label="TRACES user ID" name="tracesUserId" defaultValue={d.tracesUserId} autoComplete="off" />
+        <TextField label="GST password" name="gstPassword" type="password" autoComplete="new-password" placeholder={d.gstPasswordSet ? "Saved · type to change" : ""} />
+        <TextField label="Income Tax password" name="incomeTaxPassword" type="password" autoComplete="new-password" placeholder={d.incomeTaxPasswordSet ? "Saved · type to change" : ""} />
+        <TextField label="TRACES password" name="tracesPassword" type="password" autoComplete="new-password" placeholder={d.tracesPasswordSet ? "Saved · type to change" : ""} />
+      </fieldset>
+
+      <fieldset>
+        <legend className="mb-2 text-sm font-semibold">Departments & compliances</legend>
+        <input type="hidden" name="compliancesShown" value="on" />
+        <CompliancePicker items={compliances.items} departments={compliances.departments} defaultDepartments={compliances.chosenDepartments} defaultIds={compliances.chosenIds} />
       </fieldset>
 
       <fieldset className="grid gap-4 sm:grid-cols-2">

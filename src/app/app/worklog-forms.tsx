@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ActionForm, Checkbox, SelectField, SubmitButton, TextArea, TextField, type FormState } from "@/components/form";
 import { SearchSelect } from "@/components/pickers";
 import { minutesBetween } from "@/lib/domain/timesheet";
+import { BRANCHES, ISSUE_LEVEL_HINT, ISSUE_LEVELS, ISSUE_STATUSES, PENDING_STATUSES, PLACES_OF_WORK, STATUS_OF_WORK_LABEL, STATUSES_OF_WORK } from "@/lib/domain/tracker";
 
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
 type Option = { value: string; label: string };
@@ -29,34 +30,77 @@ function TimeBlock({ start, end, hours, minutes }: { start?: string; end?: strin
   );
 }
 
-export function TimesheetForm({ action, clients, workTypes, places, tasks, date, years }: {
-  action: Act; clients: Option[]; workTypes: Option[]; places: string[]; tasks: Option[]; date: string; years: string[];
+const opts = (xs: readonly string[]) => xs.map((v) => ({ value: v, label: v }));
+const STATUS_OPTIONS = STATUSES_OF_WORK.map((v) => ({ value: v, label: STATUS_OF_WORK_LABEL[v] }));
+
+/** Issue and the two pending points, the same columns in the daily log and the tracker. */
+export function PendingIssueFields({ d = {} }: { d?: Record<string, string> }) {
+  return (
+    <>
+      <fieldset className="grid gap-3 rounded-lg border border-line p-3 sm:col-span-3 sm:grid-cols-3">
+        <legend className="px-1 text-sm font-semibold">Issue / discomfort</legend>
+        <SelectField label="Issue level" name="issueLevel" defaultValue={d.issueLevel} options={ISSUE_LEVELS.map((v) => ({ value: v, label: `${v} – ${ISSUE_LEVEL_HINT[v]}` }))} placeholder="No issue" />
+        <TextArea label="Issue / discomfort details" name="issueDetails" rows={1} defaultValue={d.issueDetails} />
+        <SelectField label="Issue status" name="issueStatus" defaultValue={d.issueStatus} options={opts(ISSUE_STATUSES)} hint="Open until resolved" />
+      </fieldset>
+      <fieldset className="grid gap-3 rounded-lg border border-warn/30 bg-warn-bg/40 p-3 sm:col-span-3 sm:grid-cols-4">
+        <legend className="px-1 text-sm font-semibold">Pending with client <span className="font-normal text-muted">(we asked, client has not given)</span></legend>
+        <TextArea label="Pending item – client" name="clientPendingItem" rows={1} defaultValue={d.clientPendingItem} hint="Several points can go in one box" />
+        <TextField label="Raised on – client" name="clientRaisedOn" type="date" defaultValue={d.clientRaisedOn} />
+        <TextField label="Due by – client" name="clientDueBy" type="date" defaultValue={d.clientDueBy} />
+        <SelectField label="Status – client" name="clientPendingStatus" defaultValue={d.clientPendingStatus} options={opts(PENDING_STATUSES)} />
+      </fieldset>
+      <fieldset className="grid gap-3 rounded-lg border border-info/30 bg-info-bg/40 p-3 sm:col-span-3 sm:grid-cols-4">
+        <legend className="px-1 text-sm font-semibold">Pending with team member <span className="font-normal text-muted">(our side, still to do)</span></legend>
+        <TextArea label="Pending item – team" name="teamPendingItem" rows={1} defaultValue={d.teamPendingItem} />
+        <TextField label="Raised on – team" name="teamRaisedOn" type="date" defaultValue={d.teamRaisedOn} />
+        <TextField label="Due by – team" name="teamDueBy" type="date" defaultValue={d.teamDueBy} />
+        <SelectField label="Status – team" name="teamPendingStatus" defaultValue={d.teamPendingStatus} options={opts(PENDING_STATUSES)} />
+      </fieldset>
+    </>
+  );
+}
+
+/** The Team Daily Work Log row, column for column. */
+function LogFields({ clients, workTypes, lines, d, years, tasks }: {
+  clients: Option[]; workTypes: Option[]; lines: Option[]; d: Record<string, string>; years: string[]; tasks?: Option[];
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      <TextField label="Date of visit / work" name="workDate" type="date" required defaultValue={d.workDate} />
+      <SelectField label="Tracker Ref No." name="trackerLineId" options={lines} defaultValue={d.trackerLineId} placeholder="New work (no Ref No.)" hint="Work given to you in the tracker; leave as new otherwise" />
+      <SelectField label="Branch" name="branch" options={opts(BRANCHES)} defaultValue={d.branch} />
+      <SearchSelect label="Client" name="clientId" options={clients} defaultValue={d.clientId} placeholder="Search clients…" emptyLabel="Not in the list" />
+      <TextField label="Client name (if not in list)" name="clientNameText" defaultValue={d.clientNameText} />
+      <SelectField label="Place of work" name="placeOfWork" options={opts(PLACES_OF_WORK)} defaultValue={d.placeOfWork} />
+      <SelectField label="Type of work" name="workTypeId" options={workTypes} defaultValue={d.workTypeId} required />
+      <TextField label="Bank name" name="bankName" defaultValue={d.bankName} hint="Required for bank posting, reconciliation and card work" />
+      <TextField label="No. of transactions / entries" name="transactionCount" type="number" min={0} defaultValue={d.transactionCount} />
+      <TextField label="Period from" name="periodFrom" type="date" required defaultValue={d.periodFrom} />
+      <TextField label="Period to" name="periodTo" type="date" required defaultValue={d.periodTo} />
+      <SelectField label="Status of work" name="workStatus" options={STATUS_OPTIONS} defaultValue={d.workStatus} />
+      <TimeBlock start={d.startTime} end={d.endTime} hours={d.hours} minutes={d.minutes} />
+      <TextArea label="Elaboration / details of work done" name="workDetails" rows={2} defaultValue={d.workDetails} className="sm:col-span-3" />
+      <PendingIssueFields d={d} />
+      <details className="rounded-lg border border-line p-3 sm:col-span-3">
+        <summary className="cursor-pointer text-sm font-medium text-muted">More (optional)</summary>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {tasks && <SelectField label="Related task" name="taskId" options={tasks} placeholder="None" />}
+          <SelectField label="Resource type" name="resourceType" options={RESOURCE_OPTIONS} defaultValue={d.resourceType} hint="Filled from the allocation if left blank" />
+          <SelectField label="Assessment year (AY)" name="assessmentYear" options={[...new Set([...years, ...(d.assessmentYear ? [d.assessmentYear] : [])])].map((y) => ({ value: y, label: y }))} defaultValue={d.assessmentYear} />
+          <TextArea label="Message sent on WhatsApp (if any)" name="whatsappMessage" rows={1} defaultValue={d.whatsappMessage} />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+export function TimesheetForm({ action, clients, workTypes, tasks, lines, date, years, prefill = {} }: {
+  action: Act; clients: Option[]; workTypes: Option[]; tasks: Option[]; lines: Option[]; date: string; years: string[]; prefill?: Record<string, string>;
 }) {
   return (
     <ActionForm action={action} resetOnSuccess>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <TextField label="Date of visit" name="workDate" type="date" required defaultValue={date} />
-        <SearchSelect label="Client" name="clientId" options={clients} placeholder="Search clients…" emptyLabel="Not in the list" hint="Or type the name below if not registered" />
-        <TextField label="Client name (if not in list)" name="clientNameText" />
-        <SelectField label="Resource type" name="resourceType" options={RESOURCE_OPTIONS} hint="Filled from the allocation if left blank" />
-        <SelectField label="Nature of work" name="workTypeId" options={workTypes} />
-        <SelectField label="Assessment year (AY)" name="assessmentYear" options={years.map((y) => ({ value: y, label: y }))} />
-        <div>
-          <TextField label="Work location" name="placeOfWork" list="places" />
-          <datalist id="places">{places.map((p) => <option key={p} value={p} />)}</datalist>
-        </div>
-        <TextField label="Bank name (bank / card work)" name="bankName" />
-        <TextField label="No. of transactions / entries" name="transactionCount" type="number" min={0} />
-        <TextField label="Period from" name="periodFrom" type="date" />
-        <TextField label="Period to" name="periodTo" type="date" />
-        <TimeBlock />
-        <SelectField label="Status of work" name="workStatus" options={[
-          { value: "COMPLETED", label: "Completed" }, { value: "IN_PROGRESS", label: "In progress" }, { value: "PENDING", label: "Pending" },
-        ]} />
-        <SelectField label="Related task" name="taskId" options={tasks} placeholder="None" />
-        <TextArea label="Task / compliance description" name="workDetails" rows={2} className="sm:col-span-3" />
-        <TextArea label="Message sent on WhatsApp (if any)" name="whatsappMessage" rows={1} className="sm:col-span-3" />
-      </div>
+      <LogFields clients={clients} workTypes={workTypes} lines={lines} tasks={tasks} years={years} d={{ workDate: date, ...prefill }} />
       <SubmitButton>Add entry</SubmitButton>
     </ActionForm>
   );
@@ -138,31 +182,13 @@ export function EntryReviewForm({ action }: { action: Act }) {
   );
 }
 
-export function EntryCorrectionForm({ action, clients, workTypes, d, needsReason, years }: {
-  action: Act; clients: Option[]; workTypes: Option[]; d: Record<string, string>; needsReason: boolean; years: string[];
+export function EntryCorrectionForm({ action, clients, workTypes, lines, d, needsReason, years }: {
+  action: Act; clients: Option[]; workTypes: Option[]; lines: Option[]; d: Record<string, string>; needsReason: boolean; years: string[];
 }) {
   return (
     <ActionForm action={action}>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <TextField label="Date of visit" name="workDate" type="date" required defaultValue={d.workDate} />
-        <SearchSelect label="Client" name="clientId" options={clients} defaultValue={d.clientId} placeholder="Search clients…" emptyLabel="Not in the list" />
-        <TextField label="Client name (if not in list)" name="clientNameText" defaultValue={d.clientNameText} />
-        <SelectField label="Resource type" name="resourceType" options={RESOURCE_OPTIONS} defaultValue={d.resourceType} />
-        <SelectField label="Nature of work" name="workTypeId" options={workTypes} defaultValue={d.workTypeId} />
-        <SelectField label="Assessment year (AY)" name="assessmentYear" options={[...new Set([...years, ...(d.assessmentYear ? [d.assessmentYear] : [])])].map((y) => ({ value: y, label: y }))} defaultValue={d.assessmentYear} />
-        <TextField label="Work location" name="placeOfWork" defaultValue={d.placeOfWork} />
-        <TextField label="Bank name" name="bankName" defaultValue={d.bankName} />
-        <TextField label="Period from" name="periodFrom" type="date" defaultValue={d.periodFrom} />
-        <TextField label="Period to" name="periodTo" type="date" defaultValue={d.periodTo} />
-        <TextField label="No. of transactions / entries" name="transactionCount" type="number" min={0} defaultValue={d.transactionCount} />
-        <TimeBlock start={d.startTime} end={d.endTime} hours={d.hours} minutes={d.minutes} />
-        <SelectField label="Status of work" name="workStatus" defaultValue={d.workStatus} options={[
-          { value: "COMPLETED", label: "Completed" }, { value: "IN_PROGRESS", label: "In progress" }, { value: "PENDING", label: "Pending" },
-        ]} />
-        <TextArea label="Task / compliance description" name="workDetails" rows={2} defaultValue={d.workDetails} className="sm:col-span-3" />
-        <TextArea label="Message sent on WhatsApp" name="whatsappMessage" rows={1} defaultValue={d.whatsappMessage} className="sm:col-span-3" />
-        <TextField label="Reason for correction" name="reason" required={needsReason} className="sm:col-span-3" hint={needsReason ? "Required when correcting someone else's entry" : "Optional"} />
-      </div>
+      <LogFields clients={clients} workTypes={workTypes} lines={lines} years={years} d={d} />
+      <TextField label="Reason for correction" name="reason" required={needsReason} hint={needsReason ? "Required when correcting someone else's entry" : "Optional"} />
       <SubmitButton variant="secondary">Save correction</SubmitButton>
     </ActionForm>
   );

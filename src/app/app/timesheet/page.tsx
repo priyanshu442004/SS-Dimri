@@ -15,6 +15,9 @@ import { BarList, ChartCard } from "@/components/charts";
 import { Badge, Card, DownloadButton, EmptyState, PageHeader, Stat, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
 import { addTimesheetAction, deleteTimesheetAction, reviewTimesheetAction } from "../worklog-actions";
 import { ReviewForm, TimesheetForm } from "../worklog-forms";
+import { myOpenLines, pendingPointsFor } from "@/lib/services/tracker";
+import { dueStateOf, STATUS_OF_WORK_LABEL, timelineFlagOf, workStatusOf } from "@/lib/domain/tracker";
+import { ClientPendingReportTab, DayReportTab, FlagBadge, MyPendingTab, TrackerDashboardTab, TrackerTab, WorkStatusBadge } from "./sections";
 import { CircleAlert, Clock, IndianRupee, ListChecks, TimerReset, Users } from "lucide-react";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -41,92 +44,157 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
   const employeeId = typeof sp.employee === "string" && UUID.test(sp.employee) ? sp.employee : "";
   const clientId = typeof sp.client === "string" && UUID.test(sp.client) ? sp.client : "";
 
-  // Leads and admins see the team views (Tracker, Pending, Dashboard); everyone else fills the daily log.
-  // "collective" is the old name of the tracker and is kept so existing links still work.
-  const requested = sp.tab === "collective" ? "tracker" : sp.tab;
-  const tab = !viewAll ? "daily"
-    : requested === "pending" || requested === "dashboard" || (requested === "daily" && ctx.employee) ? requested
-    : "tracker";
+  // Admin, Manager and Senior see the Accounting Workflow Tracker; everyone else the Team Daily Work Log.
+  // Older tab names are kept so existing links still work.
+  const LEAD_TABS = ["tracker", "dashboard", "report", "log", "hours", "reviews", "daily", "day", "mine"];
+  const STAFF_TABS = ["daily", "day", "mine"];
+  const legacy: Record<string, string> = { collective: "log", pending: "reviews" };
+  const requested = typeof sp.tab === "string" ? (legacy[sp.tab] ?? sp.tab) : "";
+  const tab = viewAll
+    ? (LEAD_TABS.includes(requested) && (ctx.employee || !["daily", "day", "mine"].includes(requested)) ? requested : "tracker")
+    : (STAFF_TABS.includes(requested) ? requested : "daily");
 
   return (
     <>
       <PageHeader icon={<Clock />}
         title="Timesheet"
-        description={viewAll ? "Tracker of every entry the team logs, entries pending review, and the time dashboard." : "Your daily work log — record each piece of work you do."}
-        actions={viewAll && (tab === "tracker" || tab === "dashboard") && <DownloadButton href={timesheetExportHref({ from: typeof sp.from === "string" ? sp.from : undefined, to: typeof sp.to === "string" ? sp.to : undefined, date, employeeId, clientId, tab })}>Export to Excel</DownloadButton>}
+        description={viewAll ? "Accounting Workflow Tracker: work given to the team, what they log against it, and what is pending with clients." : "Your Team Daily Work Log: record each piece of work, your day report and what is pending."}
+        actions={viewAll && (tab === "log" || tab === "hours") && <DownloadButton href={timesheetExportHref({ from: typeof sp.from === "string" ? sp.from : undefined, to: typeof sp.to === "string" ? sp.to : undefined, date, employeeId, clientId, tab: tab === "hours" ? "dashboard" : "tracker" })}>Export to Excel</DownloadButton>}
       />
-      {viewAll && (
-        <TabNav
-          current={tab}
-          tabs={[
-            { key: "tracker", label: "Tracker", href: "/app/timesheet?tab=tracker" },
-            { key: "pending", label: "Pending", href: "/app/timesheet?tab=pending" },
-            { key: "dashboard", label: "Dashboard", href: "/app/timesheet?tab=dashboard" },
-            ...(ctx.employee ? [{ key: "daily", label: "My daily log", href: `/app/timesheet?tab=daily&date=${date}` }] : []),
-          ]}
-        />
-      )}
+      <TabNav
+        current={tab === "reviews" ? "log" : tab}
+        tabs={viewAll ? [
+          { key: "tracker", label: "Tracker", href: "/app/timesheet?tab=tracker" },
+          { key: "dashboard", label: "Dashboard", href: "/app/timesheet?tab=dashboard" },
+          { key: "report", label: "Client Pending Report", href: "/app/timesheet?tab=report" },
+          { key: "log", label: "Team daily log", href: "/app/timesheet?tab=log" },
+          { key: "hours", label: "Hours & reviews", href: "/app/timesheet?tab=hours" },
+          ...(ctx.employee ? [{ key: "daily", label: "My daily log", href: `/app/timesheet?tab=daily&date=${date}` }] : []),
+        ] : [
+          { key: "daily", label: "Daily Log", href: `/app/timesheet?tab=daily&date=${date}` },
+          { key: "day", label: "Day Report", href: `/app/timesheet?tab=day&date=${date}` },
+          { key: "mine", label: "Pending Tracker", href: "/app/timesheet?tab=mine" },
+        ]}
+      />
       {tab === "daily" && <Daily />}
-      {tab === "tracker" && <Tracker />}
-      {tab === "pending" && <Pending />}
-      {tab === "dashboard" && <Dashboard />}
+      {tab === "day" && <DayReportTab ctx={ctx} sp={sp} viewAll={viewAll} />}
+      {tab === "mine" && <MyPendingTab ctx={ctx} sp={sp} viewAll={viewAll} />}
+      {tab === "tracker" && <TrackerTab ctx={ctx} sp={sp} />}
+      {tab === "dashboard" && <TrackerDashboardTab ctx={ctx} />}
+      {tab === "report" && <ClientPendingReportTab ctx={ctx} sp={sp} />}
+      {tab === "log" && <Tracker />}
+      {tab === "reviews" && <Pending />}
+      {tab === "hours" && <Dashboard />}
     </>
   );
 
   async function Daily() {
     if (!ctx.employee) return <EmptyState kind="people" title="No staff record">Your login is not linked to an employee.</EmptyState>;
-    const [entries, clients, workTypes, places, tasks] = await Promise.all([
-      prisma.timesheetEntry.findMany({ where: { employeeId: ctx.employee.id, workDate: dateOnly(date) }, orderBy: { serialNumber: "asc" }, include: { task: { select: { id: true, title: true } } } }),
+    const todayDate = dateOnly(today);
+    const [entries, clients, workTypes, tasks, lines, points] = await Promise.all([
+      prisma.timesheetEntry.findMany({ where: { employeeId: ctx.employee.id, workDate: dateOnly(date) }, orderBy: { serialNumber: "asc" }, include: { task: { select: { id: true, title: true } }, trackerLine: { select: { refNo: true } } } }),
       activeClientOptions(ctx.organization.id),
       prisma.workType.findMany({ where: { organizationId: ctx.organization.id, isActive: true }, orderBy: { sortOrder: "asc" } }),
-      prisma.classificationOption.findMany({ where: { basis: "PLACE_OF_WORK", isActive: true }, orderBy: { sortOrder: "asc" } }),
       prisma.task.findMany({ where: { AND: [taskScope(ctx), { status: { notIn: ["COMPLETED", "CANCELLED"] } }] }, select: { id: true, title: true }, take: 100 }),
+      myOpenLines(ctx),
+      pendingPointsFor(ctx.organization.id, ctx.employee.id),
     ]);
     const total = entries.reduce((s, e) => s + (e.approxMinutes ?? 0), 0);
-    const dayHref = (d: string) => `/app/timesheet?${viewAll ? "tab=daily&" : ""}date=${d}`;
+    const overdue = (xs: { dueBy: Date | null; status: string }[]) => xs.filter((p) => dueStateOf(p.dueBy, p.status, todayDate) === "OVERDUE").length;
+    const dayHref = (d: string) => `/app/timesheet?tab=daily&date=${d}`;
+    // "Log work on this" from the work given in the tracker fills the form with the line's columns.
+    const ref = typeof sp.ref === "string" ? lines.find((l) => l.id === sp.ref) : undefined;
+    const wt = ref ? workTypes.find((w) => w.name.toLowerCase() === ref.typeOfWork.toLowerCase()) : undefined;
+    const iso = (x: Date | null) => (x ? toIsoDate(x) : "");
+    const prefill: Record<string, string> = ref ? {
+      trackerLineId: ref.id, branch: ref.branch ?? "", clientId: ref.clientId ?? "", clientNameText: ref.clientId ? "" : ref.clientName, workTypeId: wt?.id ?? "",
+      bankName: ref.bankName ?? "", periodFrom: iso(ref.periodFrom), periodTo: iso(ref.periodTo),
+      clientPendingItem: ref.clientPendingItem ?? "", clientRaisedOn: iso(ref.clientRaisedOn), clientDueBy: iso(ref.clientDueBy), clientPendingStatus: ref.clientPendingStatus ?? "",
+      teamPendingItem: ref.teamPendingItem ?? "", teamRaisedOn: iso(ref.teamRaisedOn), teamDueBy: iso(ref.teamDueBy), teamPendingStatus: ref.teamPendingStatus ?? "",
+    } : {};
     return (
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <Link href={dayHref(toIsoDate(addDays(dateOnly(date), -1)))} className="rounded border border-line px-2 py-1 hover:bg-subtle">← Previous day</Link>
           <strong>{formatDate(dateOnly(date))}</strong>
           {date !== today && <Link href={dayHref(toIsoDate(addDays(dateOnly(date), 1)))} className="rounded border border-line px-2 py-1 hover:bg-subtle">Next day →</Link>}
-          <span className="ml-auto text-muted">Total time: <strong className="text-ink">{minutesToHhmm(total)}</strong></span>
+          {viewAll && <span className="ml-auto flex gap-2"><Link href={`/app/timesheet?tab=day&date=${date}`} className="text-brand-700 hover:underline">My day report</Link><Link href="/app/timesheet?tab=mine" className="text-brand-700 hover:underline">My pending tracker</Link></span>}
         </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <Stat label="Total hours" value={minutesToHhmm(total)} />
+          <Stat label="Total entries" value={entries.length} />
+          <Stat label="Open with CLIENT" value={points.client.length} tone={points.client.length ? "warn" : "neutral"} href="/app/timesheet?tab=mine" />
+          <Stat label="Open with ME" value={points.team.length} tone={points.team.length ? "info" : "neutral"} href="/app/timesheet?tab=mine" />
+          <Stat label="OVERDUE with CLIENT" value={overdue(points.client)} tone={overdue(points.client) ? "danger" : "neutral"} />
+          <Stat label="OVERDUE with ME" value={overdue(points.team)} tone={overdue(points.team) ? "danger" : "neutral"} />
+        </div>
+        {lines.length > 0 && (
+          <Card title={`Work given to you in the tracker (${lines.length})`} padded={false}>
+            <Table minWidth={900}>
+              <thead><tr><Th>Ref No.</Th><Th>Client</Th><Th>Type of work</Th><Th>Period</Th><Th>Priority</Th><Th>Work status</Th><Th>Timeline</Th><Th /></tr></thead>
+              <tbody>
+                {lines.map((l) => (
+                  <tr key={l.id}>
+                    <Td className="font-mono text-xs font-medium">{l.refNo}</Td>
+                    <Td className="font-medium">{l.clientName}{l.branch && <span className="text-xs font-normal text-muted"> · {l.branch}</span>}</Td>
+                    <Td>{l.typeOfWork}{l.bankName && <div className="text-xs text-muted">{l.bankName}</div>}</Td>
+                    <Td className="whitespace-nowrap text-xs">{l.periodFrom ? `${formatDate(l.periodFrom)} – ${l.periodTo ? formatDate(l.periodTo) : "Onwards"}` : "—"}</Td>
+                    <Td className="text-xs">{l.priority ?? "—"}</Td>
+                    <Td><WorkStatusBadge s={workStatusOf(l)} /></Td>
+                    <Td><FlagBadge f={timelineFlagOf(l, todayDate)} /></Td>
+                    <Td><Link href={`/app/timesheet?tab=daily&date=${date}&ref=${l.id}#log-form`} className="whitespace-nowrap text-sm font-medium text-brand-700 hover:underline">Log work on this</Link></Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </Card>
+        )}
         {entries.length > 0 && (
-          <Table minWidth={1240}>
-            <thead><tr><Th>#</Th><Th>Client</Th><Th>Resource type</Th><Th>Nature of work</Th><Th>AY</Th><Th>Location</Th><Th>Bank</Th><Th>Period</Th><Th>Start – end</Th><Th>Hours</Th><Th>Description</Th><Th>Review status</Th><Th /></tr></thead>
+          <Table minWidth={1500}>
+            <thead><tr><Th>Sr. No.</Th><Th>Client Name</Th><Th>Branch</Th><Th>Tracker Ref No.</Th><Th>Place of Work</Th><Th>Type of Work</Th><Th>Bank Name</Th><Th>Period</Th><Th>Txns</Th><Th>Time</Th><Th>Elaboration / Details</Th><Th>Status of Work</Th><Th>Issue</Th><Th>Pending – client / team</Th><Th>Review</Th><Th /></tr></thead>
             <tbody>
               {entries.map((e) => (
                 <tr key={e.id}>
                   <Td><Link href={`/app/timesheet/${e.id}`} className="font-medium text-brand-700 hover:underline" aria-label={`Open entry ${e.serialNumber}`}>#{e.serialNumber}</Link></Td>
                   <Td>{e.clientNameText ?? "—"}</Td>
-                  <Td className="text-xs">{e.resourceType ?? "—"}</Td>
-                  <Td>{e.typeOfWork ?? "—"}</Td>
-                  <Td className="whitespace-nowrap text-xs">{e.assessmentYear ?? "—"}</Td>
+                  <Td className="text-xs">{e.branch ?? "—"}</Td>
+                  <Td className="font-mono text-xs">{e.trackerLine?.refNo ?? "—"}</Td>
                   <Td className="text-xs">{e.placeOfWork ?? "—"}</Td>
+                  <Td>{e.typeOfWork ?? "—"}</Td>
                   <Td className="text-xs">{e.bankName ?? "—"}</Td>
-                  <Td className="text-xs">{e.periodFrom ? `${formatDate(e.periodFrom)} – ${formatDate(e.periodTo)}` : "—"}</Td>
-                  <Td className="whitespace-nowrap text-xs">{e.startTime && e.endTime ? `${e.startTime} – ${e.endTime}` : "—"}</Td>
+                  <Td className="whitespace-nowrap text-xs">{e.periodFrom ? `${formatDate(e.periodFrom)} – ${formatDate(e.periodTo)}` : "—"}</Td>
+                  <Td className="text-xs">{e.transactionCount ?? "—"}</Td>
                   <Td>{e.approxMinutes ? minutesToHhmm(e.approxMinutes) : "—"}</Td>
                   <Td className="max-w-xs text-xs">{e.workDetails}{e.task && <div><Link href={`/app/tasks/${e.task.id}`} className="text-brand-700 hover:underline">{e.task.title}</Link></div>}</Td>
-                  <Td>{e.workStatus && <StatusBadge status={e.workStatus} />}<div className="mt-1"><StatusBadge status={e.status} label={REVIEW_LABEL[e.status]} /></div></Td>
+                  <Td className="text-xs">{e.workStatus ? STATUS_OF_WORK_LABEL[e.workStatus] : "—"}</Td>
+                  <Td className="max-w-40 text-xs">{e.issueLevel ? <><Badge tone={e.issueLevel === "High" || e.issueLevel === "Critical" ? "danger" : "warn"}>{e.issueLevel}</Badge> {e.issueStatus}</> : "—"}{e.issueDetails && <div className="text-muted">{e.issueDetails}</div>}</Td>
+                  <Td className="max-w-56 text-xs">
+                    {e.clientPendingItem && <div><Badge tone="warn">Client · {e.clientPendingStatus ?? "Open"}</Badge> {e.clientPendingItem}</div>}
+                    {e.teamPendingItem && <div className="mt-1"><Badge tone="info">Team · {e.teamPendingStatus ?? "Open"}</Badge> {e.teamPendingItem}</div>}
+                    {!e.clientPendingItem && !e.teamPendingItem && "—"}
+                  </Td>
+                  <Td><StatusBadge status={e.status} label={REVIEW_LABEL[e.status]} /></Td>
                   <Td>{e.status !== "REVIEWED" && <ActionButton variant="ghost" confirm="Remove this entry?" action={deleteTimesheetAction.bind(null, e.id)}>Remove</ActionButton>}</Td>
                 </tr>
               ))}
             </tbody>
           </Table>
         )}
-        <Card title="Add work entry">
-          <TimesheetForm
-            action={addTimesheetAction}
-            clients={clients}
-            workTypes={workTypes.map((w) => ({ value: w.id, label: w.name }))}
-            places={places.map((p) => p.label)}
-            tasks={tasks.map((t) => ({ value: t.id, label: t.title }))}
-            date={date}
-            years={assessmentYears(dateOnly(today))}
-          />
-        </Card>
+        <div id="log-form" className="scroll-mt-6">
+          <Card title={ref ? `Log work on ${ref.refNo} · ${ref.clientName}` : "Add work entry"}>
+            <TimesheetForm
+              key={ref?.id ?? "new"}
+              action={addTimesheetAction}
+              clients={clients}
+              workTypes={workTypes.map((w) => ({ value: w.id, label: w.name }))}
+              tasks={tasks.map((t) => ({ value: t.id, label: t.title }))}
+              lines={lines.map((l) => ({ value: l.id, label: `${l.refNo} · ${l.clientName} · ${l.typeOfWork}` }))}
+              date={date}
+              years={assessmentYears(dateOnly(today))}
+              prefill={prefill}
+            />
+          </Card>
+        </div>
       </div>
     );
   }
@@ -200,7 +268,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
     for (const e of entries) totals.set(nameOf(e.employee), (totals.get(nameOf(e.employee)) ?? 0) + (e.approxMinutes ?? 0));
     return (
       <div className="space-y-4">
-        <Filters tabKey="tracker" from={from} to={to} />
+        <Filters tabKey="log" from={from} to={to} />
         {totals.size > 0 && (
           <div className="flex flex-wrap gap-2 text-xs">
             {[...totals.entries()].map(([n, m]) => <Badge key={n} tone="brand">{n}: {minutesToHhmm(m)}</Badge>)}
@@ -289,7 +357,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
 
     return (
       <div className="space-y-6">
-        <Filters tabKey="pending" withPeriod={false} />
+        <Filters tabKey="reviews" withPeriod={false} />
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat label="Waiting for review" value={toReview.length} icon={<ListChecks />} tone={toReview.length ? "info" : "neutral"} />
           <Stat label={`Overdue (over ${OVERDUE_HOURS} h)`} value={overdue} icon={<CircleAlert />} tone={overdue ? "danger" : "neutral"} />
@@ -450,16 +518,16 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
       name: m.name,
       cells: topClients.map((c) => entries.filter((e) => e.employeeId === m.id && (e.clientNameText ?? "No client") === c).reduce((s, e) => s + (e.approxMinutes ?? 0), 0)),
     }));
-    const trackerHref = (q: string) => `/app/timesheet?tab=tracker&from=${from}&to=${to}${q}`;
+    const trackerHref = (q: string) => `/app/timesheet?tab=log&from=${from}&to=${to}${q}`;
 
     return (
       <div className="space-y-6">
-        <Filters tabKey="dashboard" from={from} to={to} />
+        <Filters tabKey="hours" from={from} to={to} />
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Stat label="Hours logged" value={minutesToHhmm(minutes)} hint={`${formatDate(dateOnly(from))} – ${formatDate(dateOnly(to))}`} icon={<Clock />} href={trackerHref(employeeId ? `&employee=${employeeId}` : "")} />
           <Stat label="Entries" value={entries.length} icon={<ListChecks />} />
           <Stat label="Team members logging" value={new Set(entries.map((e) => e.employeeId)).size} hint={`of ${employees.length} active`} icon={<Users />} />
-          <Stat label="Waiting for review" value={entries.filter((e) => e.status === "SUBMITTED").length} icon={<TimerReset />} href="/app/timesheet?tab=pending" tone="info" />
+          <Stat label="Waiting for review" value={entries.filter((e) => e.status === "SUBMITTED").length} icon={<TimerReset />} href="/app/timesheet?tab=reviews" tone="info" />
           <Stat label="Late submissions" value={entries.filter(isLate).length} hint="Not logged on the day of work" icon={<CircleAlert />} tone={entries.some(isLate) ? "warn" : "neutral"} />
         </div>
         <Card title="Penalty summary" icon={<IndianRupee />}>

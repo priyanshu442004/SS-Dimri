@@ -7,6 +7,7 @@ import { encryptWithLast4 } from "@/lib/security/encryption";
 import type { AppContext } from "@/lib/session";
 import { aadhaarSchema, gstinSchema, mobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
 import { audit } from "./audit";
+import { clientComplianceFields, saveClientCompliances } from "./client-compliances";
 import { nextClientCode } from "./codes";
 import { hasFile, storeUpload } from "./files";
 import { notifyRoles } from "./notifications";
@@ -98,6 +99,7 @@ export const fullRegistrationSchema = z.object({
   msmeRegistrationNumber: zOptionalText(40),
   esiNumber: zOptionalText(40),
   pfNumber: zOptionalText(40),
+  ...clientComplianceFields,
 });
 
 /** Creates the client in the signed-in member's firm, with its people, GSTINs, services and documents. */
@@ -143,6 +145,7 @@ export async function registerClient(ctx: AppContext, v: z.infer<typeof fullRegi
         },
       });
       if (v.people.length) await tx.constitutionMember.createMany({ data: representativeRows(organizationId, client.id, v.people) });
+      await saveClientCompliances(tx, client.id, v["departments[]"], v["complianceItemIds[]"]);
       await audit(tx, ctx, "client.registered_full", "client", client.id);
       await notifyRoles(tx, organizationId, ["OWNER", "ADMIN"], {
         type: "client.pending_approval",

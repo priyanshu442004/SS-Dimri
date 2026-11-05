@@ -1,3 +1,4 @@
+import { TYPES_OF_WORK } from "./tracker";
 import type { Prisma } from "@/generated/prisma/client";
 import master from "../../../prisma/data/ssda-master-data.json";
 
@@ -21,13 +22,6 @@ export const DEFAULT_EMPLOYEE_NATURES = [
   { label: "Frontend", sourceWording: "Frontend / Extended (handwriting unclear)", sortOrder: 1 },
   { label: "Backend", sourceWording: "Backend", sortOrder: 2 },
   { label: "On-site", sourceWording: "On-site", sortOrder: 3 },
-] as const;
-
-/** Natures of work from the firm's Team Timesheet workbook that the master pack does not list. */
-export const WORKBOOK_WORK_TYPES = [
-  "Sales Entry", "Purchase Entry", "Payment Mode Reconciliation", "GSTR-1 Compilation", "GSTR-3B Compilation", "TDS Reconciliation", "GST Liability Working",
-  "PNL Preparation / Comparison", "GSTR-3B Reconciliation & Drafting", "Books Finalisation", "Audit Data Entry", "Audit Data Compilation", "Audit Coordination with Client",
-  "Backend Training (Fresher)", "Team Supervision / Mentoring", "Client Site Visit (Review/Monitoring)", "Waiting - Client Not Available", "System / Portal Downtime", "Documentation",
 ] as const;
 
 export async function createOrganizationDefaults(tx: Prisma.TransactionClient, organizationId: string) {
@@ -66,11 +60,10 @@ export async function createOrganizationDefaults(tx: Prisma.TransactionClient, o
     })),
     skipDuplicates: true,
   });
+  // Type of Work: the Team Daily Work Log's 24 values, with the master codes where they exist.
+  const codes = new Map(master.workTypes.map((w) => [w.name.toLowerCase(), w.code as string | null]));
   await tx.workType.createMany({
-    data: [
-      ...master.workTypes.map((w, i) => ({ organizationId, code: w.code as string | null, name: w.name, sortOrder: i + 1 })),
-      ...WORKBOOK_WORK_TYPES.map((name, i) => ({ organizationId, code: null, name, sortOrder: 100 + i })),
-    ],
+    data: TYPES_OF_WORK.map((name, i) => ({ organizationId, code: codes.get(name.toLowerCase()) ?? null, name, sortOrder: i + 1 })),
     skipDuplicates: true,
   });
   await tx.attendancePolicy.upsert({ where: { organizationId }, update: {}, create: { organizationId } });
