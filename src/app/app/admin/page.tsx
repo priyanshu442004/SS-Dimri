@@ -8,6 +8,7 @@ import { FirmCharts } from "../chart-sections";
 import { AlarmClock, Building2, CalendarCheck2, ClipboardCheck, Clock, Flag, History, ListChecks, UserCheck, Users, Wallet } from "lucide-react";
 import { Card, Stat } from "@/components/ui";
 import { Deadlines, Greeting, ReviewQueue, StatutoryDue } from "../dashboard-sections";
+import { AiAssistant } from "./ai-assistant";
 
 const inr = (n: number) => `₹ ${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
@@ -24,7 +25,7 @@ export default async function AdminDashboard() {
   return (
     <>
       <Greeting ctx={ctx} subtitle={`${ctx.role === "OWNER" ? "Firm owner" : "Administrator"} dashboard · ${ctx.organization.tradeName}`} />
-      <div className="mb-6"><Stat label="My attendance" value={myAttendance?.timeIn ? (myAttendance.timeOut ? "Done for today" : `In ${formatTime(myAttendance.timeIn, ctx.organization.timezone)}`) : "Not marked"} hint={myAttendance?.timeIn ? undefined : "Open to mark in"} href="/app/attendance" icon={<CalendarCheck2 />} tone={myAttendance?.timeIn ? "ok" : "warn"} /></div>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div className="min-w-60 flex-1 sm:max-w-sm"><Stat label="My attendance" value={myAttendance?.timeIn ? (myAttendance.timeOut ? "Done for today" : `In ${formatTime(myAttendance.timeIn, ctx.organization.timezone)}`) : "Not marked"} hint={myAttendance?.timeIn ? undefined : "Open to mark in"} href="/app/attendance" icon={<CalendarCheck2 />} tone={myAttendance?.timeIn ? "ok" : "warn"} /></div><AiAssistant /></div>
       {section("Needs attention")}
       <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Clients pending approval" value={c.PENDING_APPROVAL ?? 0} href="/app/clients?status=PENDING_APPROVAL" icon={<Building2 />} tone={c.PENDING_APPROVAL ? "warn" : "neutral"} />
