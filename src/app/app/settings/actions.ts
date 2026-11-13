@@ -112,6 +112,7 @@ export async function uploadLeavePolicyAction(_p: ActionState, fd: FormData): Pr
 const hhmm = z.string().regex(/^\d{2}:\d{2}$/, "HH:MM");
 const policySchema = z.object({
   officeStart: hhmm, reportingGraceUntil: hhmm, lunchStart: hhmm, lunchEnd: hhmm, officeEnd: hhmm, leavingGraceUntil: hhmm, halfDayIfLeavingBefore: hhmm,
+  markOutReminderAt: hhmm.optional(),
   requiredMinutes: zInt(60, 1440), onsiteRequiredMinutes: zInt(60, 1440), reducedRequiredMinutes: zInt(60, 1440),
   farClientEarlyMonthMinutes: zInt(60, 1440), farClientEarlyMonthUntilDay: zInt(1, 31),
   lateArrivalsPerHalfDay: zInt(1, 31), lateGracePerMonth: zInt(0, 31),

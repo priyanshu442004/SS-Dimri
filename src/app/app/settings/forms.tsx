@@ -77,6 +77,7 @@ export function PolicyForm({ action, d }: { action: Act; d: D }) {
         <legend className="mb-2 text-sm font-semibold">Office timings (LT-01…LT-09)</legend>
         {t("Office start", "officeStart")}{t("Reporting grace until", "reportingGraceUntil")}{t("Lunch from", "lunchStart")}{t("Lunch to", "lunchEnd")}
         {t("Office end", "officeEnd")}{t("Leaving grace until", "leavingGraceUntil")}{t("Half day if leaving before", "halfDayIfLeavingBefore")}
+        <TextField key="markOutReminderAt" label="Remind to mark out at" name="markOutReminderAt" type="time" defaultValue={d.markOutReminderAt} hint="Anyone still marked in gets a reminder (app and email)." />
       </fieldset>
       <fieldset className="grid gap-3 sm:grid-cols-3">
         <legend className="mb-2 text-sm font-semibold">Required working minutes (OT-02 / LT-11)</legend>

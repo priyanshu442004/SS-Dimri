@@ -68,6 +68,22 @@ export async function makeRemindersDue(title: string) {
   );
 }
 
+/** A marked-in day `daysAgo` days back with no time out (a forgotten mark-out), for a test employee. */
+export async function addForgottenMarkOut(loginEmail: string, daysAgo: number) {
+  const { rowCount } = await pool.query(
+    `INSERT INTO attendance_records (id, organization_id, employee_id, attendance_date, time_in, status, created_at, updated_at)
+     SELECT gen_random_uuid(), m.organization_id, m.employee_id, (now() AT TIME ZONE 'Asia/Kolkata')::date - $2::int,
+            ((now() AT TIME ZONE 'Asia/Kolkata')::date - $2::int + time '09:35') AT TIME ZONE 'Asia/Kolkata', 'PRESENT', now(), now()
+       FROM organization_memberships m JOIN users u ON u.id = m.user_id
+      WHERE u.email = $1 AND m.employee_id IS NOT NULL
+        AND EXISTS (SELECT 1 FROM organization_memberships o JOIN users ou ON ou.id = o.user_id
+                     WHERE o.organization_id = m.organization_id AND o.role = 'OWNER' AND ou.email LIKE '%@e2e.invalid')
+     ON CONFLICT (employee_id, attendance_date) DO NOTHING`,
+    [loginEmail.toLowerCase(), daysAgo],
+  );
+  if (!rowCount) throw new Error("No attendance added (outside an e2e organization, or the day already exists).");
+}
+
 export async function disconnect() {
   await pool.end();
 }

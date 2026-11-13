@@ -319,6 +319,12 @@ enum TaskActivityType {
 }
 
 /// P / A / L / HD (Section J).
+enum AttendancePhotoReview {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
 enum AttendanceStatus {
   PRESENT
   ABSENT
@@ -521,6 +527,11 @@ model User {
   createdObservations      ClientObservation[]    @relation("ObservationCreatedBy")
   issuedLetters            EmployeeLetter[]       @relation("LetterIssuedBy")
   createdComplianceEntries ComplianceEntry[]      @relation("ComplianceCreatedBy")
+  proxyAttendanceIn        AttendanceRecord[]     @relation("AttendanceInProxy")
+  proxyAttendanceOut       AttendanceRecord[]     @relation("AttendanceOutProxy")
+  reviewedAttendancePhotos AttendanceRecord[]     @relation("AttendancePhotoReviewedBy")
+  markedWorkerDays         DailyWorkerDay[]       @relation("WorkerDayMarkedBy")
+  paidWorkerDays           DailyWorkerDay[]       @relation("WorkerDayPaidBy")
 
   @@map("users")
 }
@@ -700,6 +711,9 @@ model Organization {
   observations           ClientObservation[]
   emails                 EmailOutbox[]
   employeeLetters        EmployeeLetter[]
+  clientVisits           ClientVisit[]
+  dailyWorkers           DailyWorker[]
+  dailyWorkerDays        DailyWorkerDay[]
 
   @@index([pan])
   @@index([gstin])
@@ -844,6 +858,8 @@ model StoredFile {
   taskAttachment             TaskAttachment?             @relation("TaskAttachmentFile")
   attendanceTimeInPhoto      AttendanceRecord?           @relation("AttendanceTimeInPhoto")
   attendanceTimeOutPhoto     AttendanceRecord?           @relation("AttendanceTimeOutPhoto")
+  workerDayInPhoto           DailyWorkerDay?             @relation("WorkerDayInPhoto")
+  workerDayOutPhoto          DailyWorkerDay?             @relation("WorkerDayOutPhoto")
   clientReportExport         ClientReport?               @relation("ClientReportFile")
   followUp                   FollowUp?                   @relation("FollowUpFile")
 
@@ -933,6 +949,7 @@ model Client {
   teamAllocations           TeamAllocation[]
   tasks                     Task[]
   timesheetEntries          TimesheetEntry[]
+  clientVisits              ClientVisit[]
   pendingItems              PendingItem[]
   workCommitments           WorkCommitment[]
   reports                   ClientReport[]
@@ -1323,6 +1340,7 @@ model Employee {
   allocationsLed           TeamAllocation[]     @relation("AllocationTeamLeader")
   complianceEntries        ComplianceEntry[]    @relation("ComplianceResponsible")
   responsibleObservations  ClientObservation[]  @relation("ObservationResponsible")
+  clientVisits             ClientVisit[]
 
   @@unique([organizationId, temporaryEmployeeCode])
   @@unique([organizationId, permanentEmployeeCode])
@@ -1798,9 +1816,30 @@ model AttendanceRecord {
   lateReason   String?                @map("late_reason") @db.Text
   corrections  AttendanceCorrection[]
 
+  /// Lunch break (client feedback 12 Nov 2026). Shown and reported; worked hours stay time out minus time in.
+  lunchOutAt DateTime? @map("lunch_out_at") @db.Timestamptz(3)
+  lunchInAt  DateTime? @map("lunch_in_at") @db.Timestamptz(3)
+
+  /// Set when someone else marked this person in / out for them (a photo is then required).
+  timeInProxyById   String?                @map("time_in_proxy_by_id") @db.Uuid
+  timeOutProxyById  String?                @map("time_out_proxy_by_id") @db.Uuid
+  timeInProxyBy     User?                  @relation("AttendanceInProxy", fields: [timeInProxyById], references: [id], onDelete: SetNull)
+  timeOutProxyBy    User?                  @relation("AttendanceOutProxy", fields: [timeOutProxyById], references: [id], onDelete: SetNull)
+  /// Check of the photo of a mark made by someone else. Null = marked by the person themself.
+  photoReview       AttendancePhotoReview? @map("photo_review")
+  photoReviewedById String?                @map("photo_reviewed_by_id") @db.Uuid
+  photoReviewedAt   DateTime?              @map("photo_reviewed_at") @db.Timestamptz(3)
+  photoReviewNote   String?                @map("photo_review_note") @db.Text
+  photoReviewedBy   User?                  @relation("AttendancePhotoReviewedBy", fields: [photoReviewedById], references: [id], onDelete: SetNull)
+
+  /// One-time reminder claims ("you have not marked out" today; "missed time out" afterwards).
+  markOutReminderSentAt   DateTime? @map("mark_out_reminder_sent_at") @db.Timestamptz(3)
+  missedMarkOutNotifiedAt DateTime? @map("missed_mark_out_notified_at") @db.Timestamptz(3)
+
   /// One record per employee per day (corrections update it; see attendance_corrections).
   @@unique([employeeId, attendanceDate])
   @@index([organizationId, attendanceDate])
+  @@index([organizationId, photoReview])
   @@map("attendance_records")
 }
 
@@ -2403,6 +2442,8 @@ model AttendancePolicy {
   overtimeMinutesPerDay       Int          @default(540) @map("overtime_minutes_per_day")
   paidLeavesPerMonth          Decimal      @default(1) @map("paid_leaves_per_month") @db.Decimal(4, 1)
   plannedLeaveNoticeDays      Int          @default(15) @map("planned_leave_notice_days")
+  /// From this time, people still marked in get a reminder to mark out.
+  markOutReminderAt           String       @default("19:00") @map("mark_out_reminder_at") @db.VarChar(5)
   policyConfirmed             Boolean      @default(false) @map("policy_confirmed")
   createdAt                   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -2546,4 +2587,91 @@ model EmailOutbox {
   @@index([organizationId, createdAt])
   @@index([relatedUserId])
   @@map("email_outbox")
+}
+
+/// One stop at a client (or another place) during the working day. Several per day;
+/// "move to next client" ends the open visit and starts the next one.
+model ClientVisit {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  clientId       String?   @map("client_id") @db.Uuid
+  /// Client trade name at the time, or the place for a non-client stop (bank, GST office).
+  placeName      String    @map("place_name")
+  purpose        String?   @db.Text
+  visitDate      DateTime  @map("visit_date") @db.Date
+  startedAt      DateTime  @map("started_at") @db.Timestamptz(3)
+  startLatitude  Decimal?  @map("start_latitude") @db.Decimal(9, 6)
+  startLongitude Decimal?  @map("start_longitude") @db.Decimal(9, 6)
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+  endLatitude    Decimal?  @map("end_latitude") @db.Decimal(9, 6)
+  endLongitude   Decimal?  @map("end_longitude") @db.Decimal(9, 6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, visitDate])
+  @@index([employeeId, visitDate])
+  @@index([clientId])
+  @@map("client_visits")
+}
+
+/// Temporary / contract labour engaged by the day. No login: a supervisor marks them.
+model DailyWorker {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  mobile         String?  @db.VarChar(20)
+  /// Kind of work (labour, mason, helper…).
+  workType       String?  @map("work_type")
+  /// Contractor / agency who supplied the worker, if any.
+  contractor     String?
+  dailyWage      Decimal  @map("daily_wage") @db.Decimal(10, 2)
+  isActive       Boolean  @default(true) @map("is_active")
+  remarks        String?  @db.Text
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  days         DailyWorkerDay[]
+
+  @@index([organizationId, isActive])
+  @@map("daily_workers")
+}
+
+/// A daily worker's attendance for one day and what it earns.
+model DailyWorkerDay {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  workerId       String           @map("worker_id") @db.Uuid
+  workDate       DateTime         @map("work_date") @db.Date
+  status         AttendanceStatus
+  timeIn         DateTime?        @map("time_in") @db.Timestamptz(3)
+  timeOut        DateTime?        @map("time_out") @db.Timestamptz(3)
+  inLatitude     Decimal?         @map("in_latitude") @db.Decimal(9, 6)
+  inLongitude    Decimal?         @map("in_longitude") @db.Decimal(9, 6)
+  inPhotoFileId  String?          @unique @map("in_photo_file_id") @db.Uuid
+  outPhotoFileId String?          @unique @map("out_photo_file_id") @db.Uuid
+  /// Amount earned for the day (full or half of the daily wage), fixed when marked.
+  wage           Decimal          @db.Decimal(10, 2)
+  remarks        String?          @db.Text
+  markedById     String?          @map("marked_by_id") @db.Uuid
+  paidAt         DateTime?        @map("paid_at") @db.Timestamptz(3)
+  paidById       String?          @map("paid_by_id") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  worker       DailyWorker  @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  inPhoto      StoredFile?  @relation("WorkerDayInPhoto", fields: [inPhotoFileId], references: [id], onDelete: SetNull)
+  outPhoto     StoredFile?  @relation("WorkerDayOutPhoto", fields: [outPhotoFileId], references: [id], onDelete: SetNull)
+  markedBy     User?        @relation("WorkerDayMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+  paidBy       User?        @relation("WorkerDayPaidBy", fields: [paidById], references: [id], onDelete: SetNull)
+
+  @@unique([workerId, workDate])
+  @@index([organizationId, workDate])
+  @@map("daily_worker_days")
 }

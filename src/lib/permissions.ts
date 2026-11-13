@@ -59,6 +59,12 @@ export const CAPABILITIES = {
   "attendance.mark_own": EVERYONE,
   "attendance.view_all": LEADS,
   "attendance.correct": ADMINS,
+  /** Mark a colleague or a daily worker in / out from one's own phone, with their photo as proof. */
+  "attendance.mark_others": LEADS,
+  /** Check every photo attendance marked by someone else. Seniors and managers check their own reportees without it. */
+  "attendance.review_photos": ADMINS,
+  /** Register daily (contract) workers, set their wage and settle their pay. */
+  "attendance.workers": MANAGERS,
   "leave.request": EVERYONE,
   "leave.decide": LEADS,
   "payroll.view_own": EVERYONE,
@@ -151,6 +157,9 @@ export const GRANTABLE_RIGHTS: { capability: Capability; label: string; group: s
   { capability: "tasks.delete", label: "Delete tasks", group: "Tasks" },
   { capability: "attendance.view_all", label: "See team attendance & export it", group: "Attendance & payroll" },
   { capability: "attendance.correct", label: "Correct attendance", group: "Attendance & payroll" },
+  { capability: "attendance.mark_others", label: "Mark attendance for others with a photo", group: "Attendance & payroll" },
+  { capability: "attendance.review_photos", label: "Check everyone's photo attendance", group: "Attendance & payroll" },
+  { capability: "attendance.workers", label: "Manage daily workers & their pay", group: "Attendance & payroll" },
   { capability: "payroll.manage", label: "Run payroll for everyone", group: "Attendance & payroll" },
   { capability: "timesheet.view_all", label: "See the team's timesheets", group: "Timesheet" },
   { capability: "timesheet.review", label: "Review timesheets", group: "Timesheet" },

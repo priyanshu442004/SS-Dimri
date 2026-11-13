@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { BusinessRuleError, zCheckbox, zIsoDate, zOptionalText } from "@/lib/actions";
 import { addDays, dateOnly, hhmmToMinutes, isoDateInTz, minutesOfDayInTz, toIsoDate, todayDateOnly } from "@/lib/dates";
 import { evaluateDay, type PolicyParams } from "@/lib/domain/attendance-policy";
+import { isMissingTimeOut, lunchMinutes, lunchOverMinutes, markOutReminderDue } from "@/lib/domain/attendance-extras";
 import type { AppContext } from "@/lib/session";
 import { can } from "@/lib/permissions";
 import { audit } from "./audit";
@@ -119,7 +120,38 @@ export async function markAttendance(ctx: AppContext, kind: "in" | "out", v: z.i
     data: { timeOut: now, timeOutLatitude: v.latitude, timeOutLongitude: v.longitude, timeOutPhotoFileId: photoId },
   });
   if (res.count !== 1) throw duplicate;
+  await closeDayExtras(existing!.id, ctx.employee.id, now, v);
   return { late: false };
+}
+
+/**
+ * At mark-out, an open lunch break and an open client visit end at the same moment,
+ * so neither runs on overnight.
+ */
+export async function closeDayExtras(recordId: string, employeeId: string, at: Date, loc: { latitude?: number; longitude?: number }) {
+  await prisma.attendanceRecord.updateMany({ where: { id: recordId, lunchOutAt: { not: null }, lunchInAt: null }, data: { lunchInAt: at } });
+  await prisma.clientVisit.updateMany({ where: { employeeId, endedAt: null }, data: { endedAt: at, endLatitude: loc.latitude, endLongitude: loc.longitude } });
+}
+
+/** Start lunch / back from lunch. One lunch break a day; server clock only. */
+export async function markLunch(ctx: AppContext, kind: "out" | "in") {
+  if (!ctx.employee) throw new BusinessRuleError("Your login is not linked to a staff record.");
+  const day = todayDateOnly(ctx.organization.timezone);
+  const rec = await prisma.attendanceRecord.findFirst({ where: { organizationId: ctx.organization.id, employeeId: ctx.employee.id, attendanceDate: day } });
+  if (!rec?.timeIn) throw new BusinessRuleError("Mark in first.");
+  if (rec.timeOut) throw new BusinessRuleError("You have already marked out today.");
+  const now = new Date();
+  if (kind === "out") {
+    if (rec.lunchOutAt) throw new BusinessRuleError(rec.lunchInAt ? "Lunch is already recorded for today." : "You are already on lunch.");
+    const res = await prisma.attendanceRecord.updateMany({ where: { id: rec.id, lunchOutAt: null, timeOut: null }, data: { lunchOutAt: now } });
+    if (res.count !== 1) throw new BusinessRuleError("Lunch was already recorded. Refresh the page.");
+  } else {
+    if (!rec.lunchOutAt) throw new BusinessRuleError("Start lunch first.");
+    if (rec.lunchInAt) throw new BusinessRuleError("You are already back from lunch.");
+    const res = await prisma.attendanceRecord.updateMany({ where: { id: rec.id, lunchInAt: null }, data: { lunchInAt: now } });
+    if (res.count !== 1) throw new BusinessRuleError("Lunch was already recorded. Refresh the page.");
+  }
+  return { at: now };
 }
 
 export const correctionSchema = z.object({
@@ -238,11 +270,11 @@ export function todayIso(ctx: AppContext) {
 
 // ---------------------------------------------------------------- team view & export
 
-export const ATTENDANCE_FILTERS = ["PRESENT", "ABSENT", "HALF_DAY", "LEAVE", "NOT_MARKED", "LATE"] as const;
+export const ATTENDANCE_FILTERS = ["PRESENT", "ABSENT", "HALF_DAY", "LEAVE", "NOT_MARKED", "LATE", "NO_OUT", "PROXY"] as const;
 export type AttendanceFilter = (typeof ATTENDANCE_FILTERS)[number];
 export const MAX_RANGE_DAYS = 92;
 
-export type TeamFilters = { from: string; to: string; q: string; status: AttendanceFilter | ""; departmentId: string };
+export type TeamFilters = { from: string; to: string; q: string; status: AttendanceFilter | ""; departmentId: string; employeeId: string };
 
 /** Query-string values → safe filters. A single day when no range is given; future days are not counted. */
 export function parseTeamFilters(sp: Record<string, string | string[] | undefined>, today: string): TeamFilters {
@@ -259,14 +291,17 @@ export function parseTeamFilters(sp: Record<string, string | string[] | undefine
     q: typeof sp.q === "string" ? sp.q.trim().slice(0, 80) : "",
     status,
     departmentId: typeof sp.department === "string" && /^[0-9a-f-]{36}$/i.test(sp.department) ? sp.department : "",
+    employeeId: typeof sp.employee === "string" && /^[0-9a-f-]{36}$/i.test(sp.employee) ? sp.employee : "",
   };
 }
 
 /** One row per employee per day in the period. Sundays appear only when something was recorded. */
-export async function teamAttendanceRows(ctx: AppContext, policy: PolicyParams, f: TeamFilters) {
+export async function teamAttendanceRows(ctx: AppContext, policy: PolicyParams, f: TeamFilters, extras: { markOutReminderAt: string; lunchAllowance: number } = { markOutReminderAt: "19:00", lunchAllowance: 30 }) {
   const organizationId = ctx.organization.id;
   const tz = ctx.organization.timezone;
   const today = todayDateOnly(tz);
+  const now = new Date();
+  const reminderDue = markOutReminderDue(now, extras.markOutReminderAt, tz);
   const from = dateOnly(f.from);
   const to = dateOnly(f.to);
   const text = f.q ? { contains: f.q, mode: "insensitive" as const } : undefined;
@@ -277,12 +312,16 @@ export async function teamAttendanceRows(ctx: AppContext, policy: PolicyParams, 
         approvalStatus: "APPROVED",
         employmentStatus: { not: "EXITED" },
         ...(f.departmentId ? { departmentId: f.departmentId } : {}),
+        ...(f.employeeId ? { id: f.employeeId } : {}),
         ...(text ? { OR: [{ firstName: text }, { lastName: text }, { permanentEmployeeCode: text }] } : {}),
       },
       orderBy: { firstName: "asc" },
       select: { id: true, firstName: true, lastName: true, permanentEmployeeCode: true, temporaryEmployeeCode: true, attendanceProfile: true, designation: { select: { name: true } }, department: { select: { name: true } } },
     }),
-    prisma.attendanceRecord.findMany({ where: { organizationId, attendanceDate: { gte: from, lte: to } } }),
+    prisma.attendanceRecord.findMany({
+      where: { organizationId, attendanceDate: { gte: from, lte: to } },
+      include: { timeInProxyBy: { select: { name: true } }, timeOutProxyBy: { select: { name: true } }, photoReviewedBy: { select: { name: true } } },
+    }),
     prisma.leaveRequest.findMany({ where: { organizationId, status: "APPROVED", fromDate: { lte: to }, toDate: { gte: from } }, select: { employeeId: true, fromDate: true, toDate: true } }),
   ]);
   const recBy = new Map(records.map((r) => [`${r.employeeId}|${toIsoDate(r.attendanceDate)}`, r]));
@@ -295,7 +334,15 @@ export async function teamAttendanceRows(ctx: AppContext, policy: PolicyParams, 
       const onLeave = leaves.some((l) => l.employeeId === e.id && l.fromDate <= d && l.toDate >= d);
       const evaluation = record ? evaluateDay({ dayOfMonth: d.getUTCDate(), status: record.status, timeIn: record.timeIn, timeOut: record.timeOut }, e.attendanceProfile, policy, tz) : null;
       const state: AttendanceFilter = record ? (record.status as AttendanceFilter) : onLeave ? "LEAVE" : "NOT_MARKED";
-      rows.push({ key: `${e.id}|${iso}`, date: d, employee: e, record, approvedLeave: !record && onLeave, state, isLate: !!evaluation?.isLate, workedMinutes: evaluation?.workedMinutes ?? null });
+      const lunch = record ? lunchMinutes(record.lunchOutAt, record.lunchInAt, now) : null;
+      rows.push({
+        key: `${e.id}|${iso}`, date: d, employee: e, record, approvedLeave: !record && onLeave, state, isLate: !!evaluation?.isLate, workedMinutes: evaluation?.workedMinutes ?? null,
+        lunchMinutes: lunch,
+        lunchOver: lunchOverMinutes(record?.lunchInAt ? lunch : null, extras.lunchAllowance),
+        onLunch: !!record?.lunchOutAt && !record.lunchInAt && !record.timeOut,
+        missingTimeOut: !!record && isMissingTimeOut({ timeIn: record.timeIn, timeOut: record.timeOut, isToday: d.getTime() === today.getTime() }, reminderDue),
+        byOther: !!record?.photoReview,
+      });
     }
   }
   const counts = {
@@ -306,10 +353,14 @@ export async function teamAttendanceRows(ctx: AppContext, policy: PolicyParams, 
     LEAVE: rows.filter((r) => r.state === "LEAVE").length,
     NOT_MARKED: rows.filter((r) => r.state === "NOT_MARKED").length,
     LATE: rows.filter((r) => r.isLate).length,
+    NO_OUT: rows.filter((r) => r.missingTimeOut).length,
+    PROXY: rows.filter((r) => r.byOther).length,
   };
   const shown = rows.filter((r) => {
     if (!f.status) return true;
     if (f.status === "LATE") return r.isLate;
+    if (f.status === "NO_OUT") return r.missingTimeOut;
+    if (f.status === "PROXY") return r.byOther;
     // "Present" counts half days too, as the tile does: they did attend.
     if (f.status === "PRESENT") return r.state === "PRESENT" || r.state === "HALF_DAY";
     return r.state === f.status;

@@ -36,7 +36,7 @@ export default defineConfig({
   webServer: {
     command: `npm run start -- -p ${PORT}`,
     // The suite signs in many times from one IP; lift the per-minute sign-in limit for the test server only.
-    env: { AUTH_SIGNIN_LIMIT_PER_MINUTE: "200", BETTER_AUTH_URL: ORIGIN, MAIL_CAPTURE_DIR: "test-results/mail" },
+    env: { AUTH_SIGNIN_LIMIT_PER_MINUTE: "200", BETTER_AUTH_URL: ORIGIN, MAIL_CAPTURE_DIR: "test-results/mail", CRON_SECRET: process.env.E2E_CRON_SECRET ?? "e2e-cron-secret-0123456789abcdef" },
     url: `${ORIGIN}/api/health`,
     reuseExistingServer: false,
     timeout: Number(process.env.E2E_TEST_TIMEOUT ?? 180_000), // several browser contexts per test against a remote database

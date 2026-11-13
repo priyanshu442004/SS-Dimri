@@ -31,6 +31,7 @@ Set these in the hosting provider's secret store. Do **not** commit them or put 
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | ✔ (for email) | Outgoing mail (staff invitations and decisions). Port 465 uses TLS. Without them, invitations are created but the email is logged as failed |
 | `MAIL_FROM` | | Sending address, e.g. `Office ERP <info@example.com>` (default: `SMTP_USER`). A firm's emails show the firm's trade name as the sender on this address, with Reply-To set to the firm's contact email |
 | `MAIL_CAPTURE_DIR` | | Tests only: messages to `*.invalid` addresses are written here instead of being sent |
+| `CRON_SECRET` | | 24+ random characters. Enables `GET /api/cron/attendance` (bearer token) for mark-out reminder emails; without it the route returns 404 and no reminders are sent |
 
 Generate secrets with:
 
@@ -67,6 +68,9 @@ npm run start                # or the platform's Node start command (port from $
 - `GET /api/health` returns `{"status":"ok","database":"ok"}` or HTTP 503 with no connection details — use it for uptime checks.
 - Application errors are shown to users without internal details. Check the platform logs for stack traces. Logs never contain passwords, tokens, PAN/Aadhaar or connection strings.
 - The audit log is under Settings → Audit log.
+- Attendance reminders: the server's crontab calls the reminder sweep every 15 minutes (`CRON_SECRET` is in `~/SS-Dimri/.env.local` for the app and in `~/.ss-dimri-cron-env`, mode 600, for cron):
+  `*/15 * * * * . ~/.ss-dimri-cron-env && curl -fsS -m 60 -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/attendance >/dev/null`
+  It reminds people still marked in after the policy's "Remind to mark out at" time (app + email), and reports earlier days without a time out (last 7 days) to the person, their seniors and the administrators. Each notice is sent once per attendance record.
 
 ## 6. Security headers
 

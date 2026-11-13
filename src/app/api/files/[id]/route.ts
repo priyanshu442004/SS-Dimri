@@ -26,6 +26,8 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/files/[i
       employeeLetter: { select: { employeeId: true } },
       attendanceTimeInPhoto: { select: { employeeId: true } },
       attendanceTimeOutPhoto: { select: { employeeId: true } },
+      workerDayInPhoto: { select: { id: true } },
+      workerDayOutPhoto: { select: { id: true } },
       taskAttachment: { select: { task: { select: { makerEmployeeId: true, checkerEmployeeId: true, createdById: true, assignments: { select: { employeeId: true } } } } } },
       clientDocument: { select: { clientId: true } },
       clientProfilePicture: { select: { id: true } },
@@ -59,7 +61,11 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/files/[i
     // Personal identity / HR documents: the employee themself or HR administrators.
     allowed = employeeOwner === me || can(ctx, "employees.manage") || can(ctx, "employees.approve");
   } else if (attendanceOwner) {
-    allowed = attendanceOwner === me || can(ctx, "attendance.view_all");
+    // The person, the team view, those who check photo attendance, and whoever took the photo for them.
+    allowed = attendanceOwner === me || can(ctx, "attendance.view_all") || can(ctx, "attendance.review_photos") || file.uploadedById === ctx.user.id;
+  } else if (file.workerDayInPhoto || file.workerDayOutPhoto) {
+    // Daily workers' photos: those who manage the workers or see the team, and the person who took it.
+    allowed = can(ctx, "attendance.workers") || can(ctx, "attendance.view_all") || file.uploadedById === ctx.user.id;
   } else if (file.taskAttachment) {
     const task = file.taskAttachment.task;
     allowed = can(ctx, "tasks.view_all") || task.createdById === ctx.user.id || task.makerEmployeeId === me || task.checkerEmployeeId === me || task.assignments.some((a) => a.employeeId === me);

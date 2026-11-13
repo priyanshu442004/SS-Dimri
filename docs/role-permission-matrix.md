@@ -32,6 +32,11 @@ Roles: **Owner**, **Admin** (administrator), **Manager**, **Senior**, **Team mem
 | Attendance — mark own | ✔ | ✔ | ✔ | ✔ | ✔ |
 | Attendance — team view | ✔ | ✔ | ✔ | ✔ | |
 | Attendance — record / correct for others (audited) | ✔ | ✔ | | | |
+| Attendance — mark a colleague or daily worker in/out with their photo (`attendance.mark_others`) | ✔ | ✔ | ✔ | ✔ | grant⁴ |
+| Attendance — check photo attendance, mark absent if not genuine (`attendance.review_photos`) | ✔ (all) | ✔ (all) | reportees, grant⁴ | reportees, grant⁴ | grant⁴ |
+| Attendance — daily workers: register, wages, pay sheet (`attendance.workers`) | ✔ | ✔ | ✔ | grant⁴ | grant⁴ |
+| Attendance — lunch in/out, client visits (own) | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Attendance — client visits board (team) | ✔ | ✔ | ✔ | ✔ | |
 | Leave — request | ✔ | ✔ | ✔ | ✔ | ✔ |
 | Leave — decide | ✔ (all) | ✔ (all) | reportees | reportees | |
 | Timesheet — fill own | ✔ | ✔ | ✔ | ✔ | ✔ |

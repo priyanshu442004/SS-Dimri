@@ -15,7 +15,7 @@ import { t } from "@/lib/i18n";
 export type FormState = { ok?: boolean; message?: string; fieldErrors?: Record<string, string[] | undefined> };
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
-const ErrorsContext = createContext<FormState["fieldErrors"]>(undefined);
+export const ErrorsContext = createContext<FormState["fieldErrors"]>(undefined);
 const PendingContext = createContext(false);
 
 /**

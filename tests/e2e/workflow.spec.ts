@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { days, disconnect, expireInvitation, makeRemindersDue, raiseLicenceLimit, setAccountAge } from "./db";
+import { addForgottenMarkOut, days, disconnect, expireInvitation, makeRemindersDue, raiseLicenceLimit, setAccountAge } from "./db";
 import { buildXlsx, readFirstSheet } from "../../src/lib/xlsx";
 
 // Full walk-through against the real app and database. Creates an organization
@@ -19,6 +19,8 @@ const secondOwner = { email: `owner2-${run}@e2e.invalid`, password: "Owner2-Pass
 const staff = { email: `staff-${run}@e2e.invalid`, temp: "", password: "Staff-Pass-12345" };
 const senior = { email: `senior-${run}@e2e.invalid`, temp: "", password: "Senior-Pass-12345" };
 const ravi = { email: `ravi-${run}@e2e.invalid`, temp: "", password: "Ravi-Pass-12345" };
+// Must match CRON_SECRET given to the test server (playwright.config.ts).
+const CRON_SECRET = process.env.E2E_CRON_SECRET ?? "e2e-cron-secret-0123456789abcdef";
 
 // Emails to *.invalid addresses are captured by the test server (MAIL_CAPTURE_DIR).
 async function mailTo(email: string, template: string, newerThan = 0) {
@@ -1369,7 +1371,7 @@ test("key pages fit a tablet viewport (768px) without horizontal scroll", async 
 test("app and portal pages are usable at phone width (no horizontal page scroll)", async ({ browser }) => {
   const page = await (await browser.newContext({ viewport: { width: 375, height: 812 } })).newPage();
   await signIn(page, owner.email, owner.password);
-  for (const path of ["/app/admin", "/app/clients", "/app/clients/approvals", "/app/tasks", "/app/tasks?view=board", "/app/attendance", "/app/attendance?tab=team", "/app/compliances", "/app/payroll?tab=team", "/app/clients/import", "/app/tasks/new", "/app/timesheet", "/app/pending", "/app/allocations", "/app/settings?tab=roles", "/app/dues", "/app/observations", "/app/profile"]) {
+  for (const path of ["/app/admin", "/app/clients", "/app/clients/approvals", "/app/tasks", "/app/tasks?view=board", "/app/attendance", "/app/attendance?tab=team", "/app/attendance?tab=others", "/app/attendance?tab=photos", "/app/attendance?tab=visits", "/app/attendance?tab=workers", "/app/attendance?tab=workers&view=pay", "/app/compliances", "/app/payroll?tab=team", "/app/clients/import", "/app/tasks/new", "/app/timesheet", "/app/pending", "/app/allocations", "/app/settings?tab=roles", "/app/dues", "/app/observations", "/app/profile"]) {
     await page.goto(path);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow, `horizontal overflow on ${path}`).toBeLessThanOrEqual(0);
@@ -1573,6 +1575,177 @@ test("point 1 several reminders all fire; compliance reminder and escalation rea
   await page.reload();
   await expect(page.getByText(new RegExp(`Escalated: Due soon ${run}`))).toBeVisible();
   await sonu.context().close();
+});
+
+test("feedback 12 Nov: photo attendance by a senior, photo check, lunch, client visits, mark-out reminders, daily workers", async ({ browser }) => {
+  const acceptDialogs = (p: Page) => p.on("dialog", (d) => d.accept());
+  const owner1 = await (await browser.newContext()).newPage();
+  acceptDialogs(owner1);
+  await signIn(owner1, owner.email, owner.password);
+
+  // Point 6: the owner registers a daily worker with a wage.
+  await owner1.goto("/app/attendance?tab=workers&view=list");
+  await owner1.getByLabel("Name").fill("Bhola Labour");
+  await owner1.getByLabel("Daily wage (₹)").fill("650");
+  await owner1.getByLabel("Kind of work").fill("Helper");
+  await owner1.getByLabel("Contractor / agency").fill("Shiv Contractors");
+  await owner1.getByRole("button", { name: "Add worker" }).click();
+  await expect(owner1.getByText("Bhola Labour added to the daily workers.")).toBeVisible();
+
+  // Points 1–2: the senior marks the manager (no phone with them) and the worker, with photos.
+  const lead = await (await browser.newContext()).newPage();
+  await signIn(lead, senior.email, senior.password);
+  await lead.goto("/app/attendance?tab=others");
+  await expect(lead.getByRole("heading", { name: "Mark someone in or out" })).toBeVisible();
+  await pick(lead, "Person", "Sanjay Test", "Sanjay");
+  await expect(lead.getByText("Not marked yet today")).toBeVisible();
+  await lead.getByRole("button", { name: "Record time in" }).click();
+  await expect(lead.getByText("Take a photo of the person first.")).toBeVisible(); // no photo, nothing saved
+  await lead.locator("#proxy-photo").setInputFiles(png("sanjay.png"));
+  await lead.getByRole("button", { name: "Record time in" }).click();
+  await expect(lead.getByText(/Sanjay Test marked in at/)).toBeVisible();
+  await expect(lead.getByRole("heading", { name: /Marked by you today \(1\)/ })).toBeVisible();
+  await lead.reload();
+  await pick(lead, "Person", "Bhola Labour", "Bhola");
+  await lead.locator("#proxy-photo").setInputFiles(png("bhola-in.png"));
+  await lead.getByRole("button", { name: "Record time in" }).click();
+  await expect(lead.getByText(/Bhola Labour marked in at/)).toBeVisible();
+  await lead.reload();
+  await pick(lead, "Person", "Bhola Labour", "Bhola");
+  await expect(lead.getByText(/In since/)).toBeVisible();
+  await lead.locator("#proxy-photo").setInputFiles(png("bhola-out.png"));
+  await lead.getByRole("button", { name: "Record time out" }).click();
+  await expect(lead.getByText(/Bhola Labour marked out at/)).toBeVisible();
+  // The senior marked it, so they do not check it themselves.
+  await lead.goto("/app/attendance?tab=photos&show=ALL");
+  await expect(lead.locator("li", { hasText: "Sanjay Test" }).getByText("You marked this one")).toBeVisible();
+
+  // A team member has no "Mark for others" tab and cannot use it by URL.
+  const member = await (await browser.newContext()).newPage();
+  await signIn(member, staff.email, staff.password);
+  await member.goto("/app/attendance?tab=others");
+  await expect(member.getByRole("link", { name: "Mark for others" })).toHaveCount(0);
+  await expect(member.getByRole("heading", { name: "Mark someone in or out" })).toHaveCount(0);
+  expect((await member.request.get("/app/attendance/workers-export")).status()).toBe(404);
+
+  // The owner sees the photo to check (menu badge + tab count), marks it absent, then restores it.
+  await owner1.goto("/app/attendance?tab=photos");
+  await expect(owner1.getByRole("link", { name: /Photo check\s*1/ })).toBeVisible();
+  const card = owner1.locator("li", { hasText: "Sanjay Test" }).first();
+  await expect(card.getByRole("img", { name: /Sanjay Test – time in/ })).toBeVisible();
+  await expect(card.getByText("by Kamal Rawat")).toBeVisible();
+  await card.getByRole("button", { name: "Not genuine – mark absent" }).click();
+  await expect(owner1.getByText("Say why the photo is not genuine.")).toBeVisible();
+  await card.getByLabel(/Note/).fill("Face not visible");
+  await card.getByRole("button", { name: "Not genuine – mark absent" }).click();
+  await expect(owner1.getByText(/Sanjay Test marked absent for/)).toBeVisible();
+  await owner1.goto("/app/attendance?tab=team&status=PROXY");
+  const proxyRow = owner1.locator("#attendance-list tbody tr", { hasText: "Sanjay Test" });
+  await expect(proxyRow.getByText("Absent", { exact: true })).toBeVisible();
+  await expect(proxyRow.getByText("Marked absent")).toBeVisible();
+  await owner1.goto("/app/attendance?tab=photos&show=REJECTED");
+  await owner1.locator("li", { hasText: "Sanjay Test" }).first().getByRole("button", { name: "Looks genuine" }).click();
+  await expect(owner1.getByText("Photo accepted for Sanjay Test.")).toBeVisible();
+  await owner1.goto("/app/attendance?tab=team&status=PROXY");
+  await expect(proxyRow.getByText("Present", { exact: true })).toBeVisible();
+  // One click on a name shows all of that person's attendance.
+  await proxyRow.getByRole("link", { name: "Sanjay Test" }).click();
+  await expect(owner1.getByText(/Showing only/)).toBeVisible();
+
+  // Points 4–5: the manager sees who marked them, takes lunch and visits two places.
+  const mgr = await (await browser.newContext()).newPage();
+  await signIn(mgr, manager.email, manager.password);
+  await mgr.goto("/app/notifications");
+  await expect(mgr.getByText(/Kamal Rawat marked your time in at/).first()).toBeVisible();
+  await mgr.goto("/app/attendance");
+  await expect(mgr.getByText("Recorded for you by Kamal Rawat with your photo.")).toBeVisible();
+  await mgr.getByRole("button", { name: "Start lunch" }).click();
+  await expect(mgr.getByText("Lunch started. Enjoy your meal.")).toBeVisible();
+  await mgr.getByRole("button", { name: "Back from lunch" }).click();
+  await expect(mgr.getByText("Welcome back. Lunch time is recorded.")).toBeVisible();
+  await expect(mgr.getByText(/^Lunch \d/)).toBeVisible();
+  await pick(mgr, "Client", clientName, clientName.slice(0, 10));
+  await mgr.getByLabel("Purpose (optional)").fill("Stock audit");
+  await mgr.getByRole("button", { name: "Check in at client" }).click();
+  await expect(mgr.getByText(new RegExp(`Checked in at ${clientName}`))).toBeVisible();
+  await expect(mgr.getByText("You are here")).toBeVisible();
+  await mgr.getByLabel("Or another place").fill("HDFC Bank, Naraina");
+  await mgr.getByRole("button", { name: "Move to next client" }).click();
+  await expect(mgr.getByText(/Checked in at HDFC Bank, Naraina/)).toBeVisible();
+  await expect(mgr.locator("section", { hasText: "Client visits today" }).locator("ol > li")).toHaveCount(2);
+  await mgr.getByRole("button", { name: "Check out from client" }).click();
+  await expect(mgr.getByText(/Checked out at/)).toBeVisible();
+
+  // The office sees where everyone went, and lunch, in the team view.
+  await owner1.goto("/app/attendance?tab=visits");
+  const visitCard = owner1.locator("li", { hasText: "Sanjay Test" }).first();
+  await expect(visitCard.getByText(clientName)).toBeVisible();
+  await expect(visitCard.getByText("HDFC Bank, Naraina")).toBeVisible();
+  await expect(visitCard.getByText("Stock audit")).toBeVisible();
+  await owner1.goto("/app/attendance?tab=team");
+  const teamRow = owner1.locator("#attendance-list tbody tr", { hasText: "Sanjay Test" });
+  await expect(teamRow.getByText("HDFC Bank, Naraina")).toBeVisible();
+  await expect(teamRow.getByText(/0h 0\dm/).first()).toBeVisible(); // lunch minutes
+
+  // Point 3: reminders. The scheduled call needs its secret.
+  expect((await owner1.request.get("/api/cron/attendance")).status()).toBe(404);
+  await owner1.goto("/app/settings?tab=policy");
+  await owner1.getByLabel("Remind to mark out at").fill("00:00");
+  await owner1.getByRole("button", { name: "Save policy" }).click();
+  await expect(owner1.getByText("Policy saved.")).toBeVisible();
+  await addForgottenMarkOut(peon.email, 2);
+  const cron = await owner1.request.get("/api/cron/attendance", { headers: { Authorization: `Bearer ${CRON_SECRET}` } });
+  expect(cron.status()).toBe(200);
+  // Sonu is still marked in from earlier: reminded by email and in the app.
+  const mail = await mailTo(staff.email, "attendance-mark-out");
+  expect(mail.subject).toContain("mark out");
+  await member.goto("/app/notifications");
+  await expect(member.getByText("You have not marked out yet").first()).toBeVisible();
+  await member.goto("/app/attendance");
+  await expect(member.getByText(/Remember to mark out before you leave/)).toBeVisible();
+  // The forgotten day is reported to the owner, who fixes it in one go.
+  await owner1.goto("/app/notifications");
+  await owner1.getByText(/No time out: Ramu Peon/).first().click();
+  await expect(owner1).toHaveURL(/status=NO_OUT/);
+  const missedRow = owner1.locator("#attendance-list tbody tr", { hasText: "Ramu Peon" });
+  await missedRow.getByRole("link", { name: "Fix" }).click();
+  await expect(owner1.getByText("Enter the time out for this day.")).toBeVisible();
+  await expect(owner1.getByLabel("Time in")).toHaveValue("09:35");
+  await owner1.getByLabel("Time out").fill("18:40");
+  await owner1.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(owner1.getByText(/Attendance saved/)).toBeVisible();
+  await owner1.reload();
+  await expect(owner1.locator("#attendance-list tbody tr", { hasText: "Ramu Peon" })).toHaveCount(0);
+  // Back to the default, so later tests are not affected.
+  await owner1.goto("/app/settings?tab=policy");
+  await owner1.getByLabel("Remind to mark out at").fill("19:00");
+  await owner1.getByRole("button", { name: "Save policy" }).click();
+  await expect(owner1.getByText("Policy saved.")).toBeVisible();
+
+  // Point 6: the day sheet and pay for daily workers, marked paid and exported.
+  await owner1.goto("/app/attendance?tab=workers");
+  const workerRow = owner1.getByRole("row", { name: /Bhola Labour/ });
+  await expect(workerRow.getByText("₹650")).toBeVisible();
+  await expect(workerRow.getByText("Kamal Rawat")).toBeVisible();
+  await owner1.goto("/app/attendance?tab=workers&view=pay");
+  const payRow = owner1.getByRole("row", { name: /Bhola Labour/ });
+  await payRow.getByRole("button", { name: "Mark paid" }).click();
+  await expect(owner1.getByText("Bhola Labour: 1 day(s) marked paid.")).toBeVisible();
+  const href = await owner1.getByRole("link", { name: "Export to Excel" }).getAttribute("href");
+  const xl = await owner1.request.get(href!);
+  expect(xl.status()).toBe(200);
+  const sheet = readFirstSheet(new Uint8Array(await xl.body()));
+  const bhola = sheet.find((r) => r[0] === "Bhola Labour")!;
+  expect(bhola).toBeTruthy();
+  expect(bhola[9]).toBe("650"); // earned
+  expect(bhola[11]).toBe("0"); // nothing left to pay
+  // The team export carries the new columns at the end.
+  const team = readFirstSheet(new Uint8Array(await (await owner1.request.get("/app/attendance/export")).body()));
+  expect(team[1].slice(0, 3)).toEqual(["Date", "Employee ID", "Team member"]);
+  expect(team[1]).toContain("Client visits");
+  expect(team.find((r) => r[2] === "Sanjay Test")!.join(" ")).toContain("HDFC Bank, Naraina");
+
+  for (const p of [owner1, lead, member, mgr]) await p.context().close();
 });
 
 test("point 6 deleting a staff member and clients with real history: nothing breaks, logins stop, hours stay", async ({ browser }) => {

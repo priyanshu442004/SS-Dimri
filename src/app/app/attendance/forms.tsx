@@ -6,18 +6,18 @@ import { SearchSelect } from "@/components/pickers";
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
 type Option = { value: string; label: string };
 
-export function CorrectionForm({ action, employees, date }: { action: Act; employees: Option[]; date: string }) {
+export function CorrectionForm({ action, employees, date, defaults }: { action: Act; employees: Option[]; date: string; defaults?: { employeeId?: string; timeIn?: string; reason?: string } }) {
   return (
     <ActionForm action={action}>
       <div className="grid gap-3 sm:grid-cols-3">
-        <SearchSelect label="Team member" name="employeeId" required options={employees} />
+        <SearchSelect label="Team member" name="employeeId" required options={employees} defaultValue={defaults?.employeeId} />
         <TextField label="Date" name="date" type="date" required defaultValue={date} />
         <SelectField label="Status" name="status" required placeholder={null} defaultValue="PRESENT" options={[
           { value: "PRESENT", label: "Present (P)" }, { value: "ABSENT", label: "Absent (A)" }, { value: "LEAVE", label: "Leave (L)" }, { value: "HALF_DAY", label: "Half day (HD)" },
         ]} />
-        <TextField label="Time in" name="timeIn" type="time" />
+        <TextField label="Time in" name="timeIn" type="time" defaultValue={defaults?.timeIn} />
         <TextField label="Time out" name="timeOut" type="time" />
-        <TextField label="Reason" name="reason" required />
+        <TextField label="Reason" name="reason" required defaultValue={defaults?.reason} />
       </div>
       <SubmitButton>Save</SubmitButton>
     </ActionForm>
