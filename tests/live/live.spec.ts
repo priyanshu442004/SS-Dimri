@@ -153,7 +153,7 @@ test("task start defaults to now; a start in the past is refused", async ({ brow
 test("admin timesheet: workflow tracker, dashboard, client pending report, team log; compliances and import template", async ({ browser }) => {
   const { page, problems } = await newPage(browser);
   await signIn(page, firmA.email, firmA.password);
-  await page.goto("/app/timesheet");
+  await page.goto("/app/timesheet?tab=tracker");
   const sections = page.getByRole("navigation", { name: "Sections" });
   for (const name of ["Tracker", "Dashboard", "Client Pending Report", "Team daily log", "Hours & reviews"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
   await expect(page.getByText("No tracker lines yet")).toBeVisible();
@@ -253,6 +253,44 @@ test("admin issues an offer letter and a show cause memo from the firm's templat
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
   expect(problems).toEqual([]);
+});
+
+test("office rules (14 Nov 2026): rules page, mark in with location, plans, requests, leave, salaries, policy", async ({ browser }) => {
+  const ctx = await browser.newContext({ permissions: ["geolocation"], geolocation: { latitude: 28.6304, longitude: 77.1425 } });
+  const page = await ctx.newPage();
+  const problems = watch(page);
+  await signIn(page, firmA.email, firmA.password);
+  await page.goto("/app/rules");
+  for (const h of ["1. Attendance", "2. Daily ERP updates", "6. Late arrival", "9. Overtime (starts from 6:46 PM)", "10. Leave", "11. Declaration"]) await expect(page.getByRole("heading", { name: h })).toBeVisible();
+  // Mark in: a work location is required, then the map location is taken.
+  await page.goto("/app/attendance");
+  await page.getByRole("button", { name: "Mark in" }).click();
+  await expect(page.getByText("Choose where you are working today.")).toBeVisible();
+  await page.getByRole("radio", { name: "Office", exact: true }).check();
+  await page.getByRole("button", { name: "Mark in" }).click();
+  await expect(page.getByText(/^Marked in/).first()).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Mark out" })).toBeVisible();
+  for (const [tab, text] of [["requests", "Inform or ask your Team Lead"], ["leave", "Request leave"], ["team", "All team members"], ["schedules", "Team timings"]] as const) {
+    await page.goto(`/app/attendance?tab=${tab}`);
+    await expect(page.getByText(text).first()).toBeVisible();
+  }
+  await expect(page.getByRole("heading", { name: "Record or correct attendance" })).toHaveCount(0);
+  expect((await page.request.get("/app/attendance/export")).status()).toBe(200);
+  await page.goto("/app/timesheet");
+  await expect(page.getByRole("link", { name: "Team plans & EOD" })).toHaveAttribute("aria-current", "page");
+  await page.goto("/app/payroll?tab=salaries");
+  await expect(page.getByRole("heading", { name: "Fix or change a salary" })).toBeVisible();
+  await page.goto("/app/payroll?tab=team");
+  await expect(page.getByText("Days deducted")).toBeVisible();
+  expect((await page.request.get("/app/payroll/export")).status()).toBe(200);
+  await page.goto("/app/settings?tab=policy");
+  await expect(page.getByLabel("Office name")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Office holidays" })).toBeVisible();
+  await page.goto("/app/admin");
+  await expect(page.getByRole("heading", { name: /Firm today/ }).first()).toBeVisible();
+  expect(problems).toEqual([]);
+  await ctx.close();
 });
 
 test("home page shows the new headline and Sunil Dimri's number", async ({ page }) => {
