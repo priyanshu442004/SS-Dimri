@@ -9,6 +9,17 @@
 
 import { addDays, dateOnly, toIsoDate, zonedDateTime } from "@/lib/dates";
 
+/**
+ * The morning plan and EOD report went live on 14 Nov 2026, in the afternoon. Nobody could file
+ * one for an earlier day, so earlier days are never flagged, escalated or fined.
+ * - EOD report: counts from 14 Nov (it could be filed that evening).
+ * - Morning plan on time (10:30): counts from 15 Nov (the feature arrived after 10:30 on the 14th).
+ */
+export const EOD_RULES_FROM = "2026-11-14";
+export const PLAN_RULES_FROM = "2026-11-15";
+export const eodRuleApplies = (iso: string) => iso >= EOD_RULES_FROM;
+export const planRuleApplies = (iso: string) => iso >= PLAN_RULES_FROM;
+
 /** The first day after `iso` that is not a Sunday or office holiday. */
 export function nextWorkingDay(iso: string, holidays: ReadonlySet<string>): string {
   let d = addDays(dateOnly(iso), 1);
@@ -32,8 +43,12 @@ export function eodDeadlines(planIso: string, holidays: ReadonlySet<string>, rep
 
 export type EodState = "NOT_NEEDED" | "FILED" | "FILED_LATE" | "DUE" | "MISSED";
 
-/** Where one day's EOD stands. Only days actually worked need one. */
-export function eodState(v: { worked: boolean; submittedAt: Date | null; fileBy: Date; now: Date }): EodState {
+/**
+ * Where one day's EOD stands. Only days actually worked need one, and only from the day the rule
+ * started (`day`, YYYY-MM-DD): before that an EOD is optional, so filing one any time counts as filed.
+ */
+export function eodState(v: { day: string; worked: boolean; submittedAt: Date | null; fileBy: Date; now: Date }): EodState {
+  if (!eodRuleApplies(v.day)) return v.submittedAt ? "FILED" : "NOT_NEEDED";
   if (v.submittedAt) return v.submittedAt <= v.fileBy ? "FILED" : "FILED_LATE";
   if (!v.worked) return "NOT_NEEDED";
   return v.now <= v.fileBy ? "DUE" : "MISSED";
@@ -55,7 +70,7 @@ export function leadFined(v: { state: EodState; submittedAt: Date | null; escala
 /** Is it time to escalate (the EOD is overdue and the Team Lead has not escalated yet)? */
 export const needsEscalation = (v: { state: EodState; escalatedAt: Date | null }) => v.state === "MISSED" && !v.escalatedAt;
 
-export const planIsLate = (submittedAt: Date | null, dueBy: Date) => !!submittedAt && submittedAt > dueBy;
+export const planIsLate = (day: string, submittedAt: Date | null, dueBy: Date) => planRuleApplies(day) && !!submittedAt && submittedAt > dueBy;
 
 export type EodLine = { status: "DONE" | "PENDING" | "CARRIED_FORWARD" | null; reason: string | null; task: string };
 

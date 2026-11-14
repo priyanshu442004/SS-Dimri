@@ -4,7 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { BusinessRuleError, zIsoDate } from "@/lib/actions";
 import { addDays, dateOnly, formatDate, hhmmToMinutes, monthRange, toIsoDate, todayDateOnly, zonedDateTime } from "@/lib/dates";
-import { carriesOver, eodDeadlines, eodProblems, eodState, leadFined, needsEscalation, personFined, planIsLate, type EodState } from "@/lib/domain/daily-plan";
+import { carriesOver, eodDeadlines, eodProblems, eodRuleApplies, eodState, leadFined, needsEscalation, personFined, planIsLate, planRuleApplies, type EodState } from "@/lib/domain/daily-plan";
 import type { AppContext } from "@/lib/session";
 import { NO_EMPLOYEE } from "@/lib/ids";
 import { audit } from "./audit";
@@ -80,11 +80,11 @@ export async function dayView(ctx: AppContext, employeeId: string, iso: string) 
   const planDueBy = zonedDateTime(iso, hhmmToMinutes(policy.row.morningPlanBy), tz);
   const worked = !!record && (record.status === "PRESENT" || record.status === "HALF_DAY");
   const now = new Date();
-  const state = eodState({ worked: worked || !!plan?.items.length, submittedAt: plan?.eodSubmittedAt ?? null, fileBy: deadlines.fileBy, now });
+  const state = eodState({ day: iso, worked: worked || !!plan?.items.length, submittedAt: plan?.eodSubmittedAt ?? null, fileBy: deadlines.fileBy, now });
   const carry = plan?.planSubmittedAt ? [] : (await carryCandidates(employeeId, day)).filter((c) => !plan?.items.some((i) => i.carriedFromId === c.carriedFromId));
   return {
     employee: emp, plan, record, worked, carry, deadlines, planDueBy, state, off: isOffDay(iso, holidays),
-    planLate: planIsLate(plan?.planSubmittedAt ?? null, planDueBy),
+    planLate: planIsLate(iso, plan?.planSubmittedAt ?? null, planDueBy),
     fined: personFined(state), penalty: policy.row.eodPenaltyRupees, leadPenalty: policy.row.leadPenaltyRupees,
     morningPlanBy: policy.row.morningPlanBy,
   };
@@ -213,7 +213,7 @@ export async function saveMyEod(ctx: AppContext, iso: string, lines: PlanLine[],
     const now = new Date();
     await tx.dailyPlan.update({ where: { id: plan.id }, data: { eodNote: note || null, ...(submit ? { eodSubmittedAt: now } : {}) } });
     await audit(tx, ctx, submit ? "daily_plan.eod_filed" : "daily_plan.eod_saved", "daily_plan", plan.id);
-    const late = submit && now > view.deadlines.fileBy;
+    const late = submit && eodRuleApplies(iso) && now > view.deadlines.fileBy;
     if (submit) {
       const done = lines.filter((l) => l.status === "DONE").length;
       await notifyMyLeads(tx, ctx, employeeId, {
@@ -297,10 +297,10 @@ async function plansFor(organizationId: string, tz: string, ids: string[], iso: 
     const rec = records.find((r) => r.employeeId === e.id) ?? null;
     const worked = !!rec && (rec.status === "PRESENT" || rec.status === "HALF_DAY");
     const d = eodDeadlines(iso, holidays, scheduleOf(policy, e, rec).start, hhmmToMinutes(policy.row.officeEnd), tz);
-    const state = eodState({ worked: worked || !!plan?.items.length, submittedAt: plan?.eodSubmittedAt ?? null, fileBy: d.fileBy, now });
+    const state = eodState({ day: iso, worked: worked || !!plan?.items.length, submittedAt: plan?.eodSubmittedAt ?? null, fileBy: d.fileBy, now });
     return {
       employee: { id: e.id, firstName: e.firstName, lastName: e.lastName }, plan, attendance: rec?.status ?? null, worked,
-      planLate: planIsLate(plan?.planSubmittedAt ?? null, planDueBy), state,
+      planLate: planIsLate(iso, plan?.planSubmittedAt ?? null, planDueBy), state,
       escalate: needsEscalation({ state, escalatedAt: plan?.escalatedAt ?? null }), fileBy: d.fileBy, escalateBy: d.escalateBy,
     };
   });
@@ -360,7 +360,7 @@ export async function finesForMonth(organizationId: string, tz: string, month: s
     const iso = toIsoDate(r.attendanceDate);
     const plan = planBy.get(`${r.employeeId}|${iso}`);
     const d = eodDeadlines(iso, holidays, scheduleOf(p, e, r).start, hhmmToMinutes(p.row.officeEnd), tz);
-    const state = eodState({ worked: true, submittedAt: plan?.eodSubmittedAt ?? null, fileBy: d.fileBy, now });
+    const state = eodState({ day: iso, worked: true, submittedAt: plan?.eodSubmittedAt ?? null, fileBy: d.fileBy, now });
     if (!personFined(state)) continue;
     const f = get(r.employeeId);
     f.eodMissed.push(iso);
@@ -406,7 +406,7 @@ export async function sweepPlanFlags(organizationId: string, tz: string) {
   let eodsFlagged = 0;
 
   // 1. Morning plan missing at 10:30.
-  if (!isOffDay(iso, holidays) && now >= zonedDateTime(iso, hhmmToMinutes(policy.row.morningPlanBy), tz)) {
+  if (planRuleApplies(iso) && !isOffDay(iso, holidays) && now >= zonedDateTime(iso, hhmmToMinutes(policy.row.morningPlanBy), tz)) {
     const present = await prisma.attendanceRecord.findMany({ where: { employeeId: { in: ids }, attendanceDate: today, timeIn: { not: null } }, select: { employeeId: true } });
     for (const { employeeId } of present) {
       const plan = await prisma.dailyPlan.upsert({ where: { employeeId_planDate: { employeeId, planDate: today } }, update: {}, create: { organizationId, employeeId, planDate: today } });
@@ -428,6 +428,7 @@ export async function sweepPlanFlags(organizationId: string, tz: string) {
   });
   for (const r of worked) {
     const day = toIsoDate(r.attendanceDate);
+    if (!eodRuleApplies(day)) continue;
     const d = eodDeadlines(day, holidays, scheduleOf(policy, r.employee, r).start, hhmmToMinutes(policy.row.officeEnd), tz);
     if (now <= d.fileBy) continue;
     const plan = await prisma.dailyPlan.upsert({ where: { employeeId_planDate: { employeeId: r.employeeId, planDate: r.attendanceDate } }, update: {}, create: { organizationId, employeeId: r.employeeId, planDate: r.attendanceDate } });

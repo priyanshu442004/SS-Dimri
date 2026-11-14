@@ -89,11 +89,13 @@ export async function setPolicy(ownerEmail: string, values: { autoAbsentAt?: str
 }
 
 /** A worked day `daysAgo` back (skipping Sundays) whose EOD was never filed: its deadline has passed. */
-export async function missedEodDay(org: string, employeeId: string): Promise<string> {
+export async function missedEodDay(org: string, employeeId: string): Promise<string | null> {
+  // Only days from 14 Nov 2026 count: the EOD rule started then (EOD_RULES_FROM).
   const { rows } = await pool.query<{ d: string }>(
     `SELECT to_char(d, 'YYYY-MM-DD') AS d FROM (SELECT ((now() AT TIME ZONE 'Asia/Kolkata')::date - k) AS d FROM generate_series(3, 6) k) x
-      WHERE extract(dow FROM d) <> 0 ORDER BY d DESC LIMIT 1`);
-  const iso = rows[0].d;
+      WHERE extract(dow FROM d) <> 0 AND d >= DATE '2026-11-14' ORDER BY d DESC LIMIT 1`);
+  const iso = rows[0]?.d;
+  if (!iso) return null;
   await workedDay(org, employeeId, iso, "09:30", "18:30", { eod: false });
   return iso;
 }

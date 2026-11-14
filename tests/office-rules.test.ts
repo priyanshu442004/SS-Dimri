@@ -1,7 +1,7 @@
 // Leave, Timing and Office Decorum Rules (client PDF, 14 Nov 2026): each rule as a test.
 import { describe, expect, it } from "vitest";
 import { computePay, hhmm, leaveWithIntimation, noticeDays, scheduleFor, scoreMonth, timesOfDay, type DayInput, type PolicyNumbers, type PolicyTimes } from "@/lib/domain/attendance-policy";
-import { eodDeadlines, eodProblems, eodState, leadFined, needsEscalation, nextWorkingDay, personFined } from "@/lib/domain/daily-plan";
+import { EOD_RULES_FROM, eodDeadlines, eodProblems, eodRuleApplies, eodState, leadFined, needsEscalation, nextWorkingDay, personFined, planIsLate } from "@/lib/domain/daily-plan";
 import { addDays, dateOnly, toIsoDate, zonedDateTime } from "@/lib/dates";
 
 const TZ = "Asia/Kolkata";
@@ -251,16 +251,39 @@ describe("§2 morning plan and EOD report", () => {
     expect(d.escalateBy.toISOString()).toBe(ist("2026-11-17T18:30:00").toISOString());
   });
   it("filing states and the ₹100 fine", () => {
+    const day = "2026-11-20"; // any day after the rule started; only the times below matter
     const fileBy = ist("2026-11-14T09:30:00");
-    expect(eodState({ worked: true, submittedAt: ist("2026-11-13T19:00:00"), fileBy, now: ist("2026-11-14T12:00:00") })).toBe("FILED");
-    expect(eodState({ worked: true, submittedAt: ist("2026-11-14T09:00:00"), fileBy, now: ist("2026-11-14T12:00:00") })).toBe("FILED");
-    expect(eodState({ worked: true, submittedAt: null, fileBy, now: ist("2026-11-14T09:00:00") })).toBe("DUE");
-    expect(eodState({ worked: true, submittedAt: null, fileBy, now: ist("2026-11-14T09:31:00") })).toBe("MISSED");
-    expect(eodState({ worked: true, submittedAt: ist("2026-11-14T10:00:00"), fileBy, now: ist("2026-11-14T12:00:00") })).toBe("FILED_LATE");
-    expect(eodState({ worked: false, submittedAt: null, fileBy, now: ist("2026-11-15T12:00:00") })).toBe("NOT_NEEDED");
+    expect(eodState({ day, worked: true, submittedAt: ist("2026-11-13T19:00:00"), fileBy, now: ist("2026-11-14T12:00:00") })).toBe("FILED");
+    expect(eodState({ day, worked: true, submittedAt: ist("2026-11-14T09:00:00"), fileBy, now: ist("2026-11-14T12:00:00") })).toBe("FILED");
+    expect(eodState({ day, worked: true, submittedAt: null, fileBy, now: ist("2026-11-14T09:00:00") })).toBe("DUE");
+    expect(eodState({ day, worked: true, submittedAt: null, fileBy, now: ist("2026-11-14T09:31:00") })).toBe("MISSED");
+    expect(eodState({ day, worked: true, submittedAt: ist("2026-11-14T10:00:00"), fileBy, now: ist("2026-11-14T12:00:00") })).toBe("FILED_LATE");
+    expect(eodState({ day, worked: false, submittedAt: null, fileBy, now: ist("2026-11-15T12:00:00") })).toBe("NOT_NEEDED");
     expect(personFined("MISSED")).toBe(true);
     expect(personFined("FILED_LATE")).toBe(true);
     expect(personFined("FILED")).toBe(false);
+  });
+  it("nothing before the rules went live (14 Nov 2026) is flagged, late or fined", () => {
+    const fileBy = ist("2026-11-14T09:30:00");
+    const now = ist("2026-11-20T12:00:00");
+    // Days before 14 Nov: no EOD needed, so no fine, no escalation, no Team Lead fine.
+    for (const day of ["2026-11-07", "2026-11-12", "2026-11-13"]) {
+      const state = eodState({ day, worked: true, submittedAt: null, fileBy, now });
+      expect(state).toBe("NOT_NEEDED");
+      expect(personFined(state)).toBe(false);
+      expect(needsEscalation({ state, escalatedAt: null })).toBe(false);
+      expect(leadFined({ state, submittedAt: null, escalatedAt: null, escalateBy: fileBy, now })).toBe(false);
+      // Filing one anyway, even days later, counts as filed (never "filed late").
+      expect(eodState({ day, worked: true, submittedAt: now, fileBy, now })).toBe("FILED");
+    }
+    // 14 Nov itself counts for the EOD.
+    expect(eodState({ day: "2026-11-14", worked: true, submittedAt: null, fileBy: ist("2026-11-16T09:30:00"), now })).toBe("MISSED");
+    expect(eodRuleApplies("2026-11-13")).toBe(false);
+    expect(eodRuleApplies(EOD_RULES_FROM)).toBe(true);
+    // The morning plan arrived after 10:30 on the 14th: being late counts from the 15th.
+    expect(planIsLate("2026-11-14", ist("2026-11-14T13:00:00"), ist("2026-11-14T10:30:00"))).toBe(false);
+    expect(planIsLate("2026-11-16", ist("2026-11-16T11:00:00"), ist("2026-11-16T10:30:00"))).toBe(true);
+    expect(planIsLate("2026-11-16", ist("2026-11-16T10:00:00"), ist("2026-11-16T10:30:00"))).toBe(false);
   });
   it("the Team Lead's ₹200: only if it is still missing at the end of the next day and nobody escalated", () => {
     const escalateBy = ist("2026-11-14T18:30:00");

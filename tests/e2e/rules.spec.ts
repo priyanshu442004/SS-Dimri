@@ -73,7 +73,7 @@ test("setup: the firm, its team and a complete September", async ({ page }) => {
     "12": "leave", "14": "leave", // Saturday + Monday leave: Sunday 13 counts too; the second leave is beyond the 1 a month
     "16": "none", // absent, no request = double
     "17": "ot", // 90 minutes of approved overtime
-    "18": ["09:30", "18:30", false], // EOD never filed: ₹100, and ₹200 for Tarun who did not escalate
+    "18": ["09:30", "18:30", false], // EOD never filed, but before the rules went live (14 Nov 2026): no fines
   };
   for (let d = 1; d <= 30; d++) {
     const iso = `2026-09-${String(d).padStart(2, "0")}`;
@@ -257,6 +257,7 @@ test("leave: 15-day rule for planned leave, Sunday inside a leave, Team Lead app
 
 test("a missing EOD is flagged to the Team Lead, who escalates it", async ({ browser }) => {
   const day = await missedEodDay(org, ids.ravi);
+  test.skip(!day, "No working day yet between 14 Nov 2026 (EOD rule start) and 3 days ago");
   const tarun = await as(browser, mail("tarun"));
   await tarun.goto("/app/senior");
   await expect(tarun.getByRole("heading", { name: /My team today/ })).toBeVisible();
@@ -319,11 +320,12 @@ test("September payroll applies every rule, to the rupee", async ({ browser }) =
   const own = await as(browser, owner);
   await own.goto("/app/payroll?tab=team&month=2026-09");
   const row = (n: string) => own.locator("tbody tr", { hasText: n });
-  // Asha: 5.5 days deducted, 90 min approved overtime, ₹100 EOD fine → 24,500 + 166.67 − 100.
-  await expect(row("Asha Member")).toContainText("₹ 24,566.67");
-  // Perfect months earn two extra days; Tarun also pays ₹200 for not escalating Asha's EOD.
+  // Asha: 5.5 days deducted, 90 min approved overtime → 24,500 + 166.67. Her missing EOD on 18 Sep
+  // is before the EOD rule started (14 Nov 2026), so neither she nor Tarun is fined for it.
+  await expect(row("Asha Member")).toContainText("₹ 24,666.67");
+  // Perfect months earn two extra days.
   await expect(row("Ravi Member")).toContainText("₹ 32,000.00");
-  await expect(row("Tarun Lead")).toContainText("₹ 53,133.33");
+  await expect(row("Tarun Lead")).toContainText("₹ 53,333.33");
   await expect(row("Pappu Peon")).toContainText("₹ 12,800.00"); // no timesheet, so no EOD fines
   await expect(own.locator("tbody tr", { hasText: "Rules Owner" })).toHaveCount(0); // the owner is not on the payroll
   await row("Asha Member").getByRole("link", { name: "Asha Member" }).click();
@@ -340,7 +342,7 @@ test("September payroll applies every rule, to the rupee", async ({ browser }) =
 
   const asha = await as(browser, mail("asha"));
   await asha.goto("/app/payroll?month=2026-09");
-  await expect(asha.getByText("₹ 24,566.67").first()).toBeVisible();
+  await expect(asha.getByText("₹ 24,666.67").first()).toBeVisible();
   await asha.goto("/app/attendance?month=2026-09");
   await expect(asha.getByText("Late 1h 30m · ½ day")).toBeVisible();
   await expect(asha.getByText(/Overtime 1h 30m/)).toBeVisible();
