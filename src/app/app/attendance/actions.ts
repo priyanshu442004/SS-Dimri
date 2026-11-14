@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
-import { BusinessRuleError, parseForm, safeAction, zOptionalText, type ActionState } from "@/lib/actions";
+import { BusinessRuleError, parseForm, safeAction, type ActionState } from "@/lib/actions";
 import { actionContext } from "@/lib/session";
-import { correctAttendance, correctionSchema, decideLeave, ensureAdminEmployee, leaveSchema, markAttendance, markLunch, markSchema, requestLeave } from "@/lib/services/attendance";
+import { decideLeave, ensureAdminEmployee, leaveSchema, markAttendance, markLunch, markSchema, requestLeave } from "@/lib/services/attendance";
+import { cancelRequest, decideRequest, decideSchema as requestDecisionSchema, raiseRequest, requestSchema } from "@/lib/services/attendance-requests";
+import { lunchShiftSchema, scheduleSchema, setSchedule, shiftLunch } from "@/lib/services/team-schedules";
 import { proxyMark, proxyMarkSchema, reviewPhoto, reviewSchema } from "@/lib/services/attendance-proxy";
 import { endVisit, startVisit, visitEndSchema, visitSchema } from "@/lib/services/client-visits";
 import { saveWorker, saveWorkerDay, setWorkerActive, setWorkerPaid, workerDaySchema, workerSchema } from "@/lib/services/daily-workers";
@@ -18,18 +19,14 @@ export async function markAction(kind: "in" | "out", _p: ActionState, fd: FormDa
     const me = await ensureAdminEmployee(ctx);
     const r = await markAttendance(me, kind, parsed.data, fd);
     revalidatePath("/app/attendance");
-    return { ok: true, message: kind === "in" ? (r.late ? "Marked in (after the 9:45 grace time)." : "Marked in.") : "Marked out." };
-  });
-}
-
-export async function correctAttendanceAction(_p: ActionState, fd: FormData): Promise<ActionState> {
-  const parsed = parseForm(correctionSchema, fd);
-  if (!parsed.success) return parsed.state;
-  return safeAction(async () => {
-    const ctx = await actionContext("attendance.correct");
-    await correctAttendance(ctx, parsed.data);
-    revalidatePath("/app/attendance");
-    return { ok: true, message: "Attendance saved. The correction is recorded in the audit trail." };
+    if (kind === "in") {
+      if (r.band === "VERY_LATE") return { ok: true, message: `Marked in, ${r.lateMinutes} minutes late. Late by more than an hour counts as a half day, unless it is your one informed late arrival this month.` };
+      if (r.late) return { ok: true, message: `Marked in, ${r.lateMinutes} minutes late. Three late arrivals (15 minutes to 1 hour) in a month make a half day.` };
+      return { ok: true, message: "Marked in. Have a good day." };
+    }
+    if (r.halfDay) return { ok: true, message: "Marked out. Leaving before the half-day time counts as a half day." };
+    if (r.early) return { ok: true, message: "Marked out before the end of your day. Leaving early needs your Team Lead's permission." };
+    return { ok: true, message: "Marked out. Enjoy your evening." };
   });
 }
 
@@ -40,22 +37,19 @@ export async function requestLeaveAction(_p: ActionState, fd: FormData): Promise
     const ctx = await actionContext("leave.request");
     const r = await requestLeave(ctx, parsed.data);
     revalidatePath("/app/attendance");
-    return {
-      ok: true,
-      message: r.shortNotice
-        ? `Leave requested. Note: planned leave should be requested ${r.required} days in advance (this is ${r.noticeDays} days).`
-        : "Leave requested.",
-    };
+    const notes = [
+      r.withIntimation ? "" : "It was raised after the reporting time, so it counts as leave without prior intimation (unpaid).",
+      r.sandwiched.length ? `${r.sandwiched.join(", ")} will also count as leave (Sundays and holidays inside a continuous leave).` : "",
+    ].filter(Boolean);
+    return { ok: true, message: `Leave requested; your Team Lead is informed.${notes.length ? ` ${notes.join(" ")}` : ""}` };
   });
 }
 
-const decideSchema = z.object({ decision: z.enum(["approve", "reject"]), note: zOptionalText(500) });
-
 export async function decideLeaveAction(requestId: string, _p: ActionState, fd: FormData): Promise<ActionState> {
-  const parsed = parseForm(decideSchema, fd);
+  const parsed = parseForm(requestDecisionSchema, fd);
   if (!parsed.success) return parsed.state;
   return safeAction(async () => {
-    const ctx = await actionContext("leave.decide");
+    const ctx = await actionContext("leave.request"); // Team Lead = whom they report to; checked in the service
     await decideLeave(ctx, requestId, parsed.data.decision === "approve", parsed.data.note);
     revalidatePath("/app/attendance");
     return { ok: true, message: "Decision saved." };
@@ -155,5 +149,60 @@ export async function workerPaidAction(workerId: string, from: string, to: strin
     const r = await setWorkerPaid(ctx, workerId, from, to, paid);
     revalidatePath("/app/attendance");
     return { ok: true, message: paid ? `${r.name}: ${r.days} day(s) marked paid.` : `${r.name}: payment undone for ${r.days} day(s).` };
+  });
+}
+
+// ---------------------------------------------------------------- office rules (14 Nov 2026)
+
+export async function raiseRequestAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(requestSchema, fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const ctx = await actionContext("attendance.mark_own");
+    const message = await raiseRequest(ctx, parsed.data);
+    revalidatePath("/app/attendance");
+    return { ok: true, message };
+  });
+}
+
+export async function cancelRequestAction(id: string): Promise<ActionState> {
+  return safeAction(async () => {
+    const ctx = await actionContext("attendance.mark_own");
+    await cancelRequest(ctx, id);
+    revalidatePath("/app/attendance");
+    return { ok: true, message: "Request withdrawn." };
+  });
+}
+
+export async function decideRequestAction(id: string, _p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(requestDecisionSchema, fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const ctx = await actionContext("leave.request"); // Team Lead = whom they report to; checked in the service
+    const name = await decideRequest(ctx, id, parsed.data);
+    revalidatePath("/app/attendance");
+    return { ok: true, message: `Saved. ${name} is notified.` };
+  });
+}
+
+export async function setScheduleAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(scheduleSchema, fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const ctx = await actionContext("leave.request"); // Team Lead = whom they report to; checked in the service
+    const name = await setSchedule(ctx, parsed.data);
+    revalidatePath("/app/attendance");
+    return { ok: true, message: `${name}'s timing is saved and they are notified. It applies from their next mark-in.` };
+  });
+}
+
+export async function shiftLunchAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(lunchShiftSchema, fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const ctx = await actionContext("leave.request"); // Team Lead = whom they report to; checked in the service
+    const name = await shiftLunch(ctx, parsed.data);
+    revalidatePath("/app/attendance");
+    return { ok: true, message: `${name}'s lunch is moved for today and they are notified.` };
   });
 }

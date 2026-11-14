@@ -3,7 +3,7 @@ import { formatDate, formatTime, minutesToHhmm } from "@/lib/dates";
 import { can } from "@/lib/permissions";
 import { getContext } from "@/lib/session";
 import { getPolicy, parseTeamFilters, teamAttendanceRows, todayIso } from "@/lib/services/attendance";
-import { lunchAllowanceMinutes } from "@/lib/domain/attendance-extras";
+import { workLocationLabels } from "@/lib/services/office-rules";
 import { prisma } from "@/lib/db";
 import { dateOnly, toIsoDate } from "@/lib/dates";
 import { xlsxResponse } from "@/lib/xlsx";
@@ -19,8 +19,9 @@ export async function GET(request: Request) {
   const sp = Object.fromEntries(new URL(request.url).searchParams.entries());
   const f = parseTeamFilters(sp, todayIso(ctx));
   const tz = ctx.organization.timezone;
-  const { row: policyRow, params: policy } = await getPolicy(ctx.organization.id);
-  const { rows } = await teamAttendanceRows(ctx, policy, f, { markOutReminderAt: policyRow.markOutReminderAt, lunchAllowance: lunchAllowanceMinutes(policyRow.lunchStart, policyRow.lunchEnd) });
+  const policy = await getPolicy(ctx.organization.id);
+  const labels = workLocationLabels(policy.row.officeName);
+  const { rows } = await teamAttendanceRows(ctx, policy, f);
   const visits = await prisma.clientVisit.findMany({
     where: { organizationId: ctx.organization.id, visitDate: { gte: dateOnly(f.from), lte: dateOnly(f.to) } },
     orderBy: { startedAt: "asc" },
@@ -35,8 +36,9 @@ export async function GET(request: Request) {
 
   // New columns go at the end so the existing column order stays the same.
   const header = ["Date", "Employee ID", "Team member", "Designation", "Department", "Status", "Late", "Time in", "Time out", "Hours worked", "Latitude (in)", "Longitude (in)", "Notes",
-    "Lunch out", "Lunch in", "Lunch (minutes)", "No time out", "Marked by (colleague)", "Photo check", "Client visits"];
-  const body = rows.map(({ key, date, employee: e, record: r, approvedLeave, state, isLate, workedMinutes, lunchMinutes, missingTimeOut }) => [
+    "Lunch out", "Lunch in", "Lunch (minutes)", "No time out", "Marked by (colleague)", "Photo check", "Client visits",
+    "Work location", "Client / place", "Late (minutes)", "Late intimation", "Left early", "Stayed after 18:45 (minutes)", "Overtime approved", "Marked absent by the ERP"];
+  const body = rows.map(({ key, date, employee: e, record: r, approvedLeave, state, isLate, workedMinutes, lunchMinutes, missingTimeOut, lateMinutes, lateIntimation, leftEarly, earlyHalfDay, earlyApproved, stayedMinutes, otApproved }) => [
     date,
     e.permanentEmployeeCode ?? e.temporaryEmployeeCode,
     `${e.firstName} ${e.lastName ?? ""}`.trim(),
@@ -57,6 +59,14 @@ export async function GET(request: Request) {
     [r?.timeInProxyBy?.name, r?.timeOutProxyBy?.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(", "),
     r?.photoReview ? REVIEW[r.photoReview] : "",
     visitText(key),
+    r?.workLocation ? labels[r.workLocation] : "",
+    r?.workPlace ?? "",
+    isLate ? lateMinutes : null,
+    lateIntimation ? `${lateIntimation.inAdvance ? "In advance" : "After reporting time"}: ${lateIntimation.reason}` : "",
+    earlyHalfDay ? "Half day" : leftEarly ? (earlyApproved ? "With permission" : "Without permission") : "",
+    stayedMinutes || null,
+    stayedMinutes ? (otApproved ? "Yes" : "No") : "",
+    r?.autoAbsentAt ? "Yes" : "",
   ]);
   const period = f.from === f.to ? formatDate(new Date(`${f.from}T00:00:00Z`)) : `${formatDate(new Date(`${f.from}T00:00:00Z`))} to ${formatDate(new Date(`${f.to}T00:00:00Z`))}`;
   return xlsxResponse(`attendance-${f.from}${f.from === f.to ? "" : `-to-${f.to}`}.xlsx`, [

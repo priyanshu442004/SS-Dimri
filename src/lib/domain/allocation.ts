@@ -2,6 +2,10 @@
 // rather than a percentage, so a lead can place someone at one client for the first half
 // and another for the second (client feedback, 5 Nov 2026). An allocation without hours is
 // a full day. A conflict exists when, on any day, a half is booked beyond its capacity.
+// Only the days a person is actually planned at a client count (week days / visit days, see
+// allocation-schedule), and an allocation marked "allow overlap" never counts against others.
+
+import { isPlannedOn, type Schedule } from "./allocation-schedule";
 
 export type DayCapacity = { first: number; second: number };
 
@@ -16,13 +20,15 @@ export function capacityFromPolicy(p: { officeStart: string; lunchStart: string;
   return { first: hours(p.officeStart, p.lunchStart), second: hours(p.lunchEnd, p.officeEnd) };
 }
 
-export type AllocationSpan = {
+export type AllocationSpan = Schedule & {
   id?: string;
   clientName?: string;
   startDate: Date;
   endDate: Date | null; // null = open-ended
   firstHalfHours: number | null;
   secondHalfHours: number | null;
+  /** Yes = may sit on top of other allocations; it is then left out of conflict checks. */
+  allowOverlap?: boolean;
 };
 
 /** Hours a span books in each half; no hours recorded = the whole day. */
@@ -38,29 +44,44 @@ export function overlaps(a: Pick<AllocationSpan, "startDate" | "endDate">, b: Pi
 }
 
 const activeOn = (s: AllocationSpan, t: number) => s.startDate.getTime() <= t && (s.endDate?.getTime() ?? Infinity) >= t;
+const DAY = 86_400_000;
 
+/** Hours booked in each half on one day: only allocations planned on that day count. */
 export function bookedOn(day: Date, spans: AllocationSpan[], cap: DayCapacity): DayCapacity {
   const t = day.getTime();
   return spans
-    .filter((s) => activeOn(s, t))
+    .filter((s) => activeOn(s, t) && isPlannedOn(s, day))
     .map((s) => spanHours(s, cap))
     .reduce((sum, h) => ({ first: sum.first + h.first, second: sum.second + h.second }), { first: 0, second: 0 });
 }
 
 /**
- * Checks a new allocation against the person's others. Totals only change on a day some
- * allocation starts, so those days are enough to find the busiest point of the period.
+ * Checks a new allocation against the person's others, day by day over the period they share
+ * (at most about two years), so "Mon, Wed, Fri" here and "Tue, Thu, Sat" elsewhere never clash.
+ * Allocations marked "allow overlap" are left out. `clashDay` is the first day over capacity.
  */
 export function findConflicts(candidate: AllocationSpan, existing: AllocationSpan[], cap: DayCapacity) {
-  const overlapping = existing.filter((e) => (candidate.id === undefined || e.id !== candidate.id) && overlaps(candidate, e));
+  const overlapping = existing.filter((e) => (candidate.id === undefined || e.id !== candidate.id) && !e.allowOverlap && overlaps(candidate, e));
   const all = [candidate, ...overlapping];
-  const days = [candidate.startDate, ...overlapping.map((o) => o.startDate).filter((d) => activeOn(candidate, d.getTime()))];
+  const from = candidate.startDate.getTime();
+  const lastStart = Math.max(from, ...overlapping.map((o) => o.startDate.getTime()));
+  const to = Math.min(candidate.endDate?.getTime() ?? Infinity, lastStart + 62 * DAY, from + 800 * DAY);
   let peak: DayCapacity = { first: 0, second: 0 };
-  for (const d of days) {
-    const b = bookedOn(d, all, cap);
+  let clashDay: Date | null = null;
+  const sharing = new Set<AllocationSpan>();
+  for (let t = from; t <= to; t += DAY) {
+    const day = new Date(t);
+    if (!isPlannedOn(candidate, day)) continue;
+    const b = bookedOn(day, all, cap);
     peak = { first: Math.max(peak.first, b.first), second: Math.max(peak.second, b.second) };
+    const over = b.first > cap.first || b.second > cap.second;
+    if (over) {
+      clashDay ??= day;
+      for (const o of overlapping) if (activeOn(o, t) && isPlannedOn(o, day)) sharing.add(o);
+    }
   }
-  return { overlapping, firstHours: peak.first, secondHours: peak.second, isConflict: peak.first > cap.first || peak.second > cap.second };
+  const isConflict = clashDay !== null;
+  return { overlapping: isConflict ? [...sharing] : overlapping, firstHours: peak.first, secondHours: peak.second, isConflict, clashDay };
 }
 
 export type Availability = DayCapacity & { level: "free" | "partial" | "busy" };
@@ -78,6 +99,7 @@ export const formatHours = (h: number) => String(Math.round(h * 100) / 100);
 /** Plain description of what a span books, e.g. "First half 3.5 h · Second half 2 h" or "Full day". */
 export function describeHours(s: Pick<AllocationSpan, "firstHalfHours" | "secondHalfHours">, cap: DayCapacity): string {
   if (s.firstHalfHours === null && s.secondHalfHours === null) return "Full day";
+  if (!s.firstHalfHours && !s.secondHalfHours) return "No fixed hours";
   const h = spanHours(s, cap);
   if (h.first >= cap.first && h.second >= cap.second) return "Full day";
   const parts = [h.first > 0 && `First half ${formatHours(h.first)} h`, h.second > 0 && `Second half ${formatHours(h.second)} h`].filter(Boolean);

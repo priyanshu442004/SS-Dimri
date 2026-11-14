@@ -51,7 +51,12 @@ export function ActionForm({
   // error message on the form instead of the full-page error screen; typed values stay.
   const [state, formAction, pending] = useActionState(async (prev: FormState, fd: FormData): Promise<FormState> => {
     try {
-      return await action(prev, fd);
+      const result = await action(prev, fd);
+      // Announce now as well: a successful save often re-renders the page without this form
+      // (e.g. a plan becomes "sent"), and the effect below would then never run. Toasts with the
+      // same text are merged, so a form that stays on the page does not show it twice.
+      announce(result, successMessage);
+      return result;
     } catch (e) {
       unstable_rethrow(e); // redirects after success
       return { ok: false, message: "Could not submit the form. Please try again, or reload the page if it keeps happening." };
@@ -64,10 +69,7 @@ export function ActionForm({
   // Every other result (success or failure) is announced as a toast; field errors stay inline.
   useEffect(() => {
     if (state.ok && resetOnSuccess) ref.current?.reset();
-    const message = state.message ?? (state.ok ? successMessage : undefined);
-    if (state.ok && message && LINK_RE.test(message)) toast("Secure link created. Copy it from the box below and share it privately.", "success");
-    else if (message) toast(message, state.ok === false ? "error" : "success");
-    else if (state.ok === false && state.fieldErrors) toast("Please check the highlighted fields.", "error");
+    announce(state, successMessage);
   }, [state, resetOnSuccess, successMessage]);
   return (
     <form ref={ref} onSubmit={onSubmit} className={clsx("space-y-4", className)} noValidate>
@@ -80,6 +82,13 @@ export function ActionForm({
 }
 
 const LINK_RE = /https?:\/\/\S+/;
+
+function announce(state: FormState, successMessage?: string) {
+  const message = state.message ?? (state.ok ? successMessage : undefined);
+  if (state.ok && message && LINK_RE.test(message)) toast("Secure link created. Copy it from the box below and share it privately.", "success");
+  else if (message) toast(message, state.ok === false ? "error" : "success");
+  else if (state.ok === false && state.fieldErrors) toast("Please check the highlighted fields.", "error");
+}
 
 /** Persistent box for a message containing a one-time link, with a copy button. */
 function LinkPanel({ message }: { message: string }) {

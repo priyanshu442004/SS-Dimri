@@ -7,6 +7,7 @@ import { formatDate, formatDateTime, toIsoDate } from "@/lib/dates";
 import { complianceChoices } from "@/lib/services/client-compliances";
 import { clientActions, type ClientStatus } from "@/lib/domain/client-workflow";
 import { daysPending, isTaskOverdue } from "@/lib/domain/derived";
+import { describeSchedule } from "@/lib/domain/allocation-schedule";
 import { clientScope } from "@/lib/services/clients";
 import { ActionButton } from "@/components/action-button";
 import { DeleteButton } from "@/components/delete-dialog";
@@ -253,6 +254,7 @@ async function Overview({ c, role, edit, viewAll, basis }: { basis: "CALENDAR" |
               ["Departments", c.departments.join(", ")],
               ["Portal logins", ([["GST", c.gstUserId, c.gstPasswordEncrypted], ["Income Tax", c.incomeTaxUserId, c.incomeTaxPasswordEncrypted], ["TRACES", c.tracesUserId, c.tracesPasswordEncrypted]] as const).filter(([, id, pw]) => id || pw).map(([k, id, pw]) => `${k}: ${id ?? "—"}${pw ? " (password saved)" : ""}`).join(" · ")],
               ["Remark", c.masterRemark],
+              ...(c.extraFields && typeof c.extraFields === "object" && !Array.isArray(c.extraFields) ? Object.entries(c.extraFields as Record<string, string>).map(([k, v]) => [k, String(v)] as [string, string]) : []),
               ["Primary contact", c.contacts[0] ? `${c.contacts[0].name} ${c.contacts[0].mobile ?? ""}` : null],
             ]}
           />
@@ -327,7 +329,7 @@ async function Overview({ c, role, edit, viewAll, basis }: { basis: "CALENDAR" |
                 <li key={a.id}>
                   <span className="font-medium">{a.employee.firstName} {a.employee.lastName}</span>
                   <span className="text-muted"> · {a.employee.designation?.name ?? (a.seniorityLevel ? humanize(a.seniorityLevel) : "")}</span>
-                  <div className="text-xs text-muted">from {formatDate(a.startDate)}{a.endDate ? ` to ${formatDate(a.endDate)}` : ""}</div>
+                  <div className="text-xs text-muted">{describeSchedule(a)} · from {formatDate(a.startDate)}{a.endDate ? ` to ${formatDate(a.endDate)}` : ""}</div>
                 </li>
               ))}
             </ul>

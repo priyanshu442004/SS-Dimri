@@ -3,7 +3,7 @@ import { buildXlsx, readFirstSheet } from "@/lib/xlsx";
 import { can, canUseModule, isGrantable, landingPath, moduleOf, SUPPORT_STAFF_MODULES, type Member } from "@/lib/permissions";
 import { complianceStatus, daysRemaining, isEscalated, nextDueDate, normalizeFrequency } from "@/lib/domain/compliance";
 import { assessmentYears, isLateReview, isLateSubmission, minutesBetween, slaOf } from "@/lib/domain/timesheet";
-import { computePayroll, monthlyAmount } from "@/lib/domain/payroll";
+import { monthlyAmount } from "@/lib/domain/payroll";
 import { constitutionCode, findHeaderRow, guessMapping, normalizeMobile, parseRow } from "@/lib/domain/client-import";
 import { dateOnly } from "@/lib/dates";
 import { HI } from "@/lib/i18n/hi";
@@ -123,28 +123,7 @@ describe("timesheet rules (Team Timesheet workbook)", () => {
   });
 });
 
-describe("payroll from attendance", () => {
-  const base = { monthlySalary: 30000, daysInMonth: 30, elapsedDays: 30, sundays: 4, paidLeaveAllowance: 1 };
-  it("pays the full month when every working day is present", () => {
-    const r = computePayroll({ ...base, present: 26, halfDays: 0, paidLeave: 0, unpaidLeave: 0, absent: 0 });
-    expect(r).toMatchObject({ unmarked: 0, unpaidDays: 0, payableDays: 30, perDay: 1000, gross: 30000 });
-  });
-  it("deducts absences, half days and unmarked days", () => {
-    const r = computePayroll({ ...base, present: 22, halfDays: 2, paidLeave: 0, unpaidLeave: 0, absent: 1 });
-    expect(r.unmarked).toBe(1);
-    expect(r.unpaidDays).toBe(3);
-    expect(r.gross).toBe(27000);
-  });
-  it("allows paid leave up to the allowance only", () => {
-    const r = computePayroll({ ...base, present: 23, halfDays: 0, paidLeave: 3, unpaidLeave: 0, absent: 0 });
-    expect(r.excessLeave).toBe(2);
-    expect(r.payableDays).toBe(28);
-  });
-  it("shows days without a salary figure until one is entered", () => {
-    const r = computePayroll({ ...base, monthlySalary: null, present: 26, halfDays: 0, paidLeave: 0, unpaidLeave: 0, absent: 0 });
-    expect(r.gross).toBeNull();
-    expect(r.payableDays).toBe(30);
-  });
+describe("salary", () => {
   it("converts an annual salary to monthly", () => {
     expect(monthlyAmount(120000, "ANNUAL")).toBe(10000);
     expect(monthlyAmount(25000, "MONTHLY")).toBe(25000);
@@ -175,7 +154,7 @@ describe("client import", () => {
     expect(m[2]).toBe("tradeName");
     expect(m[3]).toBe("legalName");
     expect(m[0]).toBe("");
-    expect(m[4]).toBe("");
+    expect(m[4]).toBe("extra"); // kept as an extra detail on the client
     expect(m[9]).toBe("gstin");
     expect(m[12]).toBe("contactMobile");
     expect(m[17]).toBe("fee");

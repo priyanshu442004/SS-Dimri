@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { parseForm, safeAction, zCheckbox, zInt, zIsoDate, zOptionalText, zRequiredText, type ActionState } from "@/lib/actions";
+import { parseForm, safeAction, zInt, zIsoDate, zOptionalText, zRequiredText, type ActionState } from "@/lib/actions";
 import { dateOnly } from "@/lib/dates";
 import { actionContext } from "@/lib/session";
+import { addHoliday, holidaySchema, removeHoliday } from "@/lib/services/office-rules";
 import { audit } from "@/lib/services/audit";
 import { hasFile, storeUpload } from "@/lib/services/files";
 import { gstinSchema, intlMobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
@@ -110,16 +111,22 @@ export async function uploadLeavePolicyAction(_p: ActionState, fd: FormData): Pr
 }
 
 const hhmm = z.string().regex(/^\d{2}:\d{2}$/, "HH:MM");
+const toMin = (v: string) => Number(v.slice(0, 2)) * 60 + Number(v.slice(3));
 const policySchema = z.object({
+  officeName: z.string().trim().min(2, "Name the office").max(80),
   officeStart: hhmm, reportingGraceUntil: hhmm, lunchStart: hhmm, lunchEnd: hhmm, officeEnd: hhmm, leavingGraceUntil: hhmm, halfDayIfLeavingBefore: hhmm,
-  markOutReminderAt: hhmm.optional(),
-  requiredMinutes: zInt(60, 1440), onsiteRequiredMinutes: zInt(60, 1440), reducedRequiredMinutes: zInt(60, 1440),
-  farClientEarlyMonthMinutes: zInt(60, 1440), farClientEarlyMonthUntilDay: zInt(1, 31),
-  lateArrivalsPerHalfDay: zInt(1, 31), lateGracePerMonth: zInt(0, 31),
-  overtimeMode: z.enum(["ACTUAL_MINUTES", "SLABS"]), overtimeMinutesPerDay: zInt(60, 1440),
+  markOutReminderAt: hhmm.optional(), autoAbsentAt: hhmm, morningPlanBy: hhmm,
+  onsiteRequiredMinutes: zInt(60, 1440),
+  lateArrivalsPerHalfDay: zInt(1, 31), lateGracePerMonth: zInt(0, 31), veryLateAfterMinutes: zInt(15, 600),
+  overtimeMinutesPerDay: zInt(60, 1440),
   paidLeavesPerMonth: z.coerce.number().min(0).max(31), plannedLeaveNoticeDays: zInt(0, 365),
-  policyConfirmed: zCheckbox.optional(),
-});
+  noLeaveBonusDays: z.coerce.number().min(0).max(31), unrequestedAbsenceDays: z.coerce.number().min(1).max(5),
+  eodPenaltyRupees: zInt(0, 100_000), leadPenaltyRupees: zInt(0, 100_000),
+})
+  // The times must follow each other through the day, or every rule built on them misbehaves.
+  .refine((v) => toMin(v.officeStart) < toMin(v.reportingGraceUntil) && toMin(v.reportingGraceUntil) < toMin(v.autoAbsentAt), { message: "Office start, grace and the absent time must be in that order", path: ["autoAbsentAt"] })
+  .refine((v) => toMin(v.lunchStart) < toMin(v.lunchEnd), { message: "Lunch must end after it starts", path: ["lunchEnd"] })
+  .refine((v) => toMin(v.halfDayIfLeavingBefore) <= toMin(v.officeEnd) && toMin(v.officeEnd) <= toMin(v.leavingGraceUntil), { message: "Half-day time, office end and overtime start must be in that order", path: ["leavingGraceUntil"] });
 
 export async function savePolicyAction(_p: ActionState, fd: FormData): Promise<ActionState> {
   const parsed = parseForm(policySchema, fd);
@@ -129,13 +136,33 @@ export async function savePolicyAction(_p: ActionState, fd: FormData): Promise<A
     await prisma.$transaction(async (tx) => {
       await tx.attendancePolicy.upsert({
         where: { organizationId: ctx.organization.id },
-        update: { ...parsed.data, policyConfirmed: !!parsed.data.policyConfirmed },
-        create: { ...parsed.data, policyConfirmed: !!parsed.data.policyConfirmed, organizationId: ctx.organization.id },
+        update: { ...parsed.data, overtimeMode: "ACTUAL_MINUTES", policyConfirmed: true },
+        create: { ...parsed.data, overtimeMode: "ACTUAL_MINUTES", policyConfirmed: true, organizationId: ctx.organization.id },
       });
-      await audit(tx, ctx, "attendance_policy.updated", "organization", ctx.organization.id, { overtimeMode: parsed.data.overtimeMode, confirmed: !!parsed.data.policyConfirmed });
+      await audit(tx, ctx, "attendance_policy.updated", "organization", ctx.organization.id);
     });
     revalidatePath("/app/settings");
-    return { ok: true, message: "Policy saved." };
+    return { ok: true, message: "Policy saved. Staff are asked to read and accept the updated rules." };
+  });
+}
+
+export async function addHolidayAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(holidaySchema, fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const ctx = await actionContext("org.manage");
+    await addHoliday(ctx, parsed.data);
+    revalidatePath("/app/settings");
+    return { ok: true, message: `${parsed.data.name} added.` };
+  });
+}
+
+export async function removeHolidayAction(id: string): Promise<ActionState> {
+  return safeAction(async () => {
+    const ctx = await actionContext("org.manage");
+    const name = await removeHoliday(ctx, id);
+    revalidatePath("/app/settings");
+    return { ok: true, message: `${name} removed.` };
   });
 }
 

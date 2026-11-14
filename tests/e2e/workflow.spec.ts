@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { addForgottenMarkOut, days, disconnect, expireInvitation, makeRemindersDue, raiseLicenceLimit, setAccountAge } from "./db";
+import { addForgottenMarkOut, days, disconnect, expireInvitation, makeRemindersDue, raiseLicenceLimit, relaxAttendanceCutoff, setAccountAge } from "./db";
 import { buildXlsx, readFirstSheet } from "../../src/lib/xlsx";
 
 // Full walk-through against the real app and database. Creates an organization
@@ -50,6 +50,12 @@ async function pick(scope: Page | Locator, label: string, name: string, typed = 
 }
 
 /** One Team Daily Work Log row: the workbook's mandatory columns, and whatever else is given. */
+/** Office rule 2: mark in with the work location; the browser's location is granted by the config. */
+async function markIn(page: Page) {
+  await page.getByRole("radio", { name: "Office", exact: true }).check();
+  await page.getByRole("button", { name: "Mark in" }).click();
+}
+
 async function logWork(page: Page, o: { client?: string; ref?: string; type: string; bank?: string; hours?: string; minutes?: string; details?: string; txns?: string; clientPending?: string; teamPending?: string; status?: string }) {
   if (o.ref) await page.getByLabel("Tracker Ref No.").selectOption({ label: o.ref });
   else await pick(page, "Client", o.client!);
@@ -630,18 +636,21 @@ test("task: maker/checker cycle with waiting state; team member cannot cancel or
 });
 
 test("team member: attendance with location, timesheet, pending item and day report", async ({ page }) => {
+  // The ERP marks people absent at 12:00 (office rule 3); move the test firm's cut-off so the suite runs at any hour.
+  await relaxAttendanceCutoff(owner.email);
   await signIn(page, staff.email, staff.password);
   await page.goto("/app/attendance");
-  await page.getByRole("button", { name: "Mark in" }).click();
+  await markIn(page);
   await expect(page.getByText(/Marked in/)).toBeVisible();
 
   await page.goto("/app/timesheet");
   // Staff see the Team Daily Work Log's three sheets, not the tracker.
   const sections = page.getByRole("navigation", { name: "Sections" });
-  for (const name of ["Daily Log", "Day Report", "Pending Tracker"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
+  for (const name of ["Plan & EOD report", "Daily Log", "Day Report", "Pending Tracker"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
   await expect(sections.getByRole("link", { name: "Tracker", exact: true })).toHaveCount(0);
-  await page.goto("/app/timesheet?tab=dashboard"); // a staff member asking for a team view still gets the daily log
+  await page.goto("/app/timesheet?tab=dashboard"); // a staff member asking for a team view gets their own plan & EOD
   await expect(page.getByRole("heading", { name: "Team workload" })).toHaveCount(0);
+  await page.goto("/app/timesheet?tab=daily");
   // Bank work needs the bank name.
   await pick(page, "Client", clientName);
   await page.getByLabel("Type of work").selectOption({ label: "Bank Statement Posting" });
@@ -650,7 +659,7 @@ test("team member: attendance with location, timesheet, pending item and day rep
   await page.getByLabel("Or hours").fill("1");
   await page.getByRole("button", { name: "Add entry" }).click();
   await expect(page.getByText("Bank Name is required for bank and card work.")).toBeVisible();
-  await page.goto("/app/timesheet");
+  await page.goto("/app/timesheet?tab=daily");
   await page.getByLabel("Place of work").selectOption("Client Office");
   await logWork(page, { client: clientName, type: "Bank Statement Posting", bank: "HDFC Bank", txns: "120", hours: "3", minutes: "30" });
 
@@ -1049,13 +1058,13 @@ test("point 2b a peon or driver reaches only attendance and payroll, in the menu
   await expect(page.getByText(clientName)).toHaveCount(0);
   // What they do have works.
   await page.goto("/app/attendance");
-  await page.getByRole("button", { name: "Mark in" }).click();
+  await markIn(page);
   await expect(page.getByText(/Marked in/)).toBeVisible();
   await page.goto("/app/payroll");
   await expect(page.getByRole("heading", { name: /Payslip/ })).toBeVisible();
   await expect(page.getByRole("link", { name: "Team payroll" })).toHaveCount(0);
   await page.goto("/app/payroll?tab=team");
-  await expect(page.getByRole("heading", { name: "Enter or change a salary" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Fix or change a salary" })).toHaveCount(0);
   expect((await page.request.get("/app/payroll/export")).status()).toBe(404);
   expect((await page.request.get("/app/timesheet/export")).status()).toBe(404);
   expect((await page.request.get("/app/attendance/export")).status()).toBe(404);
@@ -1064,7 +1073,7 @@ test("point 2b a peon or driver reaches only attendance and payroll, in the menu
 test("point 3b the owner marks their own attendance; points 4 export, filters and clickable counts", async ({ page }) => {
   await signIn(page, owner.email, owner.password);
   await page.goto("/app/attendance");
-  await page.getByRole("button", { name: "Mark in" }).click();
+  await markIn(page);
   await expect(page.getByText(/Marked in/)).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: "Mark out" })).toBeVisible();
@@ -1112,7 +1121,7 @@ test("point 3b the owner marks their own attendance; points 4 export, filters an
 test("point 4 timesheet carries the workbook's fields, review roles, penalties and Excel export", async ({ browser }) => {
   const page = await (await browser.newContext()).newPage();
   await signIn(page, staff.email, staff.password);
-  await page.goto("/app/timesheet");
+  await page.goto("/app/timesheet?tab=daily");
   await page.getByText("More (optional)").click();
   await page.getByLabel("Resource type").selectOption("Dedicated");
   await page.getByLabel("Assessment year (AY)").selectOption("AY 2026-27");
@@ -1442,7 +1451,7 @@ test("round 2: workflow tracker ↔ daily log, client pending report, compliance
   // Sonu sees it in the timesheet and logs against the Ref No.; the client sent part of it.
   const sonu = await (await browser.newContext()).newPage();
   await signIn(sonu, staff.email, staff.password);
-  await sonu.goto("/app/timesheet");
+  await sonu.goto("/app/timesheet?tab=daily");
   const given = sonu.locator("tbody tr", { hasText: ref });
   await given.getByRole("link", { name: "Log work on this" }).click();
   await expect(sonu.getByRole("heading", { name: new RegExp(`Log work on ${ref}`) })).toBeVisible();
@@ -1454,7 +1463,7 @@ test("round 2: workflow tracker ↔ daily log, client pending report, compliance
   await sonu.getByRole("button", { name: "Add entry" }).click();
   await expect(sonu.getByText("Entry added.")).toBeVisible();
   // Work logged without a Ref No. arrives in the tracker as new.
-  await sonu.goto("/app/timesheet");
+  await sonu.goto("/app/timesheet?tab=daily");
   await logWork(sonu, { client: clientName, type: "GST Work", hours: "1", teamPending: `Reconcile ITC ${tag}` });
   await sonu.goto("/app/timesheet?tab=mine");
   await expect(sonu.getByText(`Reconcile ITC ${tag}`)).toBeVisible();
@@ -1703,19 +1712,15 @@ test("feedback 12 Nov: photo attendance by a senior, photo check, lunch, client 
   await expect(member.getByText("You have not marked out yet").first()).toBeVisible();
   await member.goto("/app/attendance");
   await expect(member.getByText(/Remember to mark out before you leave/)).toBeVisible();
-  // The forgotten day is reported to the owner, who fixes it in one go.
+  // The forgotten day is reported to the owner. Attendance is system-driven (office rule 1):
+  // nobody can enter the time out by hand, so there is no Fix and no correction form.
   await owner1.goto("/app/notifications");
   await owner1.getByText(/No time out: Ramu Peon/).first().click();
   await expect(owner1).toHaveURL(/status=NO_OUT/);
   const missedRow = owner1.locator("#attendance-list tbody tr", { hasText: "Ramu Peon" });
-  await missedRow.getByRole("link", { name: "Fix" }).click();
-  await expect(owner1.getByText("Enter the time out for this day.")).toBeVisible();
-  await expect(owner1.getByLabel("Time in")).toHaveValue("09:35");
-  await owner1.getByLabel("Time out").fill("18:40");
-  await owner1.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(owner1.getByText(/Attendance saved/)).toBeVisible();
-  await owner1.reload();
-  await expect(owner1.locator("#attendance-list tbody tr", { hasText: "Ramu Peon" })).toHaveCount(0);
+  await expect(missedRow.getByText("No time out")).toBeVisible();
+  await expect(missedRow.getByRole("link", { name: "Fix" })).toHaveCount(0);
+  await expect(owner1.getByRole("heading", { name: "Record or correct attendance" })).toHaveCount(0);
   // Back to the default, so later tests are not affected.
   await owner1.goto("/app/settings?tab=policy");
   await owner1.getByLabel("Remind to mark out at").fill("19:00");

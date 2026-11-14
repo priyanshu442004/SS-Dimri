@@ -4,15 +4,17 @@ import { teamAnalytics } from "@/lib/services/analytics";
 import { TeamCharts } from "../chart-sections";
 import { requireCapability } from "@/lib/session";
 import { leadOverview, myOverview } from "@/lib/services/dashboard";
-import { DayReportsReceived, Deadlines, Greeting, LeadStats, MyDay, ReviewQueue, StatutoryDue, Workload } from "../dashboard-sections";
+import { DayReportsReceived, Deadlines, Greeting, LeadStats, MyDay, ReviewQueue, StatutoryDue, TeamToday, Workload } from "../dashboard-sections";
+import { teamToday } from "@/lib/services/team-today";
 
 export default async function SeniorDashboard() {
   const ctx = await requireCapability("tasks.review");
   const reportees = await prisma.employeeReportingRelationship.findMany({ where: { managerId: ctx.employee?.id ?? NO_EMPLOYEE }, select: { employeeId: true } });
-  const [team, mine, charts] = await Promise.all([leadOverview(ctx, "team"), myOverview(ctx), teamAnalytics(ctx, reportees.map((r) => r.employeeId))]);
+  const [team, mine, charts, today] = await Promise.all([leadOverview(ctx, "team"), myOverview(ctx), teamAnalytics(ctx, reportees.map((r) => r.employeeId)), teamToday(ctx)]);
   return (
     <>
       <Greeting ctx={ctx} subtitle="Senior dashboard — your team's work, reviews and your own day." />
+      {today && <TeamToday data={today} />}
       <LeadStats data={team} />
       <TeamCharts a={charts} scope="my team" />
       <div className="mb-8 grid gap-6 lg:grid-cols-3">

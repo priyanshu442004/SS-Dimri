@@ -1,8 +1,11 @@
 import "server-only";
+import { myPlanStatus } from "./daily-plans";
+import { getPolicy, hasAcceptedRules } from "./office-rules";
 import { NO_EMPLOYEE } from "@/lib/ids";
 import { prisma } from "@/lib/db";
 import { addDays, dateOnly, isoDateInTz } from "@/lib/dates";
 import { OPEN_STATUSES } from "@/lib/domain/task-workflow";
+import { describeSchedule, isPlannedOn } from "@/lib/domain/allocation-schedule";
 import type { AppContext } from "@/lib/session";
 
 export async function orgOverview(ctx: AppContext) {
@@ -11,7 +14,7 @@ export async function orgOverview(ctx: AppContext) {
   const now = new Date();
   const [
     clientsByStatus, onboardingPending, tasksOpen, tasksOverdue, tasksReview, employees, presentToday, leaveToday,
-    pendingByWith, duesOpen, timesheetToday, recent, activeAllocations,
+    pendingByWith, duesOpen, timesheetToday, recent, activeAllocations, clientsWithoutTeam,
   ] = await Promise.all([
     prisma.client.groupBy({ by: ["status"], where: { organizationId: org }, _count: true }),
     prisma.employee.count({ where: { organizationId: org, approvalStatus: { in: ["PENDING", "UNDER_REVIEW"] }, onboardingSubmittedAt: { not: null } } }),
@@ -26,6 +29,7 @@ export async function orgOverview(ctx: AppContext) {
     prisma.timesheetEntry.aggregate({ where: { organizationId: org, workDate: today }, _sum: { approxMinutes: true }, _count: true }),
     prisma.auditLog.findMany({ where: { organizationId: org }, orderBy: { createdAt: "desc" }, take: 8, include: { actor: { select: { name: true } } } }),
     prisma.teamAllocation.count({ where: { organizationId: org, status: "ACTIVE" } }),
+    prisma.client.count({ where: { organizationId: org, status: "ACTIVE", teamAllocations: { none: { status: { in: ["ACTIVE", "PLANNED"] } } } } }),
   ]);
   const clients = Object.fromEntries(clientsByStatus.map((c) => [c.status, c._count]));
   return {
@@ -45,6 +49,7 @@ export async function orgOverview(ctx: AppContext) {
     timesheetEntriesToday: timesheetToday._count,
     recent,
     activeAllocations,
+    clientsWithoutTeam,
   };
 }
 
@@ -125,9 +130,26 @@ export async function myOverview(ctx: AppContext) {
     prisma.dayReport.findFirst({ where: { reportingEmployeeId: me, reportDate: today }, select: { status: true } }),
     prisma.pendingItem.count({ where: { status: { not: "CLOSED" }, OR: [{ pendingWithEmployeeId: me }, { raisedByEmployeeId: me }] } }),
     prisma.teamAllocation.findMany({
-      where: { employeeId: me, status: "ACTIVE" },
-      select: { id: true, client: { select: { id: true, tradeName: true } }, startDate: true, endDate: true },
+      where: { employeeId: me, status: "ACTIVE", OR: [{ endDate: null }, { endDate: { gte: today } }] },
+      orderBy: { client: { tradeName: "asc" } },
+      select: { id: true, client: { select: { id: true, tradeName: true } }, startDate: true, endDate: true, weekDays: true, frequency: true, visitDays: true },
     }),
   ]);
-  return { tasks, attendance, timesheetMinutes: timesheet._sum.approxMinutes ?? 0, timesheetEntries: timesheet._count, dayReport, pending, allocations };
+  const tomorrow = addDays(today, 1);
+  const planned = allocations.map((a) => ({
+    ...a,
+    schedule: describeSchedule(a),
+    today: isPlannedOn(a, today),
+    tomorrow: (!a.endDate || a.endDate >= tomorrow) && isPlannedOn(a, tomorrow),
+  }));
+  // Clients planned for today come first.
+  planned.sort((x, y) => Number(y.today) - Number(x.today) || Number(y.tomorrow) - Number(x.tomorrow));
+  // Office rules: today's plan / EOD, and whether the person has accepted the current rules.
+  const [plan, policy, ack] = await Promise.all([
+    myPlanStatus(ctx),
+    getPolicy(ctx.organization.id),
+    ctx.employee ? prisma.employee.findUnique({ where: { id: me }, select: { rulesAcknowledgedAt: true } }) : Promise.resolve(null),
+  ]);
+  const rulesPending = !!ctx.employee && ctx.role !== "OWNER" && !hasAcceptedRules(ack?.rulesAcknowledgedAt ?? null, policy.row.updatedAt);
+  return { tasks, attendance, timesheetMinutes: timesheet._sum.approxMinutes ?? 0, timesheetEntries: timesheet._count, dayReport, pending, allocations: planned, plan, rulesPending, morningPlanBy: policy.row.morningPlanBy, eodPenalty: policy.row.eodPenaltyRupees };
 }

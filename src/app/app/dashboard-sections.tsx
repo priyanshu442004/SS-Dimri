@@ -8,6 +8,7 @@ import { formatDue, upcomingDeadlines } from "@/lib/deadlines";
 import { isTaskOverdue } from "@/lib/domain/derived";
 import type { AppContext } from "@/lib/session";
 import type { leadOverview, myOverview } from "@/lib/services/dashboard";
+import type { teamToday } from "@/lib/services/team-today";
 import { EmptyArt, type EmptyKind } from "@/components/empty-art";
 import { Avatar, Badge, Card, Stat, StatusBadge } from "@/components/ui";
 
@@ -198,21 +199,69 @@ export function LeadStats({ data }: { data: Lead }) {
 }
 
 const QUICK = [
+  { href: "/app/attendance", label: "Attendance", hint: "Mark in / out with your location", icon: CalendarCheck2, tone: "#dcece2" },
+  { href: "/app/timesheet?tab=plan", label: "Plan & EOD report", hint: "Morning plan, then the day's EOD", icon: NotebookPen, tone: "#fbeccb" },
+  { href: "/app/attendance?tab=requests", label: "Inform my Team Lead", hint: "Late, can't come, leave early, overtime", icon: Hourglass, tone: "#dde7f3" },
   { href: "/app/tasks/new", label: "New task", hint: "Type it or record a voice note", icon: ListChecks, tone: "#f3e3dd" },
-  { href: "/app/attendance", label: "Attendance", hint: "Mark in / out", icon: CalendarCheck2, tone: "#dcece2" },
-  { href: "/app/timesheet?tab=daily", label: "Add timesheet entry", hint: "Log today's work", icon: NotebookPen, tone: "#fbeccb" },
-  { href: "/app/day-reports", label: "Day report", hint: "Summarise your day", icon: FileText, tone: "#dde7f3" },
 ];
+
+/** A Team Lead's (or the firm's) day under the office rules: each tile opens the list to act on. */
+export function TeamToday({ data }: { data: NonNullable<Awaited<ReturnType<typeof teamToday>>> }) {
+  return (
+    <section className="mb-8">
+      <h2 className="mb-3 font-editorial text-2xl">{data.firmWide ? "Firm today" : "My team today"} <span className="font-sans text-sm text-muted">· office rules</span></h2>
+      {(data.escalate > 0 || data.staying > 0) && (
+        <div className="mb-3 space-y-2">
+          {data.escalate > 0 && <Link href="/app/timesheet?tab=team-plans" className="block rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger hover:underline"><strong>{data.escalate} EOD report{data.escalate === 1 ? "" : "s"} not filed</strong> — escalate today, or a ₹{data.leadPenalty} fine applies to the Team Lead.</Link>}
+          {data.staying > 0 && <Link href="/app/attendance?tab=team&status=STAYING" className="block rounded-xl border border-marigold/40 bg-warn-bg px-4 py-3 text-sm text-warn hover:underline"><strong>{data.staying} still in</strong> after office hours without approved overtime — you are answerable for team members working late.</Link>}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Stat label="In today" value={`${data.present} / ${data.team}`} hint={data.off ? "Sunday / holiday" : `${data.onLeave} on leave`} href="/app/attendance?tab=team" icon={<CalendarCheck2 />} tone="ok" />
+        <Stat label="Not in yet" value={data.notIn} hint={`Absent automatically at ${data.absentAt}`} href="/app/attendance?tab=team&status=NOT_MARKED" icon={<Clock />} tone={data.notIn ? "warn" : "neutral"} />
+        <Stat label="Late today" value={data.late} hint={data.absent ? `${data.absent} absent` : undefined} href="/app/attendance?tab=team&status=LATE" icon={<Hourglass />} tone={data.late ? "warn" : "neutral"} />
+        <Stat label="Morning plans missing" value={data.noPlan} hint={data.planDue ? `Due by ${data.morningPlanBy}` : `Due by ${data.morningPlanBy} (not yet)`} href="/app/timesheet?tab=team-plans" icon={<NotebookPen />} tone={data.noPlan && data.planDue ? "danger" : "neutral"} />
+        <Stat label="Plans to approve" value={data.plansToApprove} href="/app/timesheet?tab=team-plans" icon={<ClipboardCheck />} tone={data.plansToApprove ? "info" : "neutral"} />
+        <Stat label="Overtime / early-leave requests" value={data.requests} href="/app/attendance?tab=requests" icon={<Inbox />} tone={data.requests ? "info" : "neutral"} />
+        <Stat label="Leave requests" value={data.leaveWaiting} href="/app/attendance?tab=leave" icon={<CalendarClock />} tone={data.leaveWaiting ? "info" : "neutral"} />
+        <Stat label="EOD to escalate" value={data.escalate} href="/app/timesheet?tab=team-plans" icon={<Flag />} tone={data.escalate ? "danger" : "ok"} />
+      </div>
+    </section>
+  );
+}
 
 export function MyDay({ ctx, data, withDue }: { ctx: AppContext; data: Mine; withDue?: boolean }) {
   const tz = ctx.organization.timezone;
   const marked = !!data.attendance?.timeIn;
+  const absentByErp = data.attendance?.status === "ABSENT" && !marked;
+  const plan = data.plan?.today;
+  const prev = data.plan?.previous;
   return (
     <>
+      {(data.rulesPending || prev) && (
+        <div className="mb-4 space-y-2">
+          {prev && (
+            <Link href={`/app/timesheet?tab=plan&date=${prev.iso}`} className="block rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger hover:underline">
+              {prev.view.state === "MISSED"
+                ? <>Your EOD report for {formatDate(new Date(`${prev.iso}T00:00:00Z`))} was not filed in time (₹{data.eodPenalty} fine). File it now so your Team Lead has the record.</>
+                : <><strong>EOD report for {formatDate(new Date(`${prev.iso}T00:00:00Z`))} still due</strong> — file it before {formatDateTime(prev.view.deadlines.fileBy, tz)} to avoid a ₹{data.eodPenalty} fine.</>}
+            </Link>
+          )}
+          {data.rulesPending && <Link href="/app/rules" className="block rounded-xl border border-info/30 bg-info-bg px-4 py-3 text-sm text-info hover:underline">Please read and accept the <strong>Leave, Timing and Office Decorum rules</strong>.</Link>}
+        </div>
+      )}
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Attendance today" value={marked ? (data.attendance!.timeOut ? "Done" : `In ${formatTime(data.attendance!.timeIn, tz)}`) : "Not marked"} href="/app/attendance" icon={<CalendarCheck2 />} tone={marked ? "ok" : "warn"} />
-        <Stat label="Time logged today" value={minutesToHhmm(data.timesheetMinutes)} hint={`${data.timesheetEntries} entries`} href="/app/timesheet?tab=daily" icon={<Clock />} />
-        <Stat label="Day report" value={data.dayReport ? data.dayReport.status.charAt(0) + data.dayReport.status.slice(1).toLowerCase() : "Not started"} href="/app/day-reports" icon={<FileText />} tone={data.dayReport ? "ok" : "neutral"} />
+        <Stat label="Attendance today" value={absentByErp ? "Absent" : marked ? (data.attendance!.timeOut ? "Done" : `In ${formatTime(data.attendance!.timeIn, tz)}`) : "Not marked"} hint={absentByErp ? "Marked by the ERP" : marked ? undefined : "Mark in with your location"} href="/app/attendance" icon={<CalendarCheck2 />} tone={absentByErp ? "danger" : marked ? "ok" : "warn"} />
+        {plan ? (
+          <Stat label={`Morning plan (by ${data.morningPlanBy})`} value={plan.plan?.planSubmittedAt ? (plan.plan.approvedAt ? "Approved" : "Sent") : "Not sent"} hint={plan.plan?.planSubmittedAt ? (plan.planLate ? "Sent late" : `at ${formatTime(plan.plan.planSubmittedAt, tz)}`) : "Enter today's tasks"} href="/app/timesheet?tab=plan" icon={<NotebookPen />} tone={plan.plan?.planSubmittedAt ? (plan.planLate ? "warn" : "ok") : new Date() > plan.planDueBy ? "danger" : "warn"} />
+        ) : (
+          <Stat label="Time logged today" value={minutesToHhmm(data.timesheetMinutes)} hint={`${data.timesheetEntries} entries`} href="/app/timesheet?tab=daily" icon={<Clock />} />
+        )}
+        {plan ? (
+          <Stat label="EOD report today" value={plan.plan?.eodSubmittedAt ? "Filed" : "Due"} hint={plan.plan?.eodSubmittedAt ? undefined : `By ${formatDateTime(plan.deadlines.fileBy, tz)}`} href="/app/timesheet?tab=plan" icon={<FileText />} tone={plan.plan?.eodSubmittedAt ? "ok" : "neutral"} />
+        ) : (
+          <Stat label="Day report" value={data.dayReport ? data.dayReport.status.charAt(0) + data.dayReport.status.slice(1).toLowerCase() : "Not started"} href="/app/day-reports" icon={<FileText />} tone={data.dayReport ? "ok" : "neutral"} />
+        )}
         <Stat label="My pending items" value={data.pending} href="/app/pending" icon={<Flag />} tone={data.pending ? "warn" : "neutral"} />
       </div>
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
@@ -251,7 +300,12 @@ export function MyDay({ ctx, data, withDue }: { ctx: AppContext; data: Mine; wit
                 {data.allocations.map((a) => (
                   <li key={a.id}>
                     <Link href={`/app/clients/${a.client.id}`} className="flex items-center gap-2.5 rounded-lg px-1 py-1.5 transition-colors hover:bg-paper">
-                      <Avatar name={a.client.tradeName} size="sm" /> <span className="truncate">{a.client.tradeName}</span>
+                      <Avatar name={a.client.tradeName} size="sm" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{a.client.tradeName}</span>
+                        <span className="block truncate text-xs text-muted">{a.schedule}</span>
+                      </span>
+                      {a.today ? <Badge tone="ok">Today</Badge> : a.tomorrow ? <Badge tone="info">Tomorrow</Badge> : null}
                     </Link>
                   </li>
                 ))}

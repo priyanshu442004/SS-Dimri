@@ -4,20 +4,19 @@ import { prisma } from "@/lib/db";
 import { BusinessRuleError } from "@/lib/actions";
 import { dateOnly } from "@/lib/dates";
 import {
-  constitutionCode, findHeaderRow, guessMapping, IMPORT_FIELDS, mergeRowsByPan, parseRow, SECRET_FIELDS,
+  constitutionCode, EXTRA_COLUMN, findHeaderRow, guessMapping, IMPORT_FIELDS, mergeRowsByPan, parseRow, SECRET_FIELDS,
   type ColumnMapping, type ImportField, type MergedRow, type ParsedClient,
 } from "@/lib/domain/client-import";
 import { can } from "@/lib/permissions";
 import { encryptField } from "@/lib/security/encryption";
 import type { AppContext } from "@/lib/session";
-import { readFirstSheetNumbered, XlsxReadError } from "@/lib/xlsx";
+import { readTableFile, TableFileError } from "@/lib/table-file";
 import { audit } from "./audit";
 import { complianceChoices, matchDepartment } from "./client-compliances";
 import { nextCode } from "./codes";
 import { notifyRoles } from "./notifications";
 
 const MAX_ROWS = 2000;
-const MAX_BYTES = 5 * 1024 * 1024;
 
 type Analysed = MergedRow & { duplicateOf?: string; existingId?: string; isFirm?: boolean };
 
@@ -37,14 +36,11 @@ export type ImportPreview = {
 };
 
 async function rowsFromFile(file: File) {
-  if (file.size > MAX_BYTES) throw new BusinessRuleError("The file is larger than 5 MB.");
-  if (!/\.xlsx$/i.test(file.name)) throw new BusinessRuleError("Upload an Excel .xlsx file. In Excel: File → Save As → Excel Workbook (.xlsx).");
   try {
-    const rows = readFirstSheetNumbered(new Uint8Array(await file.arrayBuffer()));
-    if (rows.length < 2) throw new BusinessRuleError("No client rows were found on the first sheet.");
-    return rows;
+    // The firm's workbook has the clients on the "Client Master" tab; otherwise the first sheet.
+    return await readTableFile(file, { preferSheet: /^client/i, what: "client" });
   } catch (e) {
-    if (e instanceof XlsxReadError) throw new BusinessRuleError(e.message);
+    if (e instanceof TableFileError) throw new BusinessRuleError(e.message);
     throw e;
   }
 }
@@ -53,6 +49,7 @@ function sanitizeMapping(raw: unknown, width: number, fallback: ColumnMapping): 
   if (!Array.isArray(raw) || raw.length !== width) return fallback;
   const seen = new Set<string>();
   return raw.map((v) => {
+    if (v === EXTRA_COLUMN) return EXTRA_COLUMN;
     if (typeof v !== "string" || !(v in IMPORT_FIELDS) || seen.has(v)) return "";
     seen.add(v);
     return v as ImportField;
@@ -71,11 +68,11 @@ async function analyse(ctx: AppContext, file: File, requestedMapping?: unknown) 
   const body = bodyRows.map((r) => r.cells);
   if (body.length > MAX_ROWS) throw new BusinessRuleError(`The sheet has ${body.length} rows; import up to ${MAX_ROWS} at a time.`);
   const mapping = sanitizeMapping(requestedMapping, header.length, guessMapping(header));
-  const parsed = body.map((r, i) => parseRow(r, mapping, bodyRows[i].n));
+  const parsed = body.map((r, i) => parseRow(r, mapping, bodyRows[i].n, header));
   if (!mapping.includes("tradeName")) return { header, mapping, results: parsed as Analysed[] };
 
   const results: Analysed[] = mergeRowsByPan(parsed);
-  const org = await prisma.organization.findUniqueOrThrow({ where: { id: ctx.organization.id }, select: { tradeName: true, legalName: true, pan: true } });
+  const org = await prisma.organization.findUniqueOrThrow({ where: { id: ctx.organization.id }, select: { tradeName: true, legalName: true, pan: true, tan: true } });
   const firmNames = new Set([org.tradeName, org.legalName].filter((x): x is string => !!x).map(bareName));
 
   // Already registered: same client code, PAN or GSTIN; by name only when the row has no PAN
@@ -90,10 +87,13 @@ async function analyse(ctx: AppContext, file: File, requestedMapping?: unknown) 
   const byName = new Map<string, typeof existing>();
   for (const c of existing) byName.set(c.tradeName.trim().toLowerCase(), [...(byName.get(c.tradeName.trim().toLowerCase()) ?? []), c]);
 
+  // The firm's own TAN: saved on the firm, or on the sheet's row with the firm's PAN. A row with that
+  // TAN and no PAN of its own is the firm as a TDS deductor (e.g. "Sunil Dimri" in the Client Master).
+  const firmTans = new Set([org.tan, ...results.filter((r) => org.pan && r.values.pan === org.pan).map((r) => r.values.tan)].filter((t): t is string => !!t).map((t) => t.toUpperCase()));
   for (const r of results) {
     if (r.errors.length || r.mergedInto) continue;
     const v = r.values;
-    if ((v.pan && org.pan && v.pan === org.pan) || firmNames.has(bareName(v.tradeName ?? ""))) {
+    if ((v.pan && org.pan && v.pan === org.pan) || (!v.pan && v.tan && firmTans.has(v.tan)) || firmNames.has(bareName(v.tradeName ?? ""))) {
       r.isFirm = true;
       r.errors.push("This row is the firm itself, not a client");
       continue;
@@ -157,6 +157,7 @@ function masterData(v: ParsedClient) {
     gstPasswordEncrypted: secret(v.gstPassword),
     incomeTaxPasswordEncrypted: secret(v.incomeTaxPassword),
     tracesPasswordEncrypted: secret(v.tracesPassword),
+    extraFields: v.extra && Object.keys(v.extra).length ? v.extra : undefined,
   };
 }
 
@@ -297,9 +298,14 @@ async function fillClient(ctx: AppContext, clientId: string, v: ParsedClient, de
   const data: Prisma.ClientUpdateInput = {};
   const master = masterData(v);
   const blank = <K extends keyof typeof c>(k: K) => c[k] === null || c[k] === undefined || c[k] === "";
-  for (const [k, val] of Object.entries({ legalName: v.legalName?.slice(0, 200), address: v.address?.slice(0, 1000), pan: v.pan, tan: v.tan, ...master })) {
+  const { extraFields, ...plain } = master;
+  for (const [k, val] of Object.entries({ legalName: v.legalName?.slice(0, 200), address: v.address?.slice(0, 1000), pan: v.pan, tan: v.tan, ...plain })) {
     if (val !== undefined && blank(k as keyof typeof c)) (data as Record<string, unknown>)[k] = val;
   }
+  // Extra columns: add the ones the client does not have yet; saved ones are kept.
+  const savedExtra = (c.extraFields && typeof c.extraFields === "object" && !Array.isArray(c.extraFields) ? c.extraFields : {}) as Record<string, string>;
+  const newExtra = Object.entries(extraFields ?? {}).filter(([k]) => !(k in savedExtra));
+  if (newExtra.length) data.extraFields = { ...savedExtra, ...Object.fromEntries(newExtra) };
   if (constitution && !c.constitutionId) data.constitution = { connect: { id: constitution } };
   const newDepts = depts.filter((d) => !c.departments.includes(d));
   if (newDepts.length) data.departments = [...c.departments, ...newDepts];

@@ -230,6 +230,19 @@ enum SeniorityLevel {
   JUNIOR
   MID_LEVEL
   SENIOR
+  TEAM_LEADER
+  TRAINEE
+}
+
+/// How often a team member goes to (or works on) an allocated client (Team Allocation sheet).
+enum AllocationFrequency {
+  DAILY
+  THREE_A_WEEK
+  TWICE_A_WEEK
+  ONCE_A_WEEK
+  TWICE_A_MONTH
+  MONTHLY
+  AS_REQUIRED
 }
 
 enum AllocationStatus {
@@ -502,36 +515,39 @@ model User {
   accounts    Account[]
   memberships OrganizationMembership[]
 
-  approvedClients          Client[]               @relation("ClientApprovedBy")
-  rejectedClients          Client[]               @relation("ClientRejectedBy")
-  createdClients           Client[]               @relation("ClientCreatedBy")
-  approvedEmployees        Employee[]             @relation("EmployeeApprovedBy")
-  rejectedEmployees        Employee[]             @relation("EmployeeRejectedBy")
-  uploadedFiles            StoredFile[]
-  auditLogs                AuditLog[]
-  createdAllocations       TeamAllocation[]
-  createdTasks             Task[]                 @relation("TaskCreatedBy")
-  taskActivities           TaskActivity[]
-  createdReminders         TaskReminder[]
-  assignedTasks            TaskAssignment[]       @relation("TaskAssignedBy")
-  decidedLeaveRequests     LeaveRequest[]         @relation("LeaveDecidedBy")
-  recordedAttendance       AttendanceRecord[]     @relation("AttendanceRecordedBy")
-  createdPendingItems      PendingItem[]
-  generatedClientReport    ClientReport[]
-  createdSalaryRecords     EmployeeSalaryRecord[]
-  createdDues              ClientDue[]
-  notifications            Notification[]
-  attendanceCorrections    AttendanceCorrection[]
-  followUps                FollowUp[]
-  reviewedTimesheets       TimesheetEntry[]       @relation("TimesheetReviewedBy")
-  createdObservations      ClientObservation[]    @relation("ObservationCreatedBy")
-  issuedLetters            EmployeeLetter[]       @relation("LetterIssuedBy")
-  createdComplianceEntries ComplianceEntry[]      @relation("ComplianceCreatedBy")
-  proxyAttendanceIn        AttendanceRecord[]     @relation("AttendanceInProxy")
-  proxyAttendanceOut       AttendanceRecord[]     @relation("AttendanceOutProxy")
-  reviewedAttendancePhotos AttendanceRecord[]     @relation("AttendancePhotoReviewedBy")
-  markedWorkerDays         DailyWorkerDay[]       @relation("WorkerDayMarkedBy")
-  paidWorkerDays           DailyWorkerDay[]       @relation("WorkerDayPaidBy")
+  approvedClients           Client[]               @relation("ClientApprovedBy")
+  rejectedClients           Client[]               @relation("ClientRejectedBy")
+  createdClients            Client[]               @relation("ClientCreatedBy")
+  approvedEmployees         Employee[]             @relation("EmployeeApprovedBy")
+  rejectedEmployees         Employee[]             @relation("EmployeeRejectedBy")
+  uploadedFiles             StoredFile[]
+  auditLogs                 AuditLog[]
+  createdAllocations        TeamAllocation[]
+  createdTasks              Task[]                 @relation("TaskCreatedBy")
+  taskActivities            TaskActivity[]
+  createdReminders          TaskReminder[]
+  assignedTasks             TaskAssignment[]       @relation("TaskAssignedBy")
+  decidedLeaveRequests      LeaveRequest[]         @relation("LeaveDecidedBy")
+  recordedAttendance        AttendanceRecord[]     @relation("AttendanceRecordedBy")
+  createdPendingItems       PendingItem[]
+  generatedClientReport     ClientReport[]
+  createdSalaryRecords      EmployeeSalaryRecord[]
+  createdDues               ClientDue[]
+  notifications             Notification[]
+  attendanceCorrections     AttendanceCorrection[]
+  followUps                 FollowUp[]
+  reviewedTimesheets        TimesheetEntry[]       @relation("TimesheetReviewedBy")
+  createdObservations       ClientObservation[]    @relation("ObservationCreatedBy")
+  issuedLetters             EmployeeLetter[]       @relation("LetterIssuedBy")
+  createdComplianceEntries  ComplianceEntry[]      @relation("ComplianceCreatedBy")
+  proxyAttendanceIn         AttendanceRecord[]     @relation("AttendanceInProxy")
+  proxyAttendanceOut        AttendanceRecord[]     @relation("AttendanceOutProxy")
+  reviewedAttendancePhotos  AttendanceRecord[]     @relation("AttendancePhotoReviewedBy")
+  markedWorkerDays          DailyWorkerDay[]       @relation("WorkerDayMarkedBy")
+  paidWorkerDays            DailyWorkerDay[]       @relation("WorkerDayPaidBy")
+  decidedAttendanceRequests AttendanceRequest[]    @relation("AttendanceRequestDecidedBy")
+  approvedDailyPlans        DailyPlan[]            @relation("DailyPlanApprovedBy")
+  escalatedDailyPlans       DailyPlan[]            @relation("DailyPlanEscalatedBy")
 
   @@map("users")
 }
@@ -713,6 +729,9 @@ model Organization {
   employeeLetters        EmployeeLetter[]
   clientVisits           ClientVisit[]
   dailyWorkers           DailyWorker[]
+  holidays               Holiday[]
+  attendanceRequests     AttendanceRequest[]
+  dailyPlans             DailyPlan[]
   dailyWorkerDays        DailyWorkerDay[]
 
   @@index([pan])
@@ -950,6 +969,7 @@ model Client {
   tasks                     Task[]
   timesheetEntries          TimesheetEntry[]
   clientVisits              ClientVisit[]
+  dailyPlanItems            DailyPlanItem[]
   pendingItems              PendingItem[]
   workCommitments           WorkCommitment[]
   reports                   ClientReport[]
@@ -970,6 +990,8 @@ model Client {
   dateOfBirth                DateTime?          @map("date_of_birth") @db.Date
   itFileNo                   String?            @map("it_file_no")
   masterRemark               String?            @map("master_remark") @db.Text
+  /// Columns of an imported sheet that have no field of their own, kept as { heading: value }.
+  extraFields                Json?              @map("extra_fields")
   /// Applicable departments: "GST", "Income Tax", "TDS", "Day Book"…
   departments                String[]           @default([])
   gstUserId                  String?            @map("gst_user_id")
@@ -1341,6 +1363,15 @@ model Employee {
   complianceEntries        ComplianceEntry[]    @relation("ComplianceResponsible")
   responsibleObservations  ClientObservation[]  @relation("ObservationResponsible")
   clientVisits             ClientVisit[]
+  attendanceRequests       AttendanceRequest[]
+  dailyPlans               DailyPlan[]
+
+  /// Client-site team (policy section 5): reporting time fixed by the Team Lead. Used when the
+  /// attendance profile is ONSITE; the working day then lasts onsite_required_minutes.
+  siteReportingTime   String?   @map("site_reporting_time") @db.VarChar(5)
+  siteName            String?   @map("site_name")
+  /// Read and accepted the Leave, Timing and Office Decorum rules (section 11 Declaration).
+  rulesAcknowledgedAt DateTime? @map("rules_acknowledged_at") @db.Timestamptz(3)
 
   @@unique([organizationId, temporaryEmployeeCode])
   @@unique([organizationId, permanentEmployeeCode])
@@ -1586,33 +1617,44 @@ model EmployeeMemo {
 /// Changes of allocation end the old row and create a new one that points
 /// back via replaces_allocation_id, preserving history.
 model TeamAllocation {
-  id                   String           @id @default(uuid(7)) @db.Uuid
-  organizationId       String           @map("organization_id") @db.Uuid
-  clientId             String           @map("client_id") @db.Uuid
-  clientServiceId      String?          @map("client_service_id") @db.Uuid
-  employeeId           String           @map("employee_id") @db.Uuid
+  id                   String               @id @default(uuid(7)) @db.Uuid
+  organizationId       String               @map("organization_id") @db.Uuid
+  clientId             String               @map("client_id") @db.Uuid
+  clientServiceId      String?              @map("client_service_id") @db.Uuid
+  employeeId           String               @map("employee_id") @db.Uuid
   /// Junior / Mid-level / Senior role on this allocation.
-  seniorityLevel       SeniorityLevel?  @map("seniority_level")
-  startDate            DateTime         @map("start_date") @db.Date
-  endDate              DateTime?        @map("end_date") @db.Date
+  seniorityLevel       SeniorityLevel?      @map("seniority_level")
+  startDate            DateTime             @map("start_date") @db.Date
+  endDate              DateTime?            @map("end_date") @db.Date
   /// Superseded by the first/second half hours below; kept so history is not lost.
-  allocationPercent    Int?             @map("allocation_percent")
+  allocationPercent    Int?                 @map("allocation_percent")
   /// Hours assigned in the first half (start of day to lunch). Both null = full day.
-  firstHalfHours       Decimal?         @map("first_half_hours") @db.Decimal(4, 2)
+  firstHalfHours       Decimal?             @map("first_half_hours") @db.Decimal(4, 2)
   /// Hours assigned in the second half (lunch to end of day).
-  secondHalfHours      Decimal?         @map("second_half_hours") @db.Decimal(4, 2)
+  secondHalfHours      Decimal?             @map("second_half_hours") @db.Decimal(4, 2)
   /// Dedicated / Shared / Backend Team (Team Timesheet workbook).
-  resourceType         String?          @map("resource_type")
+  resourceType         String?              @map("resource_type")
   /// Immediate reviewer of this person's timesheet for this client (Reviewer auto).
-  reportsToEmployeeId  String?          @map("reports_to_employee_id") @db.Uuid
+  reportsToEmployeeId  String?              @map("reports_to_employee_id") @db.Uuid
   /// Level-2 escalation contact for this client.
-  teamLeaderEmployeeId String?          @map("team_leader_employee_id") @db.Uuid
-  status               AllocationStatus @default(ACTIVE)
-  replacesAllocationId String?          @unique @map("replaces_allocation_id") @db.Uuid
-  changeReason         String?          @map("change_reason") @db.Text
-  createdById          String?          @map("created_by_id") @db.Uuid
-  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  teamLeaderEmployeeId String?              @map("team_leader_employee_id") @db.Uuid
+  /// Days of the week at this client: 1 = Mon … 6 = Sat. Empty = Mon–Sat.
+  weekDays             Int[]                @default([]) @map("week_days")
+  /// Daily, 3 days a week … Monthly, As required. Null = every working day (older allocations).
+  frequency            AllocationFrequency?
+  /// For twice a month / monthly: "5, 20", "7", "1st & 3rd Tue" or "Last working day".
+  visitDays            String?              @map("visit_days") @db.VarChar(80)
+  /// Yes = may share the same day and half with another client without a warning.
+  allowOverlap         Boolean              @default(false) @map("allow_overlap")
+  remark               String?              @db.Text
+  /// Columns of an imported sheet that have no field of their own, kept as { heading: value }.
+  extraFields          Json?                @map("extra_fields")
+  status               AllocationStatus     @default(ACTIVE)
+  replacesAllocationId String?              @unique @map("replaces_allocation_id") @db.Uuid
+  changeReason         String?              @map("change_reason") @db.Text
+  createdById          String?              @map("created_by_id") @db.Uuid
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   client             Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
@@ -1835,6 +1877,21 @@ model AttendanceRecord {
   /// One-time reminder claims ("you have not marked out" today; "missed time out" afterwards).
   markOutReminderSentAt   DateTime? @map("mark_out_reminder_sent_at") @db.Timestamptz(3)
   missedMarkOutNotifiedAt DateTime? @map("missed_mark_out_notified_at") @db.Timestamptz(3)
+
+  /// Leave, Timing and Office Decorum rules (14 Nov 2026).
+  /// Work location at check-in / check-out (section 2) and the client or place when not at the office.
+  workLocation        WorkLocation? @map("work_location")
+  timeOutWorkLocation WorkLocation? @map("time_out_work_location")
+  workPlace           String?       @map("work_place")
+  /// The schedule in force that day ("HH:MM"), so a later schedule change never re-scores past days.
+  scheduledStart      String?       @map("scheduled_start") @db.VarChar(5)
+  scheduledEnd        String?       @map("scheduled_end") @db.VarChar(5)
+  /// Set when the ERP marked the day Absent at the cut-off (section 3). Nobody can change it to Present.
+  autoAbsentAt        DateTime?     @map("auto_absent_at") @db.Timestamptz(3)
+  /// Lunch moved by the Team Lead for urgent work (section 7); still 30 minutes at most.
+  lunchShiftedTo      String?       @map("lunch_shifted_to") @db.VarChar(5)
+  /// One-time notice to the Team Lead: still in after 18:45 without approved overtime (section 8).
+  lateStayFlaggedAt   DateTime?     @map("late_stay_flagged_at") @db.Timestamptz(3)
 
   /// One record per employee per day (corrections update it; see attendance_corrections).
   @@unique([employeeId, attendanceDate])
@@ -2436,7 +2493,7 @@ model AttendancePolicy {
   reducedRequiredMinutes      Int          @default(510) @map("reduced_required_minutes")
   farClientEarlyMonthMinutes  Int          @default(510) @map("far_client_early_month_minutes")
   farClientEarlyMonthUntilDay Int          @default(15) @map("far_client_early_month_until_day")
-  lateArrivalsPerHalfDay      Int          @default(2) @map("late_arrivals_per_half_day")
+  lateArrivalsPerHalfDay      Int          @default(3) @map("late_arrivals_per_half_day")
   lateGracePerMonth           Int          @default(1) @map("late_grace_per_month")
   overtimeMode                OvertimeMode @default(ACTUAL_MINUTES) @map("overtime_mode")
   overtimeMinutesPerDay       Int          @default(540) @map("overtime_minutes_per_day")
@@ -2444,7 +2501,21 @@ model AttendancePolicy {
   plannedLeaveNoticeDays      Int          @default(15) @map("planned_leave_notice_days")
   /// From this time, people still marked in get a reminder to mark out.
   markOutReminderAt           String       @default("19:00") @map("mark_out_reminder_at") @db.VarChar(5)
-  policyConfirmed             Boolean      @default(false) @map("policy_confirmed")
+  policyConfirmed             Boolean      @default(true) @map("policy_confirmed")
+  /// Leave, Timing and Office Decorum rules (14 Nov 2026).
+  officeName                  String       @default("Office") @map("office_name")
+  /// Section 3: not marked in by this time, the ERP marks the day Absent.
+  autoAbsentAt                String       @default("12:00") @map("auto_absent_at") @db.VarChar(5)
+  /// Section 2: the morning plan is due by this time.
+  morningPlanBy               String       @default("10:30") @map("morning_plan_by") @db.VarChar(5)
+  /// Section 6: late by more than this (minutes) is a half day on its own.
+  veryLateAfterMinutes        Int          @default(60) @map("very_late_after_minutes")
+  /// Section 2: fine for not filing the EOD report, and for a Team Lead who does not escalate it.
+  eodPenaltyRupees            Int          @default(100) @map("eod_penalty_rupees")
+  leadPenaltyRupees           Int          @default(200) @map("lead_penalty_rupees")
+  /// Section 10: days added to salary for a month without leave; days counted for an absence without a request.
+  noLeaveBonusDays            Decimal      @default(2) @map("no_leave_bonus_days") @db.Decimal(4, 1)
+  unrequestedAbsenceDays      Decimal      @default(2) @map("unrequested_absence_days") @db.Decimal(4, 1)
   createdAt                   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -2674,4 +2745,146 @@ model DailyWorkerDay {
   @@unique([workerId, workDate])
   @@index([organizationId, workDate])
   @@map("daily_worker_days")
+}
+
+// =============================================================================
+// LEAVE, TIMING AND OFFICE DECORUM RULES (14 Nov 2026)
+// =============================================================================
+
+/// Where the person works that day (section 2): the firm's office, a client's office, or visiting clients.
+enum WorkLocation {
+  OFFICE
+  CLIENT_OFFICE
+  CLIENT_VISIT
+}
+
+/// Forms raised in the ERP (section 2): late intimation, permission to leave early, overtime.
+enum AttendanceRequestKind {
+  LATE_ARRIVAL
+  EARLY_LEAVE
+  OVERTIME
+}
+
+/// Morning-plan line: planned that morning, carried over from an earlier day, or new work added at EOD.
+enum PlanItemOrigin {
+  PLANNED
+  CARRIED
+  NEW
+}
+
+/// EOD status of a line (section 2).
+enum PlanItemStatus {
+  DONE
+  PENDING
+  CARRIED_FORWARD
+}
+
+/// Office holidays (section 10: holidays inside a continuous leave count as leave). Sundays are always off.
+model Holiday {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  holidayDate    DateTime @map("holiday_date") @db.Date
+  name           String
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, holidayDate])
+  @@map("holidays")
+}
+
+/// Late intimation (reason + expected arrival), permission to leave early, or overtime (task + why it
+/// cannot wait). Decided by the Team Lead. For a late intimation, PENDING / APPROVED = accepted as a
+/// genuine reason; REJECTED = not accepted.
+model AttendanceRequest {
+  id             String                @id @default(uuid(7)) @db.Uuid
+  organizationId String                @map("organization_id") @db.Uuid
+  employeeId     String                @map("employee_id") @db.Uuid
+  kind           AttendanceRequestKind
+  requestDate    DateTime              @map("request_date") @db.Date
+  /// Expected arrival (late), leaving time (early leave) or expected finish (overtime), "HH:MM".
+  atTime         String?               @map("at_time") @db.VarChar(5)
+  reason         String                @db.Text
+  /// Overtime: what task is being done, and why it cannot wait till tomorrow.
+  task           String?               @db.Text
+  whyNotTomorrow String?               @map("why_not_tomorrow") @db.Text
+  /// Raised before the deadline (reporting time / leaving time / 18:45): "beforehand" under the policy.
+  inAdvance      Boolean               @default(true) @map("in_advance")
+  status         LeaveRequestStatus    @default(PENDING)
+  decidedById    String?               @map("decided_by_id") @db.Uuid
+  decidedAt      DateTime?             @map("decided_at") @db.Timestamptz(3)
+  decisionNote   String?               @map("decision_note") @db.Text
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  decidedBy    User?        @relation("AttendanceRequestDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, requestDate, kind])
+  @@index([organizationId, requestDate])
+  @@index([organizationId, status])
+  @@map("attendance_requests")
+}
+
+/// One person's day (sections 2 and 4): morning plan by 10:30, approved or edited by the Team Lead,
+/// then the EOD report (the timesheet) with each line Done / Pending / Carried Forward. Fines are derived.
+model DailyPlan {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  employeeId      String    @map("employee_id") @db.Uuid
+  planDate        DateTime  @map("plan_date") @db.Date
+  planSubmittedAt DateTime? @map("plan_submitted_at") @db.Timestamptz(3)
+  approvedById    String?   @map("approved_by_id") @db.Uuid
+  approvedAt      DateTime? @map("approved_at") @db.Timestamptz(3)
+  /// The Team Lead changed the plan (shown to the person).
+  leadEditedAt    DateTime? @map("lead_edited_at") @db.Timestamptz(3)
+  eodSubmittedAt  DateTime? @map("eod_submitted_at") @db.Timestamptz(3)
+  eodNote         String?   @map("eod_note") @db.Text
+  /// Team Lead escalated a missing EOD (section 2: the next day, immediately).
+  escalatedAt     DateTime? @map("escalated_at") @db.Timestamptz(3)
+  escalatedById   String?   @map("escalated_by_id") @db.Uuid
+  /// One-time automatic flags to the Team Lead (section 2 auto-flags).
+  planFlaggedAt   DateTime? @map("plan_flagged_at") @db.Timestamptz(3)
+  eodFlaggedAt    DateTime? @map("eod_flagged_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  approvedBy   User?           @relation("DailyPlanApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  escalatedBy  User?           @relation("DailyPlanEscalatedBy", fields: [escalatedById], references: [id], onDelete: SetNull)
+  items        DailyPlanItem[]
+
+  @@unique([employeeId, planDate])
+  @@index([organizationId, planDate])
+  @@map("daily_plans")
+}
+
+model DailyPlanItem {
+  id            String          @id @default(uuid(7)) @db.Uuid
+  planId        String          @map("plan_id") @db.Uuid
+  clientId      String?         @map("client_id") @db.Uuid
+  /// Client trade name, or free text for internal / unregistered work.
+  clientName    String?         @map("client_name")
+  task          String          @db.Text
+  /// Expected completion (section 2).
+  expectedBy    DateTime?       @map("expected_by") @db.Date
+  origin        PlanItemOrigin  @default(PLANNED)
+  /// The line this one continues (old work carried from an earlier day).
+  carriedFromId String?         @map("carried_from_id") @db.Uuid
+  status        PlanItemStatus?
+  /// Required for Pending and Carried Forward.
+  reason        String?         @db.Text
+  sortOrder     Int             @default(0) @map("sort_order")
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  plan   DailyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  client Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([planId])
+  @@index([clientId])
+  @@index([carriedFromId])
+  @@map("daily_plan_items")
 }

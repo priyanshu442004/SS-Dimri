@@ -58,7 +58,8 @@ export const CAPABILITIES = {
   "tasks.delete": ADMINS,
   "attendance.mark_own": EVERYONE,
   "attendance.view_all": LEADS,
-  "attendance.correct": ADMINS,
+  // No "correct attendance" right: attendance is system-driven and nobody marks or changes it by hand
+  // (Leave, Timing and Office Decorum rules, section 1).
   /** Mark a colleague or a daily worker in / out from one's own phone, with their photo as proof. */
   "attendance.mark_others": LEADS,
   /** Check every photo attendance marked by someone else. Seniors and managers check their own reportees without it. */
@@ -69,6 +70,8 @@ export const CAPABILITIES = {
   "leave.decide": LEADS,
   "payroll.view_own": EVERYONE,
   "payroll.manage": ADMINS,
+  /** Fix, increase and correct salaries: managers for the people under them, administrators for everyone. */
+  "payroll.salaries": MANAGERS,
   "timesheet.fill_own": EVERYONE,
   "timesheet.view_all": LEADS,
   "timesheet.review": LEADS,
@@ -152,15 +155,17 @@ export const GRANTABLE_RIGHTS: { capability: Capability; label: string; group: s
   { capability: "clients.import", label: "Import clients from Excel", group: "Clients" },
   { capability: "clients.approve", label: "Approve clients", group: "Clients" },
   { capability: "clients.delete", label: "Delete clients", group: "Clients" },
+  { capability: "allocations.view_all", label: "See everyone's team allocation", group: "Team allocation" },
+  { capability: "allocations.manage", label: "Allocate team members & import allocations", group: "Team allocation" },
   { capability: "tasks.view_all", label: "See all tasks", group: "Tasks" },
   { capability: "tasks.review", label: "Review any task", group: "Tasks" },
   { capability: "tasks.delete", label: "Delete tasks", group: "Tasks" },
   { capability: "attendance.view_all", label: "See team attendance & export it", group: "Attendance & payroll" },
-  { capability: "attendance.correct", label: "Correct attendance", group: "Attendance & payroll" },
   { capability: "attendance.mark_others", label: "Mark attendance for others with a photo", group: "Attendance & payroll" },
   { capability: "attendance.review_photos", label: "Check everyone's photo attendance", group: "Attendance & payroll" },
   { capability: "attendance.workers", label: "Manage daily workers & their pay", group: "Attendance & payroll" },
-  { capability: "payroll.manage", label: "Run payroll for everyone", group: "Attendance & payroll" },
+  { capability: "payroll.salaries", label: "Fix and change salaries of their team", group: "Attendance & payroll" },
+  { capability: "payroll.manage", label: "Run payroll for everyone (and set anyone's salary)", group: "Attendance & payroll" },
   { capability: "timesheet.view_all", label: "See the team's timesheets", group: "Timesheet" },
   { capability: "timesheet.review", label: "Review timesheets", group: "Timesheet" },
   { capability: "compliance.manage", label: "Manage the compliance tracker", group: "Compliance" },

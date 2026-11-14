@@ -6,8 +6,8 @@ import { formatDate, formatDateTime, toIsoDate } from "@/lib/dates";
 import { getPolicy } from "@/lib/services/attendance";
 import { Card, DetailList, humanize, Notice, PageHeader, Pagination, TabNav, Table, Td, Th } from "@/components/ui";
 import { ActionButton } from "@/components/action-button";
-import { addListItemAction, saveCertificateAction, saveOrganizationAction, savePolicyAction, savePreferencesAction, toggleListItemAction, uploadLeavePolicyAction } from "./actions";
-import { CertificateForm, LeavePolicyDocForm, ListItemForm, OrganizationForm, PolicyForm, PreferencesForm } from "./forms";
+import { addHolidayAction, addListItemAction, removeHolidayAction, saveCertificateAction, saveOrganizationAction, savePolicyAction, savePreferencesAction, toggleListItemAction, uploadLeavePolicyAction } from "./actions";
+import { CertificateForm, HolidayForm, LeavePolicyDocForm, ListItemForm, OrganizationForm, PolicyForm, PreferencesForm } from "./forms";
 import { Settings } from "lucide-react";
 
 export default async function SettingsPage({ searchParams }: PageProps<"/app/settings">) {
@@ -111,19 +111,59 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/set
 
   async function PolicyTab() {
     const { row } = await getPolicy(ctx.organization.id);
+    const year = new Date().getUTCFullYear();
+    const holidays = await prisma.holiday.findMany({ where: { organizationId: ctx.organization.id, holidayDate: { gte: new Date(Date.UTC(year - 1, 0, 1)) } }, orderBy: { holidayDate: "asc" } });
+    const upcoming = holidays.filter((h) => h.holidayDate >= new Date(Date.UTC(year, 0, 1)));
     return (
-      <div className="max-w-4xl space-y-4">
-        <Notice tone="warn">
-          The firm has two versions of the Leave & Timing Policy that differ on overtime (actual minutes vs. 2.5h/5h slabs) and on Sunday rules.
-          These settings drive attendance figures and the Payroll page, which stays marked provisional until the policy is confirmed. Overtime is not paid through Payroll.
-        </Notice>
-        <Card>
-          <PolicyForm
-            action={savePolicyAction}
-            d={Object.fromEntries(Object.entries(row).map(([k, v]) => [k, typeof v === "boolean" ? (v ? "on" : "") : v === null ? "" : String(v)]))}
-          />
-        </Card>
+      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
+        <div className="space-y-4">
+          <Notice tone="info">
+            These values follow the firm&apos;s <strong>Leave, Timing and Office Decorum Rules and Regulations</strong>. They drive attendance, the morning plan and EOD report, fines and payroll.
+            Everyone sees them on the <Link href="/app/rules" className="font-medium underline">Office rules</Link> page; after a change they are asked to accept the rules again.
+          </Notice>
+          <Card>
+            <PolicyForm
+              action={savePolicyAction}
+              d={Object.fromEntries(Object.entries(row).map(([k, v]) => [k, typeof v === "boolean" ? (v ? "on" : "") : v === null ? "" : String(v)]))}
+            />
+          </Card>
+        </div>
+        <div className="space-y-6">
+          <Card title="Office holidays">
+            <p className="mb-3 text-xs text-muted">Sundays are always off. Holidays are not working days: nobody is marked absent, and a holiday inside a continuous leave counts as leave (rule 10).</p>
+            <ul className="mb-4 divide-y divide-line text-sm">
+              {upcoming.map((h) => (
+                <li key={h.id} className="flex items-center justify-between gap-2 py-2">
+                  <span><span className="font-medium">{formatDate(h.holidayDate)}</span> · {h.name}</span>
+                  <ActionButton variant="ghost" action={removeHolidayAction.bind(null, h.id)} confirm={`Remove ${h.name}?`}>Remove</ActionButton>
+                </li>
+              ))}
+              {upcoming.length === 0 && <li className="py-2 text-muted">No holidays added for {year} yet.</li>}
+            </ul>
+            <HolidayForm action={addHolidayAction} />
+          </Card>
+          <RulesAcceptance updatedAt={row.updatedAt} />
+        </div>
       </div>
+    );
+  }
+
+  async function RulesAcceptance({ updatedAt }: { updatedAt: Date }) {
+    const staff = await prisma.employee.findMany({
+      where: { organizationId: ctx.organization.id, approvalStatus: "APPROVED", employmentStatus: { not: "EXITED" }, membership: { status: "ACTIVE", role: { notIn: ["OWNER", "CLIENT"] } } },
+      orderBy: { firstName: "asc" },
+      select: { id: true, firstName: true, lastName: true, rulesAcknowledgedAt: true },
+    });
+    const pending = staff.filter((e) => !e.rulesAcknowledgedAt || e.rulesAcknowledgedAt < updatedAt);
+    return (
+      <Card title={`Rules accepted: ${staff.length - pending.length} of ${staff.length}`}>
+        {pending.length === 0 ? <p className="text-sm text-muted">Everyone has accepted the current rules.</p> : (
+          <>
+            <p className="mb-2 text-xs text-muted">Not yet accepted the current version (they see a reminder until they do):</p>
+            <p className="text-sm">{pending.map((e) => `${e.firstName} ${e.lastName ?? ""}`.trim()).join(", ")}</p>
+          </>
+        )}
+      </Card>
     );
   }
 

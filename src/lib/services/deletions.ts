@@ -34,7 +34,7 @@ const RIGHT: Record<DeletionEntity, Capability> = {
   trackerline: "records.delete",
 };
 
-export const canDelete = (ctx: AppContext, entity: DeletionEntity) => can(ctx, RIGHT[entity]);
+export const canDelete = (ctx: AppContext, entity: DeletionEntity) => entity !== "attendance" && can(ctx, RIGHT[entity]);
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const nameOf = (e: { firstName: string; lastName: string | null }) => `${e.firstName} ${e.lastName ?? ""}`.trim();
@@ -284,19 +284,10 @@ async function simpleEntry(ctx: AppContext, entity: DeletionEntity, id: string):
         remove: (tx) => tx.timesheetEntry.delete({ where: { id } }),
       };
     }
-    case "attendance": {
-      const r = await prisma.attendanceRecord.findFirst({ where: { id, organizationId }, select: { timeInPhotoFileId: true, timeOutPhotoFileId: true, employee: { select: { firstName: true, lastName: true } } } });
-      if (!r) break;
-      return {
-        title: `Delete this attendance record of ${nameOf(r.employee)}?`,
-        lines: ["The day will show as “Not marked”, and payroll treats it accordingly."],
-        files: [r.timeInPhotoFileId, r.timeOutPhotoFileId],
-        remove: async (tx) => {
-          await tx.attendanceCorrection.deleteMany({ where: { attendanceRecordId: id } });
-          await tx.attendanceRecord.delete({ where: { id } });
-        },
-      };
-    }
+    case "attendance":
+      // Attendance is system-driven: nobody marks or changes it by hand (office rule 1), so a
+      // single day cannot be deleted either. Removing a whole employee still removes their history.
+      break;
     case "leave": {
       const l = await prisma.leaveRequest.findFirst({ where: { id, organizationId }, select: { employee: { select: { firstName: true, lastName: true } } } });
       if (!l) break;

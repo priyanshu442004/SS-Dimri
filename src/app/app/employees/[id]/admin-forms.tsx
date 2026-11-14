@@ -58,8 +58,8 @@ export function AccessForm({
       <SelectField label="Attendance hours profile" name="attendanceProfile" placeholder={null} defaultValue={defaults.attendanceProfile}
         hint="Required daily hours under the Leave & Timing Policy"
         options={[
-          { value: "STANDARD", label: "Standard (9h)" }, { value: "ONSITE", label: "Onsite (8h)" },
-          { value: "FAR_CLIENT", label: "Far-off client (8h30 on 1st–15th)" }, { value: "REDUCED_HOURS", label: "Allowed 8h30 all month" },
+          { value: "STANDARD", label: "Office (9:30–6:30)" }, { value: "ONSITE", label: "Client site (8h from the time the Team Lead sets)" },
+          { value: "FAR_CLIENT", label: "Far-off client (old policy, counted as office)" }, { value: "REDUCED_HOURS", label: "Reduced hours (old policy, counted as office)" },
         ]} />
       <PeoplePicker label="Whom to report (select one or more)" name="managerIds[]" options={colleagues} defaultValue={defaults.managerIds} />
       <SubmitButton>Save</SubmitButton>

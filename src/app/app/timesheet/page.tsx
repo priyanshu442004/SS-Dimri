@@ -19,6 +19,9 @@ import { myOpenLines, pendingPointsFor } from "@/lib/services/tracker";
 import { dueStateOf, STATUS_OF_WORK_LABEL, timelineFlagOf, workStatusOf } from "@/lib/domain/tracker";
 import { ClientPendingReportTab, DayReportTab, FlagBadge, MyPendingTab, TrackerDashboardTab, TrackerTab, WorkStatusBadge } from "./sections";
 import { CircleAlert, Clock, IndianRupee, ListChecks, TimerReset, Users } from "lucide-react";
+import { MyPlanTab, TeamPlansTab } from "./plan-tabs";
+import { getPolicy, plansApplyTo, reporteeIds } from "@/lib/services/office-rules";
+import { finesForMonth } from "@/lib/services/daily-plans";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -45,25 +48,31 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
   const clientId = typeof sp.client === "string" && UUID.test(sp.client) ? sp.client : "";
 
   // Admin, Manager and Senior see the Accounting Workflow Tracker; everyone else the Team Daily Work Log.
+  // Office rules (14 Nov 2026): everyone who fills the timesheet sends a morning plan and files the EOD
+  // report ("plan"); a Team Lead (anyone others report to, and administrators) sees "team-plans" first.
   // Older tab names are kept so existing links still work.
-  const LEAD_TABS = ["tracker", "dashboard", "report", "log", "hours", "reviews", "daily", "day", "mine"];
-  const STAFF_TABS = ["daily", "day", "mine"];
+  const ownPlan = plansApplyTo(ctx);
+  const teamLead = can(ctx, "org.manage") || (await reporteeIds(ctx)).length > 0;
+  const LEAD_TABS = ["tracker", "dashboard", "report", "log", "hours", "reviews", "daily", "day", "mine", "plan", "team-plans"];
+  const STAFF_TABS = ["plan", "daily", "day", "mine", ...(teamLead ? ["team-plans"] : [])];
   const legacy: Record<string, string> = { collective: "log", pending: "reviews" };
   const requested = typeof sp.tab === "string" ? (legacy[sp.tab] ?? sp.tab) : "";
   const tab = viewAll
-    ? (LEAD_TABS.includes(requested) && (ctx.employee || !["daily", "day", "mine"].includes(requested)) ? requested : "tracker")
-    : (STAFF_TABS.includes(requested) ? requested : "daily");
+    ? (LEAD_TABS.includes(requested) && (ctx.employee || !["daily", "day", "mine", "plan"].includes(requested)) && (requested !== "team-plans" || teamLead) ? requested : teamLead ? "team-plans" : "tracker")
+    : (STAFF_TABS.includes(requested) ? requested : ownPlan ? "plan" : "daily");
 
   return (
     <>
       <PageHeader icon={<Clock />}
         title="Timesheet"
-        description={viewAll ? "Accounting Workflow Tracker: work given to the team, what they log against it, and what is pending with clients." : "Your Team Daily Work Log: record each piece of work, your day report and what is pending."}
+        description={tab === "plan" ? "Your morning plan (by 10:30) and your EOD report — the timesheet the office rules ask for every working day." : tab === "team-plans" ? "Your team's morning plans and EOD reports: approve or edit plans, and escalate a missing EOD the next day." : viewAll ? "Accounting Workflow Tracker: work given to the team, what they log against it, and what is pending with clients." : "Your Team Daily Work Log: record each piece of work, your day report and what is pending."}
         actions={viewAll && (tab === "log" || tab === "hours") && <DownloadButton href={timesheetExportHref({ from: typeof sp.from === "string" ? sp.from : undefined, to: typeof sp.to === "string" ? sp.to : undefined, date, employeeId, clientId, tab: tab === "hours" ? "dashboard" : "tracker" })}>Export to Excel</DownloadButton>}
       />
       <TabNav
         current={tab === "reviews" ? "log" : tab}
         tabs={viewAll ? [
+          ...(teamLead ? [{ key: "team-plans", label: "Team plans & EOD", href: "/app/timesheet?tab=team-plans" }] : []),
+          ...(ownPlan ? [{ key: "plan", label: "My plan & EOD", href: "/app/timesheet?tab=plan" }] : []),
           { key: "tracker", label: "Tracker", href: "/app/timesheet?tab=tracker" },
           { key: "dashboard", label: "Dashboard", href: "/app/timesheet?tab=dashboard" },
           { key: "report", label: "Client Pending Report", href: "/app/timesheet?tab=report" },
@@ -71,11 +80,15 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
           { key: "hours", label: "Hours & reviews", href: "/app/timesheet?tab=hours" },
           ...(ctx.employee ? [{ key: "daily", label: "My daily log", href: `/app/timesheet?tab=daily&date=${date}` }] : []),
         ] : [
+          ...(ownPlan ? [{ key: "plan", label: "Plan & EOD report", href: "/app/timesheet?tab=plan" }] : []),
+          ...(teamLead ? [{ key: "team-plans", label: "Team plans & EOD", href: "/app/timesheet?tab=team-plans" }] : []),
           { key: "daily", label: "Daily Log", href: `/app/timesheet?tab=daily&date=${date}` },
           { key: "day", label: "Day Report", href: `/app/timesheet?tab=day&date=${date}` },
           { key: "mine", label: "Pending Tracker", href: "/app/timesheet?tab=mine" },
         ]}
       />
+      {tab === "plan" && <MyPlanTab ctx={ctx} sp={sp} />}
+      {tab === "team-plans" && <TeamPlansTab ctx={ctx} sp={sp} />}
       {tab === "daily" && <Daily />}
       {tab === "day" && <DayReportTab ctx={ctx} sp={sp} viewAll={viewAll} />}
       {tab === "mine" && <MyPendingTab ctx={ctx} sp={sp} viewAll={viewAll} />}
@@ -277,7 +290,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
         {entries.length === 0 ? <EmptyState kind="calendar" title="No entries for this period" /> : (
           <ReviewForm action={reviewTimesheetAction}>
             <Table minWidth={1720}>
-              <thead><tr>{canReview && <Th><span className="sr-only">Select</span></Th>}<Th>Date</Th><Th>Team member</Th><Th>Client</Th><Th>Resource type</Th><Th>Nature of work</Th><Th>AY</Th><Th>Location</Th><Th>Period</Th><Th>Start – end</Th><Th>Hours</Th><Th>Description</Th><Th>Submitted on</Th><Th>Reviewer (auto)</Th><Th>Review status</Th><Th>Reviewed by</Th><Th>SLA</Th><Th>Escalate to</Th><Th>Late submission</Th><Th>Late review</Th>{mayDelete && <Th />}</tr></thead>
+              <thead><tr>{canReview && <Th><span className="sr-only">Select</span></Th>}<Th>Date</Th><Th>Team member</Th><Th>Client</Th><Th>Resource type</Th><Th>Nature of work</Th><Th>AY</Th><Th>Location</Th><Th>Period</Th><Th>Start – end</Th><Th>Hours</Th><Th>Description</Th><Th>Submitted on</Th><Th>Reviewer (auto)</Th><Th>Review status</Th><Th>Reviewed by</Th><Th>SLA</Th><Th>Escalate to</Th><Th>Logged after the day</Th><Th>Late review</Th>{mayDelete && <Th />}</tr></thead>
               <tbody>
                 {entries.map((e) => (
                   <tr key={e.id}>
@@ -299,7 +312,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
                     <Td className="text-xs">{e.reviewedBy ? <>{e.reviewedBy.name}<div className="text-muted">{e.reviewedAt ? formatDateTime(e.reviewedAt, tz) : ""}</div></> : "—"}</Td>
                     <Td><SlaBadge sla={slaOf({ submittedAt: e.createdAt, status: e.status }, now)} /></Td>
                     <Td className="text-xs">{reviewers.get(e.id)?.escalateTo ?? "Not mapped"}</Td>
-                    <Td className="text-xs">{isLateSubmission(isoDateInTz(e.createdAt, tz), toIsoDate(e.workDate)) ? <Badge tone="danger">{inr(penalty)}</Badge> : "—"}</Td>
+                    <Td className="text-xs">{isLateSubmission(isoDateInTz(e.createdAt, tz), toIsoDate(e.workDate)) ? <Badge tone="warn">Yes</Badge> : "—"}</Td>
                     <Td className="text-xs">{isLateReview({ submittedAt: e.createdAt, reviewedAt: e.reviewedAt, status: e.status }, now) ? <Badge tone="danger">{inr(penalty)}</Badge> : "—"}</Td>
                     {mayDelete && <Td><DeleteButton entity="timesheet" id={e.id} variant="ghost" /></Td>}
                   </tr>
@@ -474,6 +487,19 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
     const byYear = sumBy((e) => e.assessmentYear ?? "Not given");
     const byResource = sumBy((e) => e.resourceType ?? "Not given");
     const penalty = (await prisma.organization.findUniqueOrThrow({ where: { id: ctx.organization.id }, select: { timesheetPenaltyRupees: true } })).timesheetPenaltyRupees;
+    // Office rule 2: ₹100 per EOD report not filed by the next day's reporting time, ₹200 to a Team Lead who did not escalate it.
+    const months = [...new Set([from.slice(0, 7), to.slice(0, 7)])];
+    const [policy, ...fineMaps] = await Promise.all([getPolicy(ctx.organization.id), ...months.map((m) => finesForMonth(ctx.organization.id, tz, m))]);
+    const inPeriod = (d: string) => d >= from && d <= to;
+    const eodMissed = new Map<string, number>();
+    const leadMissed = new Map<string, number>();
+    for (const fm of fineMaps) for (const [id, f] of fm) {
+      if (employeeId && id !== employeeId) continue;
+      eodMissed.set(id, (eodMissed.get(id) ?? 0) + f.eodMissed.filter(inPeriod).length);
+      leadMissed.set(id, (leadMissed.get(id) ?? 0) + f.leadMissed.filter((x) => inPeriod(x.date)).length);
+    }
+    const eodTotal = [...eodMissed.values()].reduce((a, b) => a + b, 0);
+    const leadTotal = [...leadMissed.values()].reduce((a, b) => a + b, 0);
 
     // Reviewer performance: entries reviewed by each person, what is still with them, and late reviews.
     const assigned = await timesheetReviewers(ctx.organization.id, entries);
@@ -528,14 +554,15 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
           <Stat label="Entries" value={entries.length} icon={<ListChecks />} />
           <Stat label="Team members logging" value={new Set(entries.map((e) => e.employeeId)).size} hint={`of ${employees.length} active`} icon={<Users />} />
           <Stat label="Waiting for review" value={entries.filter((e) => e.status === "SUBMITTED").length} icon={<TimerReset />} href="/app/timesheet?tab=reviews" tone="info" />
-          <Stat label="Late submissions" value={entries.filter(isLate).length} hint="Not logged on the day of work" icon={<CircleAlert />} tone={entries.some(isLate) ? "warn" : "neutral"} />
+          <Stat label="EOD reports not filed" value={eodTotal} hint="By the next day's reporting time" icon={<CircleAlert />} tone={eodTotal ? "danger" : "neutral"} href="/app/timesheet?tab=team-plans" />
         </div>
         <Card title="Penalty summary" icon={<IndianRupee />}>
-          <p className="mb-3 text-xs text-muted">{inr(penalty)} per breach, as in the Team Timesheet: late submission when an entry is not filled in on the day of work, late review when it is not reviewed within {OVERDUE_HOURS} hours.</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Stat label="Late submission penalties" value={inr(entries.filter(isLate).length * penalty)} tone={entries.some(isLate) ? "warn" : "neutral"} />
-            <Stat label="Late review penalties" value={inr(reviewerStats.reduce((s, r) => s + r.lateReviews, 0) * penalty)} tone={reviewerStats.some((r) => r.lateReviews) ? "warn" : "neutral"} />
-            <Stat label="Grand total" value={inr((entries.filter(isLate).length + reviewerStats.reduce((s, r) => s + r.lateReviews, 0)) * penalty)} />
+          <p className="mb-3 text-xs text-muted">Office rules: {inr(policy.row.eodPenaltyRupees)} for each EOD report (timesheet) not filed by the next day&apos;s reporting time, and {inr(policy.row.leadPenaltyRupees)} to the Team Lead who did not escalate it that day. These are deducted in Payroll. Late reviews ({inr(penalty)}, not reviewed within {OVERDUE_HOURS} hours) follow the Team Timesheet workbook and are shown for information.</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <Stat label="EOD not filed" value={inr(eodTotal * policy.row.eodPenaltyRupees)} hint={`${eodTotal} day(s)`} tone={eodTotal ? "danger" : "neutral"} />
+            <Stat label="Team Leads not escalating" value={inr(leadTotal * policy.row.leadPenaltyRupees)} hint={`${leadTotal} case(s)`} tone={leadTotal ? "danger" : "neutral"} />
+            <Stat label="Late review (workbook)" value={inr(reviewerStats.reduce((s, r) => s + r.lateReviews, 0) * penalty)} tone={reviewerStats.some((r) => r.lateReviews) ? "warn" : "neutral"} />
+            <Stat label="Fines deducted in Payroll" value={inr(eodTotal * policy.row.eodPenaltyRupees + leadTotal * policy.row.leadPenaltyRupees)} />
           </div>
         </Card>
 
@@ -550,7 +577,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
 
         <Card title="Team member scorecard" padded={false}>
           <Table minWidth={860}>
-            <thead><tr><Th>Team member</Th><Th>Hours</Th><Th>Entries</Th><Th>Last entry</Th><Th>Reviewed OK</Th><Th>Returned</Th><Th>Waiting for review</Th><Th>Late submissions</Th><Th>Penalty</Th></tr></thead>
+            <thead><tr><Th>Team member</Th><Th>Hours</Th><Th>Entries</Th><Th>Last entry</Th><Th>Reviewed OK</Th><Th>Returned</Th><Th>Waiting for review</Th><Th>Logged after the day</Th><Th>EOD fines</Th></tr></thead>
             <tbody>
               {members.map((m) => (
                 <tr key={m.id}>
@@ -562,7 +589,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
                   <Td>{m.returned ? <Badge tone="warn">{m.returned}</Badge> : 0}</Td>
                   <Td>{m.awaiting}</Td>
                   <Td>{m.late ? <Badge tone="danger">{m.late}</Badge> : 0}</Td>
-                  <Td>{m.late ? inr(m.late * penalty) : "—"}</Td>
+                  <Td>{eodMissed.get(m.id) || leadMissed.get(m.id) ? inr((eodMissed.get(m.id) ?? 0) * policy.row.eodPenaltyRupees + (leadMissed.get(m.id) ?? 0) * policy.row.leadPenaltyRupees) : "—"}</Td>
                 </tr>
               ))}
             </tbody>

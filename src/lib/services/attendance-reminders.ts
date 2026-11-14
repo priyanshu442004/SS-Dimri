@@ -1,11 +1,15 @@
 import "server-only";
+import { sweepAllocations } from "./allocation-reminders";
 import { prisma } from "@/lib/db";
 import { serverEnv } from "@/lib/env";
-import { addDays, formatDate, formatTime, toIsoDate, todayDateOnly } from "@/lib/dates";
+import { addDays, formatDate, formatTime, minutesOfDayInTz, toIsoDate, todayDateOnly } from "@/lib/dates";
 import { markOutReminderDue } from "@/lib/domain/attendance-extras";
-import { getPolicy } from "./attendance";
+import { getPolicy, sweepAutoAbsent } from "./attendance";
+import { sweepPlanFlags } from "./daily-plans";
+import { leadsOf, scheduleOf } from "./office-rules";
+import { hhmm } from "@/lib/domain/attendance-policy";
 import { sendMail } from "./mailer";
-import { notifyUsers } from "./notifications";
+import { notifyEmployees, notifyRoles, notifyUsers } from "./notifications";
 
 // Mark-out reminders (client feedback 12 Nov 2026: if someone forgets to mark out, salary
 // cannot be worked out exactly). Two one-time notices per attendance record, each claimed
@@ -88,10 +92,8 @@ export async function sweepAttendanceReminders(organizationId: string, opts: { f
       select: { userId: true, role: true, employeeId: true, grantedCapabilities: true, moduleRestricted: true, allowedModules: true },
     });
     const userOf = new Map(memberships.filter((m) => m.employeeId).map((m) => [m.employeeId!, m.userId]));
-    // Who can put the time out in: owners, administrators and anyone given the correction right.
-    const correctors = memberships
-      .filter((m) => m.role === "OWNER" || m.role === "ADMIN" || m.grantedCapabilities.includes("attendance.correct"))
-      .map((m) => m.userId);
+    // Nobody can enter the time out by hand any more (office rule 1): seniors and administrators are told, so it is not repeated.
+    const correctors = memberships.filter((m) => m.role === "OWNER" || m.role === "ADMIN").map((m) => m.userId);
     const first = toIsoDate(claimedMissed[0].attendanceDate);
     const last = toIsoDate(claimedMissed[claimedMissed.length - 1].attendanceDate);
     const link = `/app/attendance?tab=team&status=NO_OUT&from=${first}&to=${last}`;
@@ -105,7 +107,7 @@ export async function sweepAttendanceReminders(organizationId: string, opts: { f
           notifyUsers(tx, organizationId, [self], {
             type: "attendance.missed_mark_out",
             title: `You did not mark out on ${formatDate(r.attendanceDate)}`,
-            body: "Your hours for that day cannot be counted. Ask your senior or administrator to enter your time out.",
+            body: "Attendance cannot be changed by hand, so your hours and any overtime for that day cannot be counted. Always mark out before you leave.",
             link: "/app/attendance",
           }),
         );
@@ -121,13 +123,47 @@ export async function sweepAttendanceReminders(organizationId: string, opts: { f
         notifyUsers(tx, organizationId, [userId], {
           type: "attendance.missed_mark_out",
           title: names.length === 1 ? `No time out: ${names[0]}` : `${names.length} attendance days without a time out`,
-          body: names.length === 1 ? "Enter the time out so the hours and salary are right." : names.slice(0, 8).join(", ") + (names.length > 8 ? "…" : ""),
+          body: names.length === 1 ? "Hours and overtime for that day cannot be counted. Remind them to mark out every day." : names.slice(0, 8).join(", ") + (names.length > 8 ? "…" : ""),
           link,
         }),
       );
     }
   }
+  await flagLateStays(organizationId, tz);
   return mails;
+}
+
+/**
+ * Office rule 8: staying after 18:45 needs the Team Lead's prior permission, and the manager is
+ * answerable for anyone working late. Once a person is still in past their overtime start without
+ * approved overtime, their Team Lead (or the administrators) is told, once.
+ */
+async function flagLateStays(organizationId: string, tz: string) {
+  const today = todayDateOnly(tz);
+  const nowMin = minutesOfDayInTz(new Date(), tz);
+  const policy = await getPolicy(organizationId);
+  const open = await prisma.attendanceRecord.findMany({
+    where: { organizationId, attendanceDate: today, timeIn: { not: null }, timeOut: null, lateStayFlaggedAt: null, status: { in: ["PRESENT", "HALF_DAY"] } },
+    select: { id: true, employeeId: true, scheduledStart: true, scheduledEnd: true, employee: { select: { firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true } } },
+    take: 200,
+  });
+  const due = open.filter((r) => nowMin > scheduleOf(policy, r.employee, r).overtimeAfter);
+  if (!due.length) return;
+  const approved = new Set((await prisma.attendanceRequest.findMany({ where: { organizationId, requestDate: today, kind: "OVERTIME", status: "APPROVED", employeeId: { in: due.map((r) => r.employeeId) } }, select: { employeeId: true } })).map((r) => r.employeeId));
+  const leads = await leadsOf(due.map((r) => r.employeeId));
+  for (const r of due) {
+    const claimed = await prisma.attendanceRecord.updateMany({ where: { id: r.id, lateStayFlaggedAt: null }, data: { lateStayFlaggedAt: new Date() } });
+    if (claimed.count !== 1 || approved.has(r.employeeId)) continue;
+    const name = `${r.employee.firstName} ${r.employee.lastName ?? ""}`.trim();
+    const note = {
+      type: "attendance.late_stay",
+      title: `${name} is still in after ${hhmm(scheduleOf(policy, r.employee, r).overtimeAfter)} without approved overtime`,
+      body: "Staying late needs your prior permission, and you are answerable for team members working late (office rule 8). Overtime without approval is not counted.",
+      link: "/app/attendance?tab=team&status=STAYING",
+    };
+    const l = leads.get(r.employeeId);
+    await prisma.$transaction((tx) => (l?.length ? notifyEmployees(tx, organizationId, l, note) : notifyRoles(tx, organizationId, ["OWNER", "ADMIN"], note)));
+  }
 }
 
 /** Email the "still marked in" reminders. Failures are recorded in the email log, never thrown. */
@@ -155,12 +191,20 @@ function baseUrl() {
 
 /** Every active firm (the scheduled call). */
 export async function sweepAllFirms() {
-  const orgs = await prisma.organization.findMany({ where: { status: "ACTIVE" }, select: { id: true } });
+  const orgs = await prisma.organization.findMany({ where: { status: "ACTIVE" }, select: { id: true, timezone: true } });
   let mails = 0;
+  let visitReminders = 0;
+  let absent = 0;
+  let flags = 0;
   for (const o of orgs) {
+    // Office rules: absent at the cut-off, then the morning-plan / EOD flags to Team Leads.
+    absent += (await sweepAutoAbsent(o.id, o.timezone).catch((e) => (console.error("auto-absent failed", e instanceof Error ? e.message : e), { marked: 0 }))).marked;
+    flags += await sweepPlanFlags(o.id, o.timezone).then((r) => r.plans + r.eods, (e) => (console.error("plan flags failed", e instanceof Error ? e.message : e), 0));
     const m = await sweepAttendanceReminders(o.id, { force: true }).catch(() => [] as Mail[]);
     await sendReminderMails(m);
     mails += m.length;
+    // Team allocation: end lapsed allocations and remind people of tomorrow's visits.
+    visitReminders += (await sweepAllocations(o.id, o.timezone).catch(() => ({ reminders: 0 }))).reminders;
   }
-  return { firms: orgs.length, mails };
+  return { firms: orgs.length, mails, visitReminders, absent, flags };
 }

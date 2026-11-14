@@ -7,7 +7,8 @@ import { CircleAlert, CircleCheck, Copy, FileSpreadsheet, Merge, TriangleAlert, 
 import { Badge, buttonClass, Card, Notice, Stat, Table, Td, Th } from "@/components/ui";
 import { inputCls } from "@/components/form";
 import { toast } from "@/components/toaster";
-import { IMPORT_FIELDS, type ColumnMapping, type ImportField } from "@/lib/domain/client-import";
+import { EXTRA_COLUMN, IMPORT_FIELDS, type ColumnMapping, type ImportField } from "@/lib/domain/client-import";
+import { TABLE_FILE_ACCEPT } from "@/lib/table-file-accept";
 import type { ImportPreview } from "@/lib/services/client-import";
 import { previewImportAction, runImportAction, type ImportResult } from "./actions";
 
@@ -53,10 +54,10 @@ export function ImportFlow({ canApprove }: { canApprove: boolean }) {
     check(f, null);
   }
 
-  function remap(i: number, value: ImportField | "") {
+  function remap(i: number, value: ImportField | typeof EXTRA_COLUMN | "") {
     if (!file || !mapping) return;
     // One sheet column per field: choosing a field elsewhere frees it from its old column.
-    const next = mapping.map((v, j) => (j === i ? value : v === value ? "" : v));
+    const next = mapping.map((v, j) => (j === i ? value : v === value && value !== EXTRA_COLUMN ? "" : v));
     setMapping(next);
     check(file, next);
   }
@@ -81,12 +82,12 @@ export function ImportFlow({ canApprove }: { canApprove: boolean }) {
     <div className="space-y-6">
       <Card title="1. Choose your Excel file" icon={<FileSpreadsheet />}>
         <p className="mb-3 text-sm text-muted">
-          Use the firm&apos;s Client Master (one row per GSTIN), or start from our template. Columns are recognised by their heading, in any order, and the title rows above the headings are fine. Rows with the same PAN become one client with all its GSTINs. Passwords are stored encrypted.
+          Use the firm&apos;s Client Master (one row per GSTIN) as Excel (.xlsx) or CSV, or start from our template. One client or many, in the same format. Columns are recognised by their heading, in any order, and the title rows above the headings are fine. Rows with the same PAN become one client with all its GSTINs. Columns we have no field for are kept as extra details on the client. Passwords are stored encrypted.
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <label className={buttonClass("primary", "md", "cursor-pointer")}>
-            <Upload className="size-4" aria-hidden /> {file ? "Choose another file" : "Choose .xlsx file"}
-            <input ref={input} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" onChange={(e) => choose(e.target.files?.[0])} />
+            <Upload className="size-4" aria-hidden /> {file ? "Choose another file" : "Choose Excel or CSV file"}
+            <input ref={input} type="file" accept={TABLE_FILE_ACCEPT} className="sr-only" onChange={(e) => choose(e.target.files?.[0])} />
           </label>
           <a href="/app/clients/import/template" download className={buttonClass("secondary", "md")}>Download template</a> {/* eslint-disable-line @next/next/no-html-link-for-pages -- a file download, not a page */}
           {file && <span className="text-sm text-muted">{file.name}</span>}
@@ -114,10 +115,11 @@ export function ImportFlow({ canApprove }: { canApprove: boolean }) {
                   <span className="mb-1 block truncate font-medium" title={h}>{h || `Column ${i + 1}`}</span>
                   <select
                     value={mapping[i] ?? ""}
-                    onChange={(e) => remap(i, e.target.value as ImportField | "")}
-                    className={clsx(inputCls, !mapping[i] && "text-muted")}
+                    onChange={(e) => remap(i, e.target.value as ImportField | typeof EXTRA_COLUMN | "")}
+                    className={clsx(inputCls, (!mapping[i] || mapping[i] === EXTRA_COLUMN) && "text-muted")}
                   >
                     <option value="">Do not import</option>
+                    <option value={EXTRA_COLUMN}>Keep as an extra detail</option>
                     {FIELDS.map(([k, f]) => <option key={k} value={k}>{f.label}</option>)}
                   </select>
                 </label>
@@ -143,7 +145,10 @@ export function ImportFlow({ canApprove }: { canApprove: boolean }) {
                     <Td className="font-medium">{r.values.tradeName ?? "—"}{r.values.clientCode && <div className="font-mono text-xs font-normal text-muted">{r.values.clientCode}</div>}</Td>
                     <Td className="text-xs">{[...r.values.gstins, r.values.pan].filter(Boolean).join(", ") || "—"}</Td>
                     <Td className="text-xs">{r.values.departmentList?.join(", ") || "—"}</Td>
-                    <Td className="text-xs">{[r.values.contactName, r.values.contactMobile].filter(Boolean).join(" · ") || "—"}</Td>
+                    <Td className="text-xs">
+                      {[r.values.contactName, r.values.contactMobile].filter(Boolean).join(" · ") || "—"}
+                      {r.values.extra && <div className="mt-1 text-muted">{Object.entries(r.values.extra).map(([k, v]) => `${k}: ${v}`).join(" · ")}</div>}
+                    </Td>
                     <Td className="text-xs">
                       {r.errors.length > 0 ? <Badge tone="danger">{r.errors[0]}</Badge>
                         : r.mergedInto ? <Badge tone="info">Same PAN as row {r.mergedInto}: added there</Badge>

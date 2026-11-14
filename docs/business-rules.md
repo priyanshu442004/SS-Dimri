@@ -28,19 +28,47 @@ Sources: the handwritten notes and DFD, the nine Google Drive references ([requi
 
 **Access while awaiting approval (owner decision, 26 Oct 2026; staff part superseded on 27 Oct — see R13).** A business awaiting registration approval may use the account for a grace period of **7 days** (configurable, Settings → Lists & preferences, 0–90; 0 = no access until approved), counted **exactly 7 × 24 hours from account creation** (staff: when the administrator created the login; business: when the registration record was created; resubmission does not restart it). During the period staff have their role's full access and clients the full portal; a banner shows the exact end time. When it ends: access stops on the server for every page, action, file download and export, and any open page signs the user out within a few seconds of the deadline (and within 30 seconds of a rejection or a disabled login). Signing in afterwards shows the reason: staff see only their onboarding page, clients their registration status. Approval restores full access at once; rejection removes access at once (no grace). Owners and administrators are never locked.
 
+## 1a. Leave, Timing and Office Decorum Rules (client PDF, 14 Nov 2026) — confirmed
+
+How each point is applied. The calculation is one pure module (`lib/domain/attendance-policy.ts`, `lib/domain/daily-plan.ts`, tested in `tests/office-rules.test.ts`) used by My attendance, Team attendance, Payroll and the exports, so they always agree.
+
+| Rule | Applied as |
+|---|---|
+| 1 Daily attendance, system-driven | Mark in/out only by the person (or a colleague with a photo); no correction form, no single-day deletion |
+| 1 Map location | Required: the button refuses without it and explains how to allow it; the server refuses too (also for a colleague's mark) |
+| 1 Not marked at salary time | Not marked = absent; with no leave request it counts double (rule 10) |
+| 1 / 11 Philosophy and declaration | `/app/rules` shows the rules with live values; each person accepts once, and again after a policy change; Settings shows who has not |
+| 2 Check-in/out | Time stamp, map location and work location (office name from Settings / Client office / Client visit, with the client) |
+| 2 Morning plan by 10:30 | Client, task, expected completion; late plans shown as late; the Team Lead approves or edits (the person is notified; a changed plan goes back for approval) |
+| 2 EOD report = timesheet | Every line Done / Pending / Carried forward; a reason required for each one not done; new work added; Pending and Carried forward lines start the next plan as old work |
+| 2 Missed EOD / fines | Fileable until the next working day's reporting time; after that ₹100 (Settings). If it is still missing at the end of that day and the Team Lead did not escalate, ₹200 to the first person the employee reports to. Deducted in Payroll |
+| 2 Auto-flags | After 10:30: people at work without a plan → them and their Team Lead. After the EOD deadline: the person and the Team Lead ("escalate today") |
+| 2 / 3 Late or absent intimation | Form with reason and expected arrival; "can't come today" raises a same-day leave request |
+| 3 12:00 Absent | The scheduled call marks everyone the rules apply to (not the owner), not in and not on leave, Absent; marking in after the cut-off is refused. Approved leave later still counts as leave in payroll |
+| 4 Team Lead reporting | Plan and EOD go to the Team Lead (notified on submit); Team plans & EOD view |
+| 5 Timings / client site | Office 9:30–18:30, grace 9:45. Client-site staff: the Team Lead fixes the reporting time; the day is 8 h from it and grace, half-day, overtime and absent times move with it (absent never before 12:00). The schedule is stored on each day |
+| 6 Late | ≤ 15 min grace; 15 min–1 h on 3 days = ½ day (every 3); > 1 h = ½ day each; the first late arrival a month informed before the reporting time (and not marked "not genuine") is excused; ½ day = half a day's salary |
+| 7 Lunch | 1:00–1:30, 30 min; the Team Lead may move it for today; longer lunches are flagged |
+| 8 Leaving early / staying late | Leaving before 17:30 = ½ day (even with permission); before 18:30 without permission is flagged; staying after 18:45 needs a prior overtime request (task + why it can't wait), asked before 18:45; the Team Lead is notified of anyone still in without approval |
+| 9 Overtime | Real minutes after 18:45 to the time out, approved requests only; paid at the day rate × minutes ÷ "overtime minutes paid as one day" (Settings, 540) |
+| 10 Leave | ERP only. With intimation = asked before the reporting time of the first day (worked out, not ticked). 1 a month paid; more is unpaid. No request = double absent (a pending or rejected request = single). Planned leave must be asked 15 days ahead (refused otherwise). Sundays and office holidays with a full day away on both sides count as leave. No leave, absence or half day in a complete month (employed all month) = +2 days' salary |
+
+Who the rules apply to: approved staff except the owner. Morning plan, EOD and their fines apply to those who use the timesheet module (not support staff limited to attendance and payroll).
+
 ## 2. Configurable values (Settings)
 
 | Value | Default | Status | Setting |
 |---|---|---|---|
 | Probation days | 7 | Confirmed default (R5) | Organization |
 | Licensed user limit, access mode | 1 / single-user | Configurable | Organization |
-| Office start / grace / lunch / end / leaving grace | 09:30 / 09:45 / 13:00–13:30 / 18:30 / 18:45 | Provisional (two policy versions) | Leave & timing policy |
-| Half day if leaving before | 17:30 | Provisional | Policy |
-| Required minutes: standard / on-site / reduced / far client (early month, until day) | 540 / 480 / 510 / 510 (day 15) | Provisional | Policy |
-| Late arrivals per half day; late grace per month | 2; 1 | Provisional | Policy |
-| Overtime mode | Actual minutes (alternative: 2.5 h / 5 h slabs) | **Unresolved**: the two policy documents differ | Policy |
-| Paid leaves per month; planned-leave notice days | 1; 15 | Provisional | Policy |
-| Policy confirmed flag | false | While false, attendance figures are labelled indicative and have no payroll effect | Policy |
+| Office name, start / grace / lunch / end / overtime after | Office / 09:30 / 09:45 / 13:00–13:30 / 18:30 / 18:45 | **Confirmed** (rules 5, 7, 9) | Leave & timing policy |
+| Half day if leaving before; absent if not in by; morning plan by | 17:30; 12:00; 10:30 | **Confirmed** (rules 8, 3, 2) | Policy |
+| Client-site day | 480 minutes from the reporting time the Team Lead fixes | **Confirmed** (rule 5) | Policy |
+| Late days per half day; late by more than = half day; late arrivals excused a month | 3; 60 min; 1 | **Confirmed** (rule 6) | Policy |
+| Overtime | Actual minutes after 18:45, approved only; paid at day rate × minutes ÷ 540 | **Confirmed** (rule 9); the pay rate is a working assumption | Policy |
+| Paid leaves per month; planned-leave notice; no-leave bonus; days for an absence without a request | 1; 15 days; 2 days; 2 | **Confirmed** (rule 10) | Policy |
+| EOD fine; Team Lead fine | ₹100; ₹200 | **Confirmed** (rule 2) | Policy |
+| Office holidays | none | Not working days; inside a continuous leave they count as leave | Policy → Office holidays |
 | Access while awaiting approval | 7 days | **Confirmed** by the owner (R12) | Lists & preferences |
 | Pending-days basis | Calendar days (alternative: business days, Sundays excluded; no holiday calendar) | Provisional | Lists & preferences |
 | Designations (with seniority), timesheet work types | Seeded from the master data | Configurable; deactivation keeps history | Lists & preferences |
@@ -57,8 +85,8 @@ Sources: the handwritten notes and DFD, the nine Google Drive references ([requi
 | P3 | Quick-registration mandatory fields | Trade name, contact person, mobile, email, password, consent; everything else is completed after approval by staff | D3 |
 | P4 | Duplicate detection | Email unique per login; GSTIN unique per organization; PAN checked on staff registration. A repeated submission with the same email is refused with a generic message | Safe retries; no enumeration |
 | P5 | Rejection | A reason is required; the record is kept. Clients: staff resubmit after correction. Employees: they correct and resubmit themselves | Self-service correction for clients is unconfirmed (K-3) |
-| P6 | Attendance without location | Allowed; the missing location is recorded as missing. Photo optional | Location permission may be refused |
-| P7 | Late arrival | After the grace time, the late flag is set and a reason requested; half-day conversion follows the policy counts (indicative) | Policy unconfirmed |
+| P6 | Attendance without location | **Superseded (rule 1):** not accepted; the person is told how to allow location. Photo optional | — |
+| P7 | Late arrival | Superseded by the confirmed office rules (section 1a) | — |
 | P8 | Timesheet entries without a task | Allowed (the client name may even be free text). A task or allocation link is optional | The handwritten 10A has no task column |
 | P9 | Hours in reports | *Recorded* = all entries dated in the period; *reviewed* = entries marked reviewed. Committed work is listed separately | Avoids presenting unreviewed work as approved |
 | P10 | Observation statuses | OPEN → IN_PROGRESS → RESOLVED → CLOSED, reopenable | Not specified by the firm |

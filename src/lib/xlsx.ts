@@ -159,8 +159,11 @@ export function readFirstSheet(data: Uint8Array): string[][] {
   return readFirstSheetNumbered(data).map((r) => r.cells);
 }
 
-/** As readFirstSheet, with each row's number as Excel shows it (blank rows skipped, numbers kept). */
-export function readFirstSheetNumbered(data: Uint8Array): { n: number; cells: string[] }[] {
+/**
+ * As readFirstSheet, with each row's number as Excel shows it (blank rows skipped, numbers kept).
+ * `preferSheet` picks a sheet by its tab name (e.g. /^allocation/i); otherwise the first sheet.
+ */
+export function readFirstSheetNumbered(data: Uint8Array, preferSheet?: RegExp): { n: number; cells: string[] }[] {
   let files: Record<string, Uint8Array>;
   try {
     files = unzipSync(data);
@@ -172,7 +175,9 @@ export function readFirstSheetNumbered(data: Uint8Array): { n: number; cells: st
   const rels = read("xl/_rels/workbook.xml.rels");
   if (!workbook) throw new XlsxReadError("This does not look like an Excel (.xlsx) file.");
 
-  const firstId = /<sheet\b[^>]*r:id="([^"]+)"/.exec(workbook)?.[1];
+  const sheetTags = [...workbook.matchAll(/<sheet\b[^>]*>/g)].map((m) => m[0]);
+  const preferred = preferSheet ? sheetTags.find((t) => preferSheet.test(unesc(/\bname="([^"]*)"/.exec(t)?.[1] ?? ""))) : undefined;
+  const firstId = /r:id="([^"]+)"/.exec(preferred ?? sheetTags[0] ?? "")?.[1];
   const target = firstId && rels ? new RegExp(`<Relationship\\b(?=[^>]*Id="${firstId}")[^>]*Target="([^"]+)"`).exec(rels)?.[1] : null;
   const path = target ? (target.startsWith("/") ? target.slice(1) : `xl/${target}`) : "xl/worksheets/sheet1.xml";
   const sheet = read(path) ?? read("xl/worksheets/sheet1.xml");

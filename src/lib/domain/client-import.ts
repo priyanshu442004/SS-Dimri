@@ -37,16 +37,20 @@ export const IMPORT_FIELDS = {
 export const SECRET_FIELDS = ["gstPassword", "incomeTaxPassword", "tracesPassword"] as const;
 
 export type ImportField = keyof typeof IMPORT_FIELDS;
-export type ColumnMapping = (ImportField | "")[];
+/** "extra" = a column with no field of its own: kept on the client as it is (client feedback 13 Nov 2026). */
+export const EXTRA_COLUMN = "extra" as const;
+export type ColumnMapping = (ImportField | typeof EXTRA_COLUMN | "")[];
 
-const norm = (s: string) => s.toLowerCase().replace(/[._]/g, " ").replace(/\s+/g, " ").trim();
+const norm = (s: string) => s.toLowerCase().replace(/\*/g, " ").replace(/[._]/g, " ").replace(/\s+/g, " ").trim();
+/** Serial-number columns are never worth keeping. */
+const isSerial = (h: string) => /^(s ?no|sr ?no|sl ?no|serial( no| number)?|#|no)$/.test(norm(h));
 
 /** Finds the header row (a client sheet often has a title above it) in the first rows. */
 export function findHeaderRow(rows: string[][]): number {
   let best = 0;
   let bestScore = -1;
   rows.slice(0, 10).forEach((row, i) => {
-    const score = guessMapping(row).filter(Boolean).length;
+    const score = guessMapping(row).filter((m) => m && m !== EXTRA_COLUMN).length;
     if (score > bestScore) {
       best = i;
       bestScore = score;
@@ -77,6 +81,10 @@ export function guessMapping(header: string[]): ColumnMapping {
     if (mapping[i]) return;
     const f = loose(norm(h));
     if (f) { mapping[i] = f; taken.add(f); }
+  });
+  // Any other headed column is kept as an extra detail, so nothing in the sheet is lost.
+  header.forEach((h, i) => {
+    if (!mapping[i] && h.trim() && !isSerial(h)) mapping[i] = EXTRA_COLUMN;
   });
   return mapping;
 }
@@ -110,7 +118,7 @@ export function normalizeMobile(raw: string): string | null {
   return /^[6-9]\d{9}$/.test(ten) ? ten : null;
 }
 
-export type ParsedClient = Partial<Record<ImportField, string>> & { gstins: string[]; departmentList: string[] };
+export type ParsedClient = Partial<Record<ImportField, string>> & { gstins: string[]; departmentList: string[]; extra?: Record<string, string> };
 
 /** DD/MM/YYYY (or an Excel ISO date) → YYYY-MM-DD. */
 export function parseSheetDate(raw: string): string | null {
@@ -128,13 +136,17 @@ export function parseSheetDate(raw: string): string | null {
 export type RowResult = { row: number; values: ParsedClient; errors: string[]; warnings: string[] };
 
 /** Turns one sheet row into clean values. Errors stop a row; warnings drop the bad value only. */
-export function parseRow(row: string[], mapping: ColumnMapping, rowNumber: number): RowResult {
+export function parseRow(row: string[], mapping: ColumnMapping, rowNumber: number, header: string[] = []): RowResult {
   const values: ParsedClient = { gstins: [], departmentList: [] };
   const errors: string[] = [];
   const warnings: string[] = [];
   mapping.forEach((f, i) => {
     const v = (row[i] ?? "").trim();
-    if (f && v && v !== "—" && v !== "-") values[f] = v;
+    if (!f || !v || v === "—" || v === "-") return;
+    if (f === EXTRA_COLUMN) {
+      const key = (header[i] ?? "").trim().slice(0, 80) || `Column ${i + 1}`;
+      values.extra = { ...values.extra, [key]: v.slice(0, 1000) };
+    } else values[f] = v;
   });
   if (!values.tradeName) errors.push("Client name is empty");
   if (values.gstin) {
@@ -196,6 +208,7 @@ export function mergeRowsByPan(rows: RowResult[]): MergedRow[] {
       const t = target.values;
       t.gstins = [...new Set([...t.gstins, ...v.gstins])];
       t.departmentList = [...new Set([...t.departmentList, ...v.departmentList])];
+      if (v.extra) t.extra = { ...v.extra, ...t.extra };
       for (const [k, val] of Object.entries(v) as [ImportField, string][]) {
         if (typeof val === "string" && val && !t[k]) t[k] = val;
       }

@@ -4,8 +4,10 @@ import { prisma } from "@/lib/db";
 import { NO_EMPLOYEE } from "@/lib/ids";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
-import { formatDate, formatDateTime, minutesToHhmm } from "@/lib/dates";
+import { addDays, dateOnly, formatDate, formatDateTime, isoDateInTz, minutesToHhmm } from "@/lib/dates";
 import { capacityFromPolicy, describeHours } from "@/lib/domain/allocation";
+import { ALLOCATION_ROLES } from "@/lib/domain/allocation-import";
+import { describeSchedule, plannedDates } from "@/lib/domain/allocation-schedule";
 import { OPEN_STATUSES } from "@/lib/domain/task-workflow";
 import { getPolicy } from "@/lib/services/attendance";
 import { DeleteButton } from "@/components/delete-dialog";
@@ -24,7 +26,7 @@ export default async function AllocationDetail({ params }: PageProps<"/app/alloc
       ...(can(ctx, "allocations.view_all") ? {} : { employeeId: ctx.employee?.id ?? NO_EMPLOYEE }),
     },
     include: {
-      client: { select: { id: true, tradeName: true } },
+      client: { select: { id: true, tradeName: true, contacts: { where: { isPrimary: true }, take: 1, select: { name: true, mobile: true } } } },
       clientService: { select: { service: { select: { name: true } } } },
       employee: { select: { id: true, firstName: true, lastName: true, designation: { select: { name: true } } } },
       reportsTo: { select: { firstName: true, lastName: true } },
@@ -35,6 +37,9 @@ export default async function AllocationDetail({ params }: PageProps<"/app/alloc
   if (!a) notFound();
   const { row: policy } = await getPolicy(ctx.organization.id);
   const capacity = capacityFromPolicy(policy);
+  const today = dateOnly(isoDateInTz(new Date(), ctx.organization.timezone));
+  const nextVisits = a.status === "ACTIVE" || a.status === "PLANNED" ? plannedDates(a, today, addDays(today, 62), undefined, 8) : [];
+  const extra = a.extraFields && typeof a.extraFields === "object" && !Array.isArray(a.extraFields) ? Object.entries(a.extraFields as Record<string, string>) : [];
 
   // Walk the change chain in both directions.
   const chain: { id: string; employee: string; start: Date; end: Date | null; status: string; reason: string | null }[] = [];
@@ -83,10 +88,16 @@ export default async function AllocationDetail({ params }: PageProps<"/app/alloc
               ["Client", <Link key="c" href={`/app/clients/${a.client.id}`} className="text-brand-700 hover:underline">{a.client.tradeName}</Link>],
               ["Service", a.clientService?.service.name],
               ["Team member", `${a.employee.firstName} ${a.employee.lastName ?? ""} · ${a.employee.designation?.name ?? ""}`],
-              ["Level on this client", a.seniorityLevel ? humanize(a.seniorityLevel) : null],
+              ["Role on this client", a.seniorityLevel ? ALLOCATION_ROLES[a.seniorityLevel] : null],
               ["Period", `${formatDate(a.startDate)} – ${a.endDate ? formatDate(a.endDate) : "ongoing"}`],
+              ["Days", describeSchedule(a)],
               ["Hours", describeHours({ firstHalfHours: a.firstHalfHours === null ? null : Number(a.firstHalfHours), secondHalfHours: a.secondHalfHours === null ? null : Number(a.secondHalfHours) }, capacity)],
+              ["Next planned days", nextVisits.length ? nextVisits.map((d) => formatDate(d)).join(", ") : null],
               ["Resource type", a.resourceType],
+              ["Point of contact", a.client.contacts[0] ? `${a.client.contacts[0].name} ${a.client.contacts[0].mobile ?? ""}`.trim() : null],
+              ["Allow overlap", a.allowOverlap ? "Yes" : "No"],
+              ["Remark", a.remark],
+              ...extra.map(([k, v]) => [k, v] as [string, string]),
               ["Timesheet reviewer", a.reportsTo ? `${a.reportsTo.firstName} ${a.reportsTo.lastName ?? ""}`.trim() : null],
               ["Team leader (escalation)", a.teamLeader ? `${a.teamLeader.firstName} ${a.teamLeader.lastName ?? ""}`.trim() : null],
               ["Created", `${formatDateTime(a.createdAt)} by ${a.createdBy?.name ?? "—"}`],

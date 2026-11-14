@@ -84,6 +84,19 @@ export async function addForgottenMarkOut(loginEmail: string, daysAgo: number) {
   if (!rowCount) throw new Error("No attendance added (outside an e2e organization, or the day already exists).");
 }
 
+/**
+ * Office rule 3 marks everyone not in by 12:00 absent, and nobody can then mark in. The suite runs at
+ * any hour, so its firm's cut-off moves to the end of the day.
+ */
+export async function relaxAttendanceCutoff(ownerEmail: string) {
+  if (!ownerEmail.endsWith("@e2e.invalid")) throw new Error("Refusing to modify an organization outside the e2e suite.");
+  await pool.query(
+    `UPDATE attendance_policies p SET auto_absent_at = '23:59'
+      WHERE EXISTS (SELECT 1 FROM organization_memberships m JOIN users u ON u.id = m.user_id WHERE m.organization_id = p.organization_id AND m.role = 'OWNER' AND u.email = $1)`,
+    [ownerEmail.toLowerCase()],
+  );
+}
+
 export async function disconnect() {
   await pool.end();
 }

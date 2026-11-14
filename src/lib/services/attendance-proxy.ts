@@ -3,13 +3,15 @@ import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { BusinessRuleError, zOptionalText } from "@/lib/actions";
-import { formatDate, formatTime, todayDateOnly } from "@/lib/dates";
+import { formatDate, formatTime, minutesOfDayInTz, todayDateOnly } from "@/lib/dates";
 import { mayReviewPhoto, wageForDay } from "@/lib/domain/attendance-extras";
 import { can } from "@/lib/permissions";
 import type { AppContext } from "@/lib/session";
 import { NO_EMPLOYEE } from "@/lib/ids";
 import { audit } from "./audit";
-import { closeDayExtras } from "./attendance";
+import { closeDayExtras, NO_LOCATION } from "./attendance";
+import { getPolicy, scheduleOf } from "./office-rules";
+import { hhmm } from "@/lib/domain/attendance-policy";
 import { hasFile, storeUpload, validateUpload } from "./files";
 import { notifyEmployees, notifyRoles, notifyUsers } from "./notifications";
 
@@ -37,6 +39,8 @@ export async function proxyMark(ctx: AppContext, v: z.infer<typeof proxyMarkSche
   const [type, id] = v.person.split(":") as ["e" | "w", string];
   const photo = fd.get("photo");
   if (!hasFile(photo)) throw new BusinessRuleError("Take a photo of the person as proof of attendance.");
+  // Office rule 1: attendance without the map location is not considered, whoever marks it.
+  if (v.latitude === undefined || v.longitude === undefined) throw new BusinessRuleError(NO_LOCATION);
   // Check the picture before anything is written, so a bad file leaves nothing behind.
   await validateUpload(photo, { imagesOnly: true });
   return type === "e" ? markEmployee(ctx, id, v, photo) : markWorker(ctx, id, v, photo);
@@ -56,6 +60,13 @@ async function markEmployee(ctx: AppContext, employeeId: string, v: z.infer<type
   const now = new Date();
   const existing = await prisma.attendanceRecord.findFirst({ where: { organizationId: org, employeeId: emp.id, attendanceDate: day } });
   if (v.kind === "in" && existing?.timeIn) throw new BusinessRuleError(`${name} is already marked in today (${formatTime(existing.timeIn, tz)}).`);
+  if (v.kind === "in" && existing && existing.status !== "PRESENT") throw new BusinessRuleError(`${name} is recorded as ${existing.autoAbsentAt ? "absent by the ERP" : existing.status.toLowerCase().replace("_", " ")} today; it cannot be changed to present.`);
+  const policy = await getPolicy(org);
+  const schedule = scheduleOf(policy, await prisma.employee.findUniqueOrThrow({ where: { id: emp.id }, select: { attendanceProfile: true, siteReportingTime: true } }), existing);
+  if (v.kind === "in" && minutesOfDayInTz(now, tz) >= schedule.absentAt) {
+    const onLeave = await prisma.leaveRequest.count({ where: { employeeId: emp.id, status: { in: ["APPROVED", "PENDING"] }, fromDate: { lte: day }, toDate: { gte: day } } });
+    if (!onLeave) throw new BusinessRuleError(`It is past ${hhmm(schedule.absentAt)}: ${name} cannot be marked present today (office rule 3).`);
+  }
   if (v.kind === "out" && !existing?.timeIn) throw new BusinessRuleError(`${name} has not been marked in today. Record the time in first.`);
   if (v.kind === "out" && existing?.timeOut) throw new BusinessRuleError(`${name} is already marked out today.`);
   const stored = await storeUpload(ctx, photo, { area: "attendance", ownerId: emp.id, imagesOnly: true });
@@ -73,6 +84,9 @@ async function markEmployee(ctx: AppContext, employeeId: string, v: z.infer<type
         timeInProxyById: ctx.user.id,
         photoReview: "PENDING" as const,
         remarks: v.note || existing?.remarks,
+        workLocation: "OFFICE" as const,
+        scheduledStart: hhmm(schedule.start),
+        scheduledEnd: hhmm(schedule.end),
       };
       if (existing) {
         const res = await tx.attendanceRecord.updateMany({ where: { id: existing.id, timeIn: null }, data });

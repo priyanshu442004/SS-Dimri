@@ -16,6 +16,7 @@ const ITEMS: (NavItem & { cap?: Capability })[] = [
   { href: "/app/pending", label: "Pending tracker", icon: "flag", section: "Work", cap: "pending.manage_own" },
   { href: "/app/attendance", label: "Attendance", icon: "calendar", section: "People", cap: "attendance.mark_own" },
   { href: "/app/payroll", label: "Payroll", icon: "wallet", section: "People", cap: "payroll.view_own" },
+  { href: "/app/rules", label: "Office rules", icon: "book", section: "People", cap: "attendance.mark_own" },
   { href: "/app/employees", label: "Employees", icon: "id", section: "People", cap: "employees.view" },
   { href: "/app/services", label: "Services & departments", icon: "briefcase", section: "Setup", cap: "services.manage" },
   { href: "/app/compliances", label: "Compliance", icon: "book", section: "Setup", cap: "compliance.use" },

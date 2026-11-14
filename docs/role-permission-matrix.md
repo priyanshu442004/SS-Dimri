@@ -12,7 +12,8 @@ Roles: **Owner**, **Admin** (administrator), **Manager**, **Senior**, **Team mem
 | Approve, hold or reject onboarding (`employees.approve`) | ✔ | ✔ | grant⁴ | grant⁴ | grant⁴ |
 | Give a person extra rights or limit their modules (`access.manage`) | ✔ | ✔ | | | |
 | Payroll — own payslip | ✔ | ✔ | ✔ | ✔ | ✔ |
-| Payroll — team register, salaries, export (`payroll.manage`) | ✔ | ✔ | grant⁴ | grant⁴ | grant⁴ |
+| Payroll — team register, everyone's salaries, export (`payroll.manage`) | ✔ | ✔ | grant⁴ | grant⁴ | grant⁴ |
+| Payroll — fix, increase and correct salaries of the people under them (`payroll.salaries`; never one's own) | ✔ (all) | ✔ (all) | ✔ (team, direct and indirect) | grant⁴ | grant⁴ |
 | Compliance — calendar, own tracker rows, mark own done | ✔ | ✔ | ✔ | ✔ | ✔ |
 | Compliance — all rows, add columns, export all (`compliance.manage`) | ✔ | ✔ | ✔ | ✔ | grant⁴ |
 | Import clients from Excel (`clients.import`) | ✔ | ✔ | ✔ | grant⁴ | grant⁴ |
@@ -23,7 +24,7 @@ Roles: **Owner**, **Admin** (administrator), **Manager**, **Senior**, **Team mem
 | Approve / reject / hold / discontinue clients | ✔ | ✔ | | | |
 | Manage services & departments | ✔ | ✔ | | | |
 | Team allocation — view all | ✔ | ✔ | ✔ | ✔ | own |
-| Team allocation — create / change / end | ✔ | ✔ | ✔ | | |
+| Team allocation — create / change / end / import from Excel | ✔ | ✔ | ✔ | | |
 | Tasks — view all | ✔ | ✔ | ✔ | ✔ | own² |
 | Tasks — create and depute people | ✔ | ✔ | ✔ | ✔ | ✔ |
 | Tasks — review any task, reopen | ✔ | ✔ | ✔ | ✔ | named checker |
@@ -31,7 +32,10 @@ Roles: **Owner**, **Admin** (administrator), **Manager**, **Senior**, **Team mem
 | Tasks — start / hold / submit / remarks / attachments on assigned work | ✔ | ✔ | ✔ | ✔ | ✔ |
 | Attendance — mark own | ✔ | ✔ | ✔ | ✔ | ✔ |
 | Attendance — team view | ✔ | ✔ | ✔ | ✔ | |
-| Attendance — record / correct for others (audited) | ✔ | ✔ | | | |
+| Attendance — record / correct / delete a day by hand | | | | | |
+| Office rules — read the rules, accept the declaration (`/app/rules`) | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Office rules — inform / request: late, can't come, leave early, overtime | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Office rules — as Team Lead (anyone others report to, admins for all): decide those forms, approve / edit morning plans, escalate a missing EOD, set client-site timings, move a lunch | ✔ (all) | ✔ (all) | reportees | reportees | reportees |
 | Attendance — mark a colleague or daily worker in/out with their photo (`attendance.mark_others`) | ✔ | ✔ | ✔ | ✔ | grant⁴ |
 | Attendance — check photo attendance, mark absent if not genuine (`attendance.review_photos`) | ✔ (all) | ✔ (all) | reportees, grant⁴ | reportees, grant⁴ | grant⁴ |
 | Attendance — daily workers: register, wages, pay sheet (`attendance.workers`) | ✔ | ✔ | ✔ | grant⁴ | grant⁴ |
@@ -60,6 +64,8 @@ Additional rules enforced in services:
 - Only an administrator can invite, approve or delete another administrator. Nobody can change their own rights or delete their own record; the owner cannot be deleted.
 - Nobody changes their own role or access status (another administrator must); the owner's role cannot be changed.
 - Managers and seniors decide leave only for people who report to them. This is enforced in the service, not just by filtering the list.
+- **Team Lead** (Leave, Timing and Office Decorum rules, 14 Nov 2026) means the person someone reports to (Employees → Whom to report), whatever their role. Their powers over a reportee (decide leave and the ERP forms, approve or edit the morning plan, escalate a missing EOD, set a client-site timing, move a lunch) are checked against that reporting line in every service; administrators act for everyone.
+- **No human intervention in attendance** (rule 1): the correction right (`attendance.correct`) and single-day deletion are removed. Days are marked only by the person (with the map location), by a colleague with a photo (`attendance.mark_others`, also with the map location), or Absent by the ERP at the cut-off.
 - Nobody decides their own leave request or reviews their own timesheet entries. A returned entry needs a remark; reviewed entries can be corrected only by administrators, with a reason.
 - Report exports are checked with the same capability as the report page; foreign or unknown ids return 404.
 - Staff whose onboarding is not approved can only use their onboarding page.

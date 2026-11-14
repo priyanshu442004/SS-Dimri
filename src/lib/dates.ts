@@ -25,6 +25,14 @@ export function dateTimeLocalInTz(date: Date, tz = DEFAULT_TZ): string {
   return `${y}-${p(m)}-${p(d)}T${p(hh)}:${p(mm)}`;
 }
 
+/** The instant at `minutes` past midnight of the calendar day `iso` in `tz`. */
+export function zonedDateTime(iso: string, minutes: number, tz = DEFAULT_TZ): Date {
+  const guess = new Date(Date.parse(`${iso}T00:00:00Z`) + minutes * 60_000);
+  const l = parts(guess, tz);
+  const offset = Date.UTC(l.y, l.m - 1, l.d, l.hh, l.mm) - guess.getTime();
+  return new Date(guess.getTime() - offset);
+}
+
 /** "YYYY-MM-DD" for the calendar day of `date` in `tz`. */
 export function isoDateInTz(date: Date, tz = DEFAULT_TZ): string {
   const { y, m, d } = parts(date, tz);

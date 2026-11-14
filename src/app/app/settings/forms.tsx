@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { ActionForm, Checkbox, SelectField, SubmitButton, TextArea, TextField, type FormState } from "@/components/form";
+import { ActionForm, SelectField, SubmitButton, TextArea, TextField, type FormState } from "@/components/form";
 
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
 type D = Record<string, string>;
@@ -69,31 +69,57 @@ export function LeavePolicyDocForm({ action }: { action: Act }) {
 }
 
 export function PolicyForm({ action, d }: { action: Act; d: D }) {
-  const t = (label: string, name: string) => <TextField key={name} label={label} name={name} type="time" defaultValue={d[name]} />;
-  const n = (label: string, name: string, hint?: string) => <TextField key={name} label={label} name={name} type="number" defaultValue={d[name]} hint={hint} />;
+  const t = (label: string, name: string, hint?: string) => <TextField key={name} label={label} name={name} type="time" defaultValue={d[name]} hint={hint} />;
+  const n = (label: string, name: string, hint?: string, step?: string) => <TextField key={name} label={label} name={name} type="number" step={step} defaultValue={d[name]} hint={hint} />;
   return (
     <ActionForm action={action}>
-      <fieldset className="grid gap-3 sm:grid-cols-4">
-        <legend className="mb-2 text-sm font-semibold">Office timings (LT-01…LT-09)</legend>
-        {t("Office start", "officeStart")}{t("Reporting grace until", "reportingGraceUntil")}{t("Lunch from", "lunchStart")}{t("Lunch to", "lunchEnd")}
-        {t("Office end", "officeEnd")}{t("Leaving grace until", "leavingGraceUntil")}{t("Half day if leaving before", "halfDayIfLeavingBefore")}
-        <TextField key="markOutReminderAt" label="Remind to mark out at" name="markOutReminderAt" type="time" defaultValue={d.markOutReminderAt} hint="Anyone still marked in gets a reminder (app and email)." />
+      <fieldset className="grid gap-3 sm:grid-cols-3">
+        <legend className="mb-2 text-sm font-semibold">Office timings (rules 5 and 7)</legend>
+        <TextField label="Office name" name="officeName" defaultValue={d.officeName} hint="Shown as the first work location, e.g. Naraina Office" />
+        {t("Office start", "officeStart")}{t("Grace until", "reportingGraceUntil", "Up to 15 minutes late: no deduction")}
+        {t("Office end", "officeEnd")}{t("Lunch from", "lunchStart")}{t("Lunch to", "lunchEnd", "Never more than this; a Team Lead may move it")}
+        {n("Client-site day (minutes)", "onsiteRequiredMinutes", "480 = 8 hours from the reporting time the Team Lead fixes")}
       </fieldset>
       <fieldset className="grid gap-3 sm:grid-cols-3">
-        <legend className="mb-2 text-sm font-semibold">Required working minutes (OT-02 / LT-11)</legend>
-        {n("Normal days", "requiredMinutes", "540 = 9h")}{n("Onsite staff", "onsiteRequiredMinutes", "480 = 8h")}{n("Specifically allowed staff", "reducedRequiredMinutes", "510 = 8h30")}
-        {n("Far-off client staff, early month", "farClientEarlyMonthMinutes", "510 = 8h30")}{n("…up to day of month", "farClientEarlyMonthUntilDay")}
+        <legend className="mb-2 text-sm font-semibold">Reporting and late arrival (rules 3 and 6)</legend>
+        {t("Marked absent if not in by", "autoAbsentAt", "The ERP marks the day Absent; it cannot become Present")}
+        {n("Late days (15 min – 1 h) per half day", "lateArrivalsPerHalfDay", "3 in a month = half a day's salary")}
+        {n("Late by more than (minutes) = half day", "veryLateAfterMinutes", "60 = over an hour late is a half day")}
+        {n("Late arrivals excused a month", "lateGracePerMonth", "With a genuine reason, informed in the ERP beforehand")}
       </fieldset>
       <fieldset className="grid gap-3 sm:grid-cols-3">
-        <legend className="mb-2 text-sm font-semibold">Late arrival, overtime & leave</legend>
-        {n("Late arrivals per half-day", "lateArrivalsPerHalfDay")}{n("Excused lates per month (with reason)", "lateGracePerMonth")}
-        <SelectField label="Overtime basis" name="overtimeMode" placeholder={null} defaultValue={d.overtimeMode} options={[
-          { value: "ACTUAL_MINUTES", label: "Actual minutes, no slabs (newer version)" }, { value: "SLABS", label: "Slabs after 6:45 PM (older version)" },
-        ]} />
-        {n("Minutes per OT day", "overtimeMinutesPerDay", "540 per policy 6.5")}{n("Paid leaves per month", "paidLeavesPerMonth")}{n("Planned-leave notice (days)", "plannedLeaveNoticeDays")}
+        <legend className="mb-2 text-sm font-semibold">Leaving early, staying late and overtime (rules 8 and 9)</legend>
+        {t("Half day if leaving before", "halfDayIfLeavingBefore")}
+        {t("Overtime counts after", "leavingGraceUntil", "Prior approval needed; actual minutes from the next minute")}
+        {n("Overtime minutes paid as one day", "overtimeMinutesPerDay", "Pay = day rate × overtime minutes ÷ this")}
+        {t("Remind to mark out at", "markOutReminderAt", "Anyone still marked in gets a reminder")}
       </fieldset>
-      <Checkbox name="policyConfirmed" label="The firm has confirmed these rules (payroll figures stop being marked provisional)" defaultChecked={d.policyConfirmed === "on"} />
+      <fieldset className="grid gap-3 sm:grid-cols-3">
+        <legend className="mb-2 text-sm font-semibold">Leave (rule 10)</legend>
+        {n("Paid leaves per month (with intimation)", "paidLeavesPerMonth", undefined, "0.5")}
+        {n("Planned leave notice (days)", "plannedLeaveNoticeDays", "Request and approval this many days ahead")}
+        {n("Days added for a month without leave", "noLeaveBonusDays", undefined, "0.5")}
+        {n("Days counted for an absence without a request", "unrequestedAbsenceDays", "2 = double absent", "0.5")}
+      </fieldset>
+      <fieldset className="grid gap-3 sm:grid-cols-3">
+        <legend className="mb-2 text-sm font-semibold">Morning plan and EOD report (rule 2)</legend>
+        {t("Morning plan due by", "morningPlanBy")}
+        {n("Fine for an EOD not filed (₹)", "eodPenaltyRupees", "Filed by the next day's reporting time = no fine")}
+        {n("Fine for a Team Lead not escalating (₹)", "leadPenaltyRupees")}
+      </fieldset>
       <SubmitButton>Save policy</SubmitButton>
+    </ActionForm>
+  );
+}
+
+export function HolidayForm({ action }: { action: Act }) {
+  return (
+    <ActionForm action={action} resetOnSuccess>
+      <div className="flex flex-wrap items-end gap-2">
+        <TextField label="Date" name="holidayDate" type="date" required />
+        <div className="min-w-0 flex-1"><TextField label="Holiday" name="name" required placeholder="e.g. Diwali" /></div>
+        <SubmitButton variant="secondary">Add</SubmitButton>
+      </div>
     </ActionForm>
   );
 }
@@ -117,14 +143,14 @@ export function ListItemForm({ action, withSeniority }: { action: Act; withSenio
 export function PreferencesForm({ action, basis, graceDays, penalty }: { action: Act; basis: string; graceDays: string; penalty: string }) {
   return (
     <ActionForm action={action}>
-      <TextField label="Timesheet penalty per breach (₹)" name="timesheetPenaltyRupees" type="number" min={0} max={100000} required defaultValue={penalty} hint="Charged for a late submission or a late review, as in the Team Timesheet. Enter 0 to switch it off." />
+      <TextField label="Timesheet penalty per breach (₹)" name="timesheetPenaltyRupees" type="number" min={0} max={100000} required defaultValue={penalty} hint="Shown for a late review (not reviewed within 36 hours), as in the Team Timesheet. EOD fines are set in the Leave & timing policy. Enter 0 to switch it off." />
       <SelectField
         label="Count pending days on"
         name="pendingDaysBasis"
         required
         defaultValue={basis}
         options={[{ value: "CALENDAR", label: "Calendar days (every day counts)" }, { value: "BUSINESS", label: "Business days (Sundays excluded)" }]}
-        hint="Used by the pending tracker, communication timesheet and client reports. Public holidays are not excluded: no holiday calendar has been provided."
+        hint="Used by the pending tracker, communication timesheet and client reports. Office holidays (Leave & timing policy) are used by attendance and payroll."
       />
       <TextField
         label="Client access while awaiting approval (days)"

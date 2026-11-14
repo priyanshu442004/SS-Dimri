@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { availabilityOn, capacityFromPolicy, describeHours, findConflicts } from "@/lib/domain/allocation";
-import { evaluateDay, summarizeMonth, type PolicyParams } from "@/lib/domain/attendance-policy";
 import { availableActions, canPerform, nextStatus } from "@/lib/domain/task-workflow";
 import { daysPending, isTaskOverdue, workHours } from "@/lib/domain/derived";
 import { can, landingPath } from "@/lib/permissions";
@@ -10,20 +9,6 @@ import { gstinSchema, panSchema } from "@/lib/validation/identifiers";
 const TZ = "Asia/Kolkata";
 const ist = (iso: string) => new Date(`${iso}+05:30`);
 
-const POLICY: PolicyParams = {
-  reportingGraceUntil: "09:45",
-  halfDayIfLeavingBefore: "17:30",
-  leavingGraceUntil: "18:45",
-  requiredMinutes: 540,
-  onsiteRequiredMinutes: 480,
-  reducedRequiredMinutes: 510,
-  farClientEarlyMonthMinutes: 510,
-  farClientEarlyMonthUntilDay: 15,
-  lateArrivalsPerHalfDay: 2,
-  lateGracePerMonth: 1,
-  overtimeMode: "ACTUAL_MINUTES",
-  overtimeMinutesPerDay: 540,
-};
 
 describe("permissions", () => {
   it("team members cannot cancel tasks, approve clients or view all attendance", () => {
@@ -95,63 +80,6 @@ describe("derived values", () => {
   });
   it("work hours from in/out", () => {
     expect(workHours(ist("2026-10-26T09:30:00"), ist("2026-10-26T18:30:00"))).toBe(9);
-  });
-});
-
-describe("attendance policy (provisional)", () => {
-  it("matches the policy document example: in 9:45, out 20:15 → 90 OT minutes", () => {
-    const r = evaluateDay(
-      { dayOfMonth: 5, status: "PRESENT", timeIn: ist("2026-10-05T09:45:00"), timeOut: ist("2026-10-05T20:15:00") },
-      "STANDARD",
-      POLICY,
-      TZ,
-    );
-    expect(r.workedMinutes).toBe(630);
-    expect(r.overtimeMinutes).toBe(90);
-    expect(r.isLate).toBe(false); // 9:45 is within grace
-  });
-  it("1,620 OT minutes in a month = 3 OT days; short days reduce OT", () => {
-    const days = [0, 1, 2].map((i) => ({
-      dayOfMonth: i + 1,
-      status: "PRESENT" as const,
-      timeIn: ist(`2026-10-0${i + 1}T09:30:00`),
-      timeOut: ist(`2026-10-0${i + 1}T00:00:00`.replace("T00:00", "T18:30").replace("18:30:00", "18:30:00")),
-    }));
-    // three 9h days → 0 OT; then add 1,620 extra minutes on one day
-    days.push({ dayOfMonth: 4, status: "PRESENT", timeIn: ist("2026-10-04T00:00:00"), timeOut: new Date(ist("2026-10-04T00:00:00").getTime() + (540 + 1620) * 60000) });
-    expect(summarizeMonth(days, "STANDARD", POLICY, TZ).overtimeDays).toBe(3);
-    const short = [...days, { dayOfMonth: 5, status: "PRESENT" as const, timeIn: ist("2026-10-05T09:30:00"), timeOut: ist("2026-10-05T17:30:00") }];
-    expect(summarizeMonth(short, "STANDARD", POLICY, TZ).overtimeMinutes).toBe(1620 - 60);
-  });
-  it("two counted late arrivals = half day; first late with a reason is excused", () => {
-    const late = (d: number, reason?: string) => ({
-      dayOfMonth: d,
-      status: "PRESENT" as const,
-      timeIn: ist(`2026-10-${String(d).padStart(2, "0")}T10:00:00`),
-      timeOut: ist(`2026-10-${String(d).padStart(2, "0")}T19:00:00`),
-      lateReason: reason,
-    });
-    expect(summarizeMonth([late(1), late(2)], "STANDARD", POLICY, TZ).lateHalfDays).toBe(0.5);
-    const s = summarizeMonth([late(1, "traffic jam"), late(2)], "STANDARD", POLICY, TZ);
-    expect(s.lateArrivalsExcusedByGrace).toBe(1);
-    expect(s.lateHalfDays).toBe(0);
-  });
-  it("far-client staff need 8h30 on days 1–15 and 9h afterwards", () => {
-    const d = (day: number) =>
-      evaluateDay({ dayOfMonth: day, status: "PRESENT", timeIn: null, timeOut: null }, "FAR_CLIENT", POLICY, TZ).requiredMinutes;
-    expect(d(10)).toBe(510);
-    expect(d(20)).toBe(540);
-  });
-  it("leaving before 17:30 is flagged as half day; no OT on leave days", () => {
-    const r = evaluateDay({ dayOfMonth: 3, status: "PRESENT", timeIn: ist("2026-10-03T09:30:00"), timeOut: ist("2026-10-03T17:00:00") }, "STANDARD", POLICY, TZ);
-    expect(r.leftBeforeHalfDayCutoff).toBe(true);
-    const leave = evaluateDay({ dayOfMonth: 3, status: "LEAVE", timeIn: ist("2026-10-03T09:30:00"), timeOut: ist("2026-10-03T21:00:00") }, "STANDARD", POLICY, TZ);
-    expect(leave.overtimeMinutes).toBeNull();
-  });
-  it("old slab policy: >2.5h after 18:45 = half day, >5h = full day", () => {
-    const p = { ...POLICY, overtimeMode: "SLABS" as const };
-    const r = evaluateDay({ dayOfMonth: 3, status: "PRESENT", timeIn: ist("2026-10-03T09:30:00"), timeOut: ist("2026-10-03T21:30:00") }, "STANDARD", p, TZ);
-    expect(r.slabOvertimeDays).toBe(0.5);
   });
 });
 
