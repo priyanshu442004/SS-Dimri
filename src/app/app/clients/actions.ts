@@ -8,6 +8,7 @@ import { actionContext } from "@/lib/session";
 import { audit } from "@/lib/services/audit";
 import {
   addEngagement,
+  updateEngagement,
   addRepresentative,
   clientDetailsSchema,
   contactSchema,
@@ -35,7 +36,7 @@ export async function quickRegisterAction(_p: ActionState, fd: FormData): Promis
   let id = "";
   const r = await safeAction(async () => {
     const ctx = await actionContext("clients.register");
-    id = (await quickRegisterClient(ctx, parsed.data)).id;
+    id = (await quickRegisterClient(ctx, parsed.data, fd)).id;
   });
   if (r.ok === false) return r;
   redirect(`/app/clients/${id}?registered=1`);
@@ -166,6 +167,17 @@ export async function addEngagementAction(clientId: string, _p: ActionState, fd:
     await addEngagement(ctx, clientId, parsed.data);
     revalidatePath(`/app/clients/${clientId}`);
     return { ok: true, message: "Service added." };
+  });
+}
+
+export async function updateEngagementAction(clientId: string, engagementId: string, _p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(engagementSchema, fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const { ctx } = await editableClient(clientId);
+    await updateEngagement(ctx, clientId, engagementId, parsed.data);
+    revalidatePath(`/app/clients/${clientId}`);
+    return { ok: true, message: "Service updated." };
   });
 }
 

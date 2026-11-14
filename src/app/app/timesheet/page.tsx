@@ -8,11 +8,11 @@ import { assessmentYears, isLateReview, isLateSubmission, OVERDUE_HOURS, slaOf, 
 import { timesheetExportHref, timesheetReviewers } from "@/lib/services/timesheet-report";
 import { DeleteButton } from "@/components/delete-dialog";
 import { canDelete } from "@/lib/services/deletions";
-import { activeClientOptions, employeeOptions } from "@/lib/services/lookups";
+import { activeClientOptions, employeeOptions, ownWorkClientOptions } from "@/lib/services/lookups";
 import { taskScope } from "@/lib/services/tasks";
 import { ActionButton } from "@/components/action-button";
 import { BarList, ChartCard } from "@/components/charts";
-import { Badge, Card, DownloadButton, EmptyState, PageHeader, Stat, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, DownloadButton, EmptyState, Notice, PageHeader, Stat, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
 import { addTimesheetAction, deleteTimesheetAction, reviewTimesheetAction } from "../worklog-actions";
 import { ReviewForm, TimesheetForm } from "../worklog-forms";
 import { myOpenLines, pendingPointsFor } from "@/lib/services/tracker";
@@ -106,12 +106,19 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
     const todayDate = dateOnly(today);
     const [entries, clients, workTypes, tasks, lines, points] = await Promise.all([
       prisma.timesheetEntry.findMany({ where: { employeeId: ctx.employee.id, workDate: dateOnly(date) }, orderBy: { serialNumber: "asc" }, include: { task: { select: { id: true, title: true } }, trackerLine: { select: { refNo: true } } } }),
-      activeClientOptions(ctx.organization.id),
+      ownWorkClientOptions(ctx, dateOnly(date)),
       prisma.workType.findMany({ where: { organizationId: ctx.organization.id, isActive: true }, orderBy: { sortOrder: "asc" } }),
       prisma.task.findMany({ where: { AND: [taskScope(ctx), { status: { notIn: ["COMPLETED", "CANCELLED"] } }] }, select: { id: true, title: true }, take: 100 }),
       myOpenLines(ctx),
       pendingPointsFor(ctx.organization.id, ctx.employee.id),
     ]);
+    // Company-wise work (tracker, 14 Nov 2026): each of the person's clients with its open tasks.
+    const openByClient = clients.length
+      ? await prisma.task.groupBy({ by: ["clientId"], where: { AND: [taskScope(ctx), { clientId: { in: clients.map((c) => c.value) }, status: { notIn: ["COMPLETED", "CANCELLED"] } }] }, _count: true })
+      : [];
+    const openTasks = new Map(openByClient.map((g) => [g.clientId, g._count]));
+    const loggedFor = new Map<string, number>();
+    for (const e of entries) if (e.clientId) loggedFor.set(e.clientId, (loggedFor.get(e.clientId) ?? 0) + (e.approxMinutes ?? 0));
     const total = entries.reduce((s, e) => s + (e.approxMinutes ?? 0), 0);
     const overdue = (xs: { dueBy: Date | null; status: string }[]) => xs.filter((p) => dueStateOf(p.dueBy, p.status, todayDate) === "OVERDUE").length;
     const dayHref = (d: string) => `/app/timesheet?tab=daily&date=${d}`;
@@ -119,7 +126,8 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
     const ref = typeof sp.ref === "string" ? lines.find((l) => l.id === sp.ref) : undefined;
     const wt = ref ? workTypes.find((w) => w.name.toLowerCase() === ref.typeOfWork.toLowerCase()) : undefined;
     const iso = (x: Date | null) => (x ? toIsoDate(x) : "");
-    const prefill: Record<string, string> = ref ? {
+    const pickedClient = !ref && typeof sp.client === "string" && clients.some((c) => c.value === sp.client) ? sp.client : "";
+    const prefill: Record<string, string> = pickedClient ? { clientId: pickedClient } : ref ? {
       trackerLineId: ref.id, branch: ref.branch ?? "", clientId: ref.clientId ?? "", clientNameText: ref.clientId ? "" : ref.clientName, workTypeId: wt?.id ?? "",
       bankName: ref.bankName ?? "", periodFrom: iso(ref.periodFrom), periodTo: iso(ref.periodTo),
       clientPendingItem: ref.clientPendingItem ?? "", clientRaisedOn: iso(ref.clientRaisedOn), clientDueBy: iso(ref.clientDueBy), clientPendingStatus: ref.clientPendingStatus ?? "",
@@ -141,6 +149,24 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
           <Stat label="OVERDUE with CLIENT" value={overdue(points.client)} tone={overdue(points.client) ? "danger" : "neutral"} />
           <Stat label="OVERDUE with ME" value={overdue(points.team)} tone={overdue(points.team) ? "danger" : "neutral"} />
         </div>
+        {clients.length > 0 && !can(ctx, "org.manage") && (
+          <Card title={`My clients on ${formatDate(dateOnly(date))} (${clients.length})`} padded={false}>
+            <ul className="divide-y divide-line text-sm">
+              {clients.map((c) => (
+                <li key={c.value} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5">
+                  <span className="min-w-40 flex-1 font-medium">{c.label}</span>
+                  <span className="text-xs text-muted">{loggedFor.get(c.value) ? `${minutesToHhmm(loggedFor.get(c.value)!)} logged` : "Nothing logged yet"}</span>
+                  <Link href={`/app/tasks?client=${c.value}`} className="text-xs font-medium text-brand-700 hover:underline">Open tasks ({openTasks.get(c.value) ?? 0})</Link>
+                  <Link href={`/app/tasks/new?client=${c.value}`} className="text-xs font-medium text-brand-700 hover:underline">+ Add task</Link>
+                  <Link href={`/app/timesheet?tab=daily&date=${date}&client=${c.value}#log-form`} className="text-xs font-medium text-brand-700 hover:underline">Log time</Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+        {clients.length === 0 && !can(ctx, "org.manage") && (
+          <Notice tone="info">No client is allocated to you on this date. Log office work as <strong>Office / Other</strong>; ask your Team Lead to allocate clients in Team allocation.</Notice>
+        )}
         {lines.length > 0 && (
           <Card title={`Work given to you in the tracker (${lines.length})`} padded={false}>
             <Table minWidth={900}>
@@ -194,9 +220,9 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
           </Table>
         )}
         <div id="log-form" className="scroll-mt-6">
-          <Card title={ref ? `Log work on ${ref.refNo} · ${ref.clientName}` : "Add work entry"}>
+          <Card title={ref ? `Log work on ${ref.refNo} · ${ref.clientName}` : pickedClient ? `Add work entry · ${clients.find((c) => c.value === pickedClient)?.label}` : "Add work entry"}>
             <TimesheetForm
-              key={ref?.id ?? "new"}
+              key={ref?.id ?? (pickedClient || "new")}
               action={addTimesheetAction}
               clients={clients}
               workTypes={workTypes.map((w) => ({ value: w.id, label: w.name }))}

@@ -15,7 +15,7 @@ import { canDelete } from "@/lib/services/deletions";
 import { Badge, Card, DetailList, EmptyState, humanize, Notice, PageHeader, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
 import {
   addContactAction, addEngagementAction, addGstinAction, addRepresentativeAction, removeContactAction, removeGstinAction,
-  removeRepresentativeAction, saveClientDetailsAction, setEngagementStatusAction, transitionClientAction, uploadClientDocumentAction,
+  removeRepresentativeAction, saveClientDetailsAction, setEngagementStatusAction, transitionClientAction, updateEngagementAction, uploadClientDocumentAction,
   invitePortalUserAction,
   issuePortalResetLinkAction,
   setPortalUserStatusAction,
@@ -59,7 +59,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
           ...(edit ? [{ key: "details", label: "Registration details", href: `${base}?tab=details` }] : []),
           { key: "registration", label: "GSTIN, contacts & representatives", href: `${base}?tab=registration` },
           { key: "services", label: "Services", href: `${base}?tab=services` },
-          ...(viewAll ? [{ key: "documents", label: "Documents", href: `${base}?tab=documents` }] : []),
+          ...(viewAll || edit ? [{ key: "documents", label: "Documents", href: `${base}?tab=documents` }] : []),
           ...(edit ? [{ key: "portal", label: "Portal access", href: `${base}?tab=portal` }] : []),
           ...(viewAll ? [{ key: "activity", label: "Activity", href: `${base}?tab=activity` }] : []),
         ]}
@@ -138,9 +138,9 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
 
       {tab === "portal" && edit && <PortalTab clientId={c.id} organizationId={ctx.organization.id} canDisable={can(ctx, "clients.approve")} />}
       {tab === "activity" && viewAll && <ActivityTab clientId={c.id} organizationId={ctx.organization.id} />}
-      {tab === "services" && <ServicesTab c={c} edit={edit} organizationId={ctx.organization.id} />}
+      {tab === "services" && <ServicesTab c={c} edit={edit} organizationId={ctx.organization.id} editId={typeof sp.edit === "string" ? sp.edit : undefined} />}
 
-      {tab === "documents" && viewAll && (
+      {tab === "documents" && (viewAll || edit) && (
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <Card title="Certificates & documents">
             {(() => {
@@ -364,7 +364,8 @@ async function getFull(id: string) {
   });
 }
 
-async function ServicesTab({ c, edit, organizationId }: { c: FullClient; edit: boolean; organizationId: string }) {
+async function ServicesTab({ c, edit, organizationId, editId }: { c: FullClient; edit: boolean; organizationId: string; editId?: string }) {
+  const editing = edit && editId ? c.services.find((s) => s.id === editId) : undefined;
   const services = edit
     ? await prisma.service.findMany({ where: { organizationId, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } })
     : [];
@@ -389,10 +390,17 @@ async function ServicesTab({ c, edit, organizationId }: { c: FullClient; edit: b
                 <Td className="text-xs">{[s.pocName, s.pocMobile, s.pocEmail].filter(Boolean).join(" · ") || "—"}</Td>
                 <Td><StatusBadge status={s.status} /></Td>
                 <Td>
-                  {edit && s.status === "ACTIVE" && (
-                    <span className="flex gap-1">
-                      <ActionButton variant="ghost" action={setEngagementStatusAction.bind(null, c.id, s.id, "COMPLETED")}>Complete</ActionButton>
-                      <ActionButton variant="ghost" confirm="Cancel this engagement?" action={setEngagementStatusAction.bind(null, c.id, s.id, "CANCELLED")}>Cancel</ActionButton>
+                  {edit && (
+                    <span className="flex flex-wrap gap-1">
+                      <Link href={`/app/clients/${c.id}?tab=services&edit=${s.id}#edit-service`} className="inline-flex h-8 items-center rounded-md px-2 text-sm font-medium text-brand-700 hover:bg-subtle">Edit</Link>
+                      {s.status === "ACTIVE" ? (
+                        <>
+                          <ActionButton variant="ghost" action={setEngagementStatusAction.bind(null, c.id, s.id, "COMPLETED")}>Complete</ActionButton>
+                          <ActionButton variant="ghost" confirm="Cancel this engagement?" action={setEngagementStatusAction.bind(null, c.id, s.id, "CANCELLED")}>Cancel</ActionButton>
+                        </>
+                      ) : (
+                        <ActionButton variant="ghost" confirm="Make this service active again?" action={setEngagementStatusAction.bind(null, c.id, s.id, "ACTIVE")}>Make active</ActionButton>
+                      )}
                     </span>
                   )}
                 </Td>
@@ -400,6 +408,24 @@ async function ServicesTab({ c, edit, organizationId }: { c: FullClient; edit: b
             ))}
           </tbody>
         </Table>
+      )}
+      {edit && editing && (
+        <div id="edit-service" className="scroll-mt-6">
+          <Card title={`Edit service · ${editing.service.name}`} className="max-w-4xl" actions={<Link href={`/app/clients/${c.id}?tab=services`} className="text-sm text-muted hover:text-ink">Close</Link>}>
+            <EngagementForm
+              key={editing.id}
+              action={updateEngagementAction.bind(null, c.id, editing.id)}
+              services={(services.some((x) => x.id === editing.serviceId) ? services : [{ id: editing.serviceId, name: editing.service.name }, ...services]).map((x) => ({ value: x.id, label: x.name }))}
+              today={toIsoDate(new Date())}
+              d={{
+                serviceId: editing.serviceId, engagementNature: editing.engagementNature ?? "", agreedFee: editing.agreedFee ? String(editing.agreedFee) : "",
+                startDate: editing.startDate ? toIsoDate(editing.startDate) : "", dueDate: editing.dueDate ? toIsoDate(editing.dueDate) : "",
+                timelineNote: editing.timelineNote ?? "", description: editing.description ?? "",
+                pocName: editing.pocName ?? "", pocMobile: editing.pocMobile ?? "", pocEmail: editing.pocEmail ?? "", pocAddress: editing.pocAddress ?? "",
+              }}
+            />
+          </Card>
+        </div>
       )}
       {edit && (
         <Card title="Add a service" className="max-w-4xl">

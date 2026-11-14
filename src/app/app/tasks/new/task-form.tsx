@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActionForm, Checkbox, SelectField, SubmitButton, TextArea, TextField } from "@/components/form";
 import { PeoplePicker, SearchSelect } from "@/components/pickers";
 import { toast } from "@/components/toaster";
@@ -43,6 +43,7 @@ export function TaskForm({ employees, clients, defaultClient, now: initialNow, t
   canShare?: boolean;
 }) {
   const start = useStart(initialNow, timezone);
+  const defaultClients = useMemo(() => (defaultClient ? [defaultClient] : []), [defaultClient]);
   // The maker follows the assignee when one person is deputed on the job, until it is set by hand.
   const [assignees, setAssignees] = useState<string[]>([]);
   const [maker, setMaker] = useState("");
@@ -67,7 +68,8 @@ export function TaskForm({ employees, clients, defaultClient, now: initialNow, t
             <span className="mb-1 block text-sm font-medium text-ink">Voice note</span>
             <VoiceRecorder />
           </div>
-          <SearchSelect label="Client" name="clientId" defaultValue={defaultClient} options={clients} placeholder="Search clients…" emptyLabel="No client (internal)" />
+          <PeoplePicker label="Client(s)" name="clientIds[]" options={clients} defaultValue={defaultClients} placeholder="Type a client name…"
+            hint="Leave empty for internal work. Several clients = the same task is created for each client" />
           <div className="grid grid-cols-2 gap-3">
             <SelectField label="Priority" name="priority" placeholder={null} defaultValue="MEDIUM" options={[
               { value: "HIGH", label: "High" }, { value: "MEDIUM", label: "Medium" }, { value: "LOW", label: "Low" },

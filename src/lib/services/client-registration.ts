@@ -2,14 +2,15 @@ import "server-only";
 import { exceedsSingleHolder, isRepresentativeRoleAllowed } from "@/lib/domain/constitution";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { BusinessRuleError, zOptionalText, zRequiredText } from "@/lib/actions";
-import { encryptWithLast4 } from "@/lib/security/encryption";
+import { BusinessRuleError, zIsoDate, zOptionalText, zRequiredText } from "@/lib/actions";
+import { dateOnly } from "@/lib/dates";
+import { encryptField, encryptWithLast4 } from "@/lib/security/encryption";
 import type { AppContext } from "@/lib/session";
 import { aadhaarSchema, gstinSchema, mobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
 import { audit } from "./audit";
 import { clientComplianceFields, saveClientCompliances } from "./client-compliances";
 import { nextClientCode } from "./codes";
-import { hasFile, storeUpload } from "./files";
+import { hasFile, MAX_UPLOAD_BYTES, storeUpload, validateUpload } from "./files";
 import { notifyRoles } from "./notifications";
 
 // Full client registration by the firm (Clients → New client). Clients cannot
@@ -99,8 +100,58 @@ export const fullRegistrationSchema = z.object({
   msmeRegistrationNumber: zOptionalText(40),
   esiNumber: zOptionalText(40),
   pfNumber: zOptionalText(40),
+  // Client Master columns (SSDA_Client_Master).
+  state: zOptionalText(60),
+  dateOfBirth: zIsoDate.optional(),
+  itFileNo: zOptionalText(40),
+  gstUserId: zOptionalText(120),
+  gstPassword: zOptionalText(200),
+  incomeTaxUserId: zOptionalText(120),
+  incomeTaxPassword: zOptionalText(200),
+  tracesUserId: zOptionalText(120),
+  tracesPassword: zOptionalText(200),
+  masterRemark: zOptionalText(1000),
   ...clientComplianceFields,
 });
+
+/** Upload fields of the registration forms; the logo must be an image. */
+const CLIENT_FILE_FIELDS = ["certificates", "msmeCertificate", "esiCertificate", "pfCertificate", "profilePicture"] as const;
+/** Everything sent in one go must stay under the server's request limit (12 MB). */
+export const MAX_REGISTRATION_UPLOAD_BYTES = 11 * 1024 * 1024;
+
+/**
+ * Checks every attached file (type from its content, size, and the total) before anything is
+ * created, so a wrong file is reported and nothing is half-saved.
+ */
+export async function checkClientUploads(fd: FormData) {
+  let total = 0;
+  for (const field of CLIENT_FILE_FIELDS) {
+    for (const f of fd.getAll(field)) {
+      if (!hasFile(f)) continue;
+      if (f.size > MAX_UPLOAD_BYTES) throw new BusinessRuleError(`“${f.name}” is larger than 10 MB. Attach a smaller copy.`);
+      await validateUpload(f, { imagesOnly: field === "profilePicture" });
+      total += f.size;
+    }
+  }
+  if (total > MAX_REGISTRATION_UPLOAD_BYTES) {
+    throw new BusinessRuleError("The attached files together are larger than 11 MB. Attach the main ones now and upload the rest from the client's Documents tab.");
+  }
+}
+
+/** Stores the registration's files on the new client (after the records exist). */
+export async function storeClientUploads(ctx: AppContext, clientId: string, fd: FormData) {
+  const updates: Record<string, string> = {};
+  for (const [field, column] of [["msmeCertificate", "msmeCertificateFileId"], ["esiCertificate", "esiCertificateFileId"], ["pfCertificate", "pfCertificateFileId"], ["profilePicture", "profilePictureFileId"]] as const) {
+    const f = fd.get(field);
+    if (hasFile(f)) updates[column] = (await storeUpload(ctx, f, { area: "clients", ownerId: clientId, imagesOnly: field === "profilePicture" })).id;
+  }
+  if (Object.keys(updates).length) await prisma.client.update({ where: { id: clientId }, data: updates });
+  for (const f of fd.getAll("certificates").slice(0, 10)) {
+    if (!hasFile(f)) continue;
+    const stored = await storeUpload(ctx, f, { area: "clients", ownerId: clientId });
+    await prisma.clientDocument.create({ data: { clientId, fileId: stored.id, type: "REGISTRATION_CERTIFICATE", title: f.name.slice(0, 200) } });
+  }
+}
 
 /** Creates the client in the signed-in member's firm, with its people, GSTINs, services and documents. */
 export async function registerClient(ctx: AppContext, v: z.infer<typeof fullRegistrationSchema>, fd: FormData) {
@@ -114,6 +165,7 @@ export async function registerClient(ctx: AppContext, v: z.infer<typeof fullRegi
     throw new BusinessRuleError("Select a valid nature of business.");
   }
   await assertRepresentatives(v.constitutionId, v.people);
+  await checkClientUploads(fd);
 
   const client = await prisma.$transaction(
     async (tx) => {
@@ -134,6 +186,17 @@ export async function registerClient(ctx: AppContext, v: z.infer<typeof fullRegi
           msmeRegistrationNumber: v.msmeRegistrationNumber,
           esiNumber: v.esiNumber,
           pfNumber: v.pfNumber,
+          state: v.state,
+          dateOfBirth: v.dateOfBirth ? dateOnly(v.dateOfBirth) : null,
+          itFileNo: v.itFileNo,
+          masterRemark: v.masterRemark,
+          gstUserId: v.gstUserId,
+          // Income Tax user ID is the PAN unless given (Client Master note).
+          incomeTaxUserId: v.incomeTaxUserId ?? v.pan,
+          tracesUserId: v.tracesUserId,
+          gstPasswordEncrypted: v.gstPassword ? encryptField(v.gstPassword) : null,
+          incomeTaxPasswordEncrypted: v.incomeTaxPassword ? encryptField(v.incomeTaxPassword) : null,
+          tracesPasswordEncrypted: v.tracesPassword ? encryptField(v.tracesPassword) : null,
           status: "PENDING_APPROVAL",
           registrationChannel: "STAFF",
           createdById: ctx.user.id,
@@ -158,17 +221,7 @@ export async function registerClient(ctx: AppContext, v: z.infer<typeof fullRegi
     { timeout: 30_000 },
   );
 
-  // Documents are stored after the records exist; a failed upload never loses the registration itself.
-  const updates: Record<string, string> = {};
-  for (const [field, column] of [["msmeCertificate", "msmeCertificateFileId"], ["esiCertificate", "esiCertificateFileId"], ["pfCertificate", "pfCertificateFileId"], ["profilePicture", "profilePictureFileId"]] as const) {
-    const f = fd.get(field);
-    if (hasFile(f)) updates[column] = (await storeUpload(ctx, f, { area: "clients", ownerId: client.id, imagesOnly: field === "profilePicture" })).id;
-  }
-  if (Object.keys(updates).length) await prisma.client.update({ where: { id: client.id }, data: updates });
-  for (const f of fd.getAll("certificates").slice(0, 10)) {
-    if (!hasFile(f)) continue;
-    const stored = await storeUpload(ctx, f, { area: "clients", ownerId: client.id });
-    await prisma.clientDocument.create({ data: { clientId: client.id, fileId: stored.id, type: "REGISTRATION_CERTIFICATE", title: f.name.slice(0, 200) } });
-  }
+  // Documents are stored after the records exist (already checked above).
+  await storeClientUploads(ctx, client.id, fd);
   return client;
 }

@@ -30,6 +30,26 @@ export function TransitionForm({ action, actions }: { action: Act; actions: { ac
   );
 }
 
+/** Correct a task's details until the work is started. */
+export function EditTaskForm({ action, clients, d }: { action: Act; clients: Option[]; d: Record<string, string> }) {
+  return (
+    <ActionForm action={action}>
+      <TextField label="Task" name="title" required defaultValue={d.title} />
+      <SearchSelect label="Client" name="clientId" defaultValue={d.clientId} options={clients} placeholder="Search clients…" emptyLabel="No client (internal)" />
+      <div className="grid grid-cols-2 gap-3">
+        <SelectField label="Priority" name="priority" placeholder={null} defaultValue={d.priority} options={[{ value: "HIGH", label: "High" }, { value: "MEDIUM", label: "Medium" }, { value: "LOW", label: "Low" }]} />
+        <div className="pt-7"><Checkbox name="isAsap" label="ASAP" defaultChecked={d.isAsap === "on"} /></div>
+        <TextField label="Start" name="startAt" type="datetime-local" defaultValue={d.startAt} />
+        <TextField label="Due by" name="dueAt" type="datetime-local" defaultValue={d.dueAt} />
+      </div>
+      <TextArea label="Details / written work" name="description" rows={3} defaultValue={d.description} />
+      <TextArea label="Writing for (client side) — remark" name="writingForRemark" rows={1} defaultValue={d.writingForRemark} />
+      <TextArea label="Writing from (team side) — remark" name="writingFromRemark" rows={1} defaultValue={d.writingFromRemark} />
+      <SubmitButton variant="secondary">Save changes</SubmitButton>
+    </ActionForm>
+  );
+}
+
 export function RemarkForm({ action, canShare }: { action: Act; canShare: boolean }) {
   return (
     <ActionForm action={action} resetOnSuccess>

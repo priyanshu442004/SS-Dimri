@@ -53,7 +53,7 @@ export function AccessForm({
       <SelectField label="Designation" name="designationId" defaultValue={defaults.designationId} options={designations} />
       <SelectField label="Department" name="departmentId" defaultValue={defaults.departmentId} options={departments} />
       <SelectField label="Employment status" name="employmentStatus" placeholder={null} defaultValue={defaults.employmentStatus} options={[
-        { value: "PROBATION", label: "Probation" }, { value: "ACTIVE", label: "Active" }, { value: "EXITED", label: "Exited" },
+        { value: "PROBATION", label: "Probation" }, { value: "ACTIVE", label: "Active" },
       ]} />
       <SelectField label="Attendance hours profile" name="attendanceProfile" placeholder={null} defaultValue={defaults.attendanceProfile}
         hint="Required daily hours under the Leave & Timing Policy"
@@ -63,6 +63,22 @@ export function AccessForm({
         ]} />
       <PeoplePicker label="Whom to report (select one or more)" name="managerIds[]" options={colleagues} defaultValue={defaults.managerIds} />
       <SubmitButton>Save</SubmitButton>
+    </ActionForm>
+  );
+}
+
+/** Resigned or terminated: leaves the active lists, sign-in is disabled, allocations end. */
+export function ExitForm({ action, today }: { action: Act; today: string }) {
+  return (
+    <ActionForm action={action}>
+      <SelectField label="Reason for leaving" name="exitType" required options={[
+        { value: "RESIGNED", label: "Resigned" }, { value: "TERMINATED", label: "Terminated" }, { value: "OTHER", label: "Other" },
+      ]} />
+      <TextField label="Last working day" name="exitDate" type="date" required defaultValue={today} />
+      <TextArea label="Note (optional)" name="exitReason" rows={2} />
+      <SubmitButton variant="danger" confirm="Move this person to Ex-Employees? Their sign-in is disabled and their client allocations end on the last working day. Attendance, payroll and letters stay as history.">
+        Move to Ex-Employee
+      </SubmitButton>
     </ActionForm>
   );
 }

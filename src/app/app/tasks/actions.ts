@@ -15,6 +15,8 @@ import {
   setAssignees,
   setClientSharing,
   taskSchema,
+  editTask,
+  taskEditSchema,
 } from "@/lib/services/tasks";
 import { hasFile } from "@/lib/services/files";
 import { setFlash } from "@/lib/flash";
@@ -22,14 +24,29 @@ import { setFlash } from "@/lib/flash";
 export async function createTaskAction(_p: ActionState, fd: FormData): Promise<ActionState> {
   const parsed = parseForm(taskSchema, fd);
   if (!parsed.success) return parsed.state;
-  let id = "";
+  const ids: string[] = [];
+  const clients = [...new Set([...parsed.data["clientIds[]"], ...(parsed.data.clientId ? [parsed.data.clientId] : [])])];
   const r = await safeAction(async () => {
     const ctx = await actionContext("tasks.create");
-    id = (await createTask(ctx, parsed.data, fd)).id;
+    // One task per client, each with the same details, people, reminders and attachments, so each
+    // client's work, portal and timesheet stay separate.
+    for (const clientId of clients.length ? clients : [undefined]) {
+      ids.push((await createTask(ctx, { ...parsed.data, clientId, ...(clients.length > 1 ? { clientServiceId: undefined } : {}) }, fd)).id);
+    }
   });
-  if (r.ok === false) return r;
+  if (r.ok === false) {
+    if (ids.length) {
+      await setFlash(`${ids.length} of ${clients.length} tasks were created before an error: ${r.message ?? "please check"}`);
+      redirect("/app/tasks");
+    }
+    return r;
+  }
+  if (ids.length > 1) {
+    await setFlash(`${ids.length} tasks created, one for each client.`);
+    redirect("/app/tasks");
+  }
   await setFlash("Task created.");
-  redirect(`/app/tasks/${id}`);
+  redirect(`/app/tasks/${ids[0]}`);
 }
 
 const actionSchema = z.object({
@@ -42,9 +59,21 @@ export async function taskTransitionAction(taskId: string, _p: ActionState, fd: 
   if (!parsed.success) return parsed.state;
   return safeAction(async () => {
     const ctx = await actionContext("tasks.update_assigned");
-    await performTaskAction(ctx, taskId, parsed.data.action, parsed.data.comment);
+    const logged = await performTaskAction(ctx, taskId, parsed.data.action, parsed.data.comment);
     revalidatePath(`/app/tasks/${taskId}`);
-    return { ok: true, message: "Task updated." };
+    revalidatePath("/app/timesheet");
+    return { ok: true, message: logged ? `Sent for review. ${Math.floor(logged / 60)}h ${String(logged % 60).padStart(2, "0")}m added to your timesheet.` : parsed.data.action === "submit" ? "Sent for review." : "Task updated." };
+  });
+}
+
+export async function editTaskAction(taskId: string, _p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(taskEditSchema, fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const ctx = await actionContext("tasks.create");
+    const n = await editTask(ctx, taskId, parsed.data);
+    revalidatePath(`/app/tasks/${taskId}`);
+    return { ok: true, message: n ? "Task updated. The people on it were told." : "Nothing was changed." };
   });
 }
 

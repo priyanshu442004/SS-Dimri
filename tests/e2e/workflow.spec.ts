@@ -414,7 +414,7 @@ test("staff quick registration stays pending until an admin approves it; duplica
   await page.getByLabel("Trade name").fill(clientName);
   await page.getByLabel("Constitution").selectOption({ label: "Partnership Firm" });
   await page.getByLabel("GSTIN(s)").fill("07AAACE1234F1Z5\n07AAACE1234F2Z4");
-  await page.getByLabel("Point of contact").fill("Mr Gupta");
+  await page.getByLabel("Contact person").fill("Mr Gupta");
   await page.getByLabel("GST Return Filing").check();
   await page.getByRole("button", { name: "Submit for approval" }).click();
   await page.waitForURL(/\/app\/clients\/[0-9a-f-]+\?registered=1/);
@@ -445,7 +445,7 @@ test("staff registers a client and invites it: portal usable while approval is p
   await signIn(admin, owner.email, owner.password);
   await admin.goto("/app/clients/new/quick");
   await admin.getByLabel("Trade name").fill(portalClient.name);
-  await admin.getByLabel("Point of contact").fill("Ms Mehta");
+  await admin.getByLabel("Contact person").fill("Ms Mehta");
   await admin.getByLabel("GST Return Filing").check();
   await admin.getByRole("button", { name: "Submit for approval" }).click();
   await admin.waitForURL(/\/app\/clients\/[0-9a-f-]+\?registered=1/);
@@ -598,7 +598,7 @@ test("task: maker/checker cycle with waiting state; team member cannot cancel or
   await signIn(ownerPage, owner.email, owner.password);
   await ownerPage.goto("/app/tasks/new");
   await ownerPage.getByRole("textbox", { name: "Task", exact: true }).fill(`GSTR-3B September ${run}`);
-  await pick(ownerPage, "Client", clientName);
+  await pick(ownerPage, "Client(s)", clientName);
   await ownerPage.getByLabel("Priority").selectOption("HIGH");
   await pick(ownerPage, "Assign to (one or more)", "Sonu Kumar — Executive", "Sonu");
   await pick(ownerPage, "Checker", "Kamal Rawat — Senior", "Kamal");
@@ -1237,6 +1237,7 @@ test("point 6 rights to delete: staff, client, task and other entries, with a cl
   await page.goto("/app/clients/new/quick");
   const doomed = `E2E Delete Me ${run}`;
   await page.getByLabel("Trade name").fill(doomed);
+  await page.getByLabel("Contact person").fill("Test Contact");
   await page.getByRole("button", { name: "Submit for approval" }).click();
   await page.waitForURL(/\/app\/clients\/[0-9a-f-]{36}/);
   const doomedUrl = page.url().split("?")[0];
@@ -1253,6 +1254,7 @@ test("point 6 rights to delete: staff, client, task and other entries, with a cl
   // Codes keep moving forward after a deletion, so the next client never collides.
   await page.goto("/app/clients/new/quick");
   await page.getByLabel("Trade name").fill(`E2E After Delete ${run}`);
+  await page.getByLabel("Contact person").fill("Test Contact");
   await page.getByRole("button", { name: "Submit for approval" }).click();
   await page.waitForURL(/\/app\/clients\/[0-9a-f-]{36}/);
 
@@ -1501,6 +1503,7 @@ test("round 2: workflow tracker ↔ daily log, client pending report, compliance
   // Client registration: picking GST lists every GST compliance, ticked.
   await page.goto("/app/clients/new/quick");
   await page.getByLabel("Trade name").fill(`Compliance Client ${tag}`);
+  await page.getByLabel("Contact person").fill("Test Contact");
   await page.locator("label", { hasText: /^GST\d*$/ }).click();
   const gst = page.locator("fieldset", { hasText: "GST compliances" });
   await expect(gst.getByRole("checkbox", { name: /GSTR-3B \(monthly\)/ })).toBeChecked();

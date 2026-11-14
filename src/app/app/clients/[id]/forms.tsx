@@ -3,6 +3,7 @@
 import { useId } from "react";
 import { ActionForm, Checkbox, SelectField, SubmitButton, TextArea, TextField, type FormState } from "@/components/form";
 import { CompliancePicker, type ComplianceOption } from "@/components/compliance-picker";
+import { checkFileInput } from "@/components/upload-guard";
 
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
 type Option = { value: string; label: string };
@@ -12,7 +13,7 @@ function FileInput({ label, name, accept = "application/pdf,image/*" }: { label:
   return (
     <div>
       <label htmlFor={id} className="mb-1 block text-sm font-medium">{label}</label>
-      <input id={id} name={name} type="file" accept={accept} className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-sm" />
+      <input id={id} name={name} type="file" accept={accept} onChange={(e) => checkFileInput(e.currentTarget, name === "profilePicture")} className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-sm" />
     </div>
   );
 }
@@ -167,23 +168,24 @@ export function RepresentativeForm({ action, defaultRole }: { action: Act; defau
   );
 }
 
-export function EngagementForm({ action, services, today }: { action: Act; services: Option[]; today: string }) {
+/** Add a service, or (with `d`) correct one already on the client. */
+export function EngagementForm({ action, services, today, d }: { action: Act; services: Option[]; today: string; d?: Record<string, string> }) {
   return (
-    <ActionForm action={action} resetOnSuccess>
+    <ActionForm action={action} resetOnSuccess={!d}>
       <div className="grid gap-3 sm:grid-cols-3">
-        <SelectField label="Service" name="serviceId" required options={services} className="sm:col-span-2" />
-        <SelectField label="Engagement" name="engagementNature" options={[{ value: "ONE_TIME", label: "One time" }, { value: "RETAINER", label: "Retainer" }]} />
-        <TextField label="Agreed fee (₹)" name="agreedFee" type="number" min={0} step="0.01" inputMode="decimal" />
-        <TextField label="Start date" name="startDate" type="date" defaultValue={today} />
-        <TextField label="Due / end date" name="dueDate" type="date" />
-        <TextField label="Timeline note" name="timelineNote" className="sm:col-span-3" />
-        <TextArea label="Description" name="description" rows={2} className="sm:col-span-3" />
-        <TextField label="Point of contact" name="pocName" />
-        <TextField label="POC mobile" name="pocMobile" type="tel" />
-        <TextField label="POC email" name="pocEmail" type="email" />
-        <TextArea label="POC address" name="pocAddress" rows={1} className="sm:col-span-3" />
+        <SelectField label="Service" name="serviceId" required options={services} defaultValue={d?.serviceId} className="sm:col-span-2" />
+        <SelectField label="Engagement" name="engagementNature" defaultValue={d?.engagementNature} options={[{ value: "ONE_TIME", label: "One time" }, { value: "RETAINER", label: "Retainer" }]} />
+        <TextField label="Agreed fee (₹)" name="agreedFee" type="number" min={0} step="0.01" inputMode="decimal" defaultValue={d?.agreedFee} />
+        <TextField label="Start date" name="startDate" type="date" defaultValue={d ? d.startDate : today} />
+        <TextField label="Due / end date" name="dueDate" type="date" defaultValue={d?.dueDate} />
+        <TextField label="Timeline note" name="timelineNote" className="sm:col-span-3" defaultValue={d?.timelineNote} />
+        <TextArea label="Description" name="description" rows={2} className="sm:col-span-3" defaultValue={d?.description} />
+        <TextField label="Point of contact" name="pocName" defaultValue={d?.pocName} />
+        <TextField label="POC mobile" name="pocMobile" type="tel" defaultValue={d?.pocMobile} />
+        <TextField label="POC email" name="pocEmail" type="email" defaultValue={d?.pocEmail} />
+        <TextArea label="POC address" name="pocAddress" rows={1} className="sm:col-span-3" defaultValue={d?.pocAddress} />
       </div>
-      <SubmitButton>Add service</SubmitButton>
+      <SubmitButton>{d ? "Save changes" : "Add service"}</SubmitButton>
     </ActionForm>
   );
 }

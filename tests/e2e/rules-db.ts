@@ -98,6 +98,39 @@ export async function missedEodDay(org: string, employeeId: string): Promise<str
   return iso;
 }
 
+/** An active client of the test firm, with a primary contact and one service. */
+export async function seedClient(org: string, name: string) {
+  const id = (await pool.query<{ id: string }>(
+    `INSERT INTO clients (id, organization_id, client_code, trade_name, status, approved_at, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', now(), now(), now()) RETURNING id`, [org, `T-${name.slice(0, 12)}-${Math.random().toString(36).slice(2, 6)}`, name])).rows[0].id;
+  await pool.query(`INSERT INTO client_contacts (id, client_id, name, mobile, is_primary, created_at, updated_at) VALUES (gen_random_uuid(), $1, $2, '9876543210', true, now(), now())`, [id, `${name} Contact`]);
+  return id;
+}
+
+/** Allocation of a person to a client from `fromIso`, ongoing, full day. */
+export async function allocate(org: string, clientId: string, employeeId: string, fromIso: string) {
+  await pool.query(
+    `INSERT INTO team_allocations (id, organization_id, client_id, employee_id, start_date, status, frequency, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4::date, 'ACTIVE', 'DAILY', now(), now())`, [org, clientId, employeeId, fromIso]);
+}
+
+/** A service the firm offers (Services & departments). */
+export async function seedService(org: string, name: string) {
+  return (await pool.query<{ id: string }>(
+    `INSERT INTO services (id, organization_id, name, is_active, created_at, updated_at) VALUES (gen_random_uuid(), $1, $2, true, now(), now()) RETURNING id`, [org, name])).rows[0].id;
+}
+
+/** Moves a task's "start work" back in time, so its worked minutes are known. */
+export async function startedMinutesAgo(taskTitle: string, minutes: number) {
+  await pool.query(
+    `UPDATE task_activities SET created_at = now() - make_interval(mins => $2)
+      WHERE type = 'STATUS_CHANGED' AND to_value = 'IN_PROGRESS' AND task_id IN (SELECT id FROM tasks WHERE title = $1)`, [taskTitle, minutes]);
+}
+
+export async function allocationStatus(clientId: string, employeeId: string) {
+  return (await pool.query<{ status: string; end_date: string | null }>(`SELECT status, to_char(end_date, 'YYYY-MM-DD') AS end_date FROM team_allocations WHERE client_id = $1 AND employee_id = $2`, [clientId, employeeId])).rows[0];
+}
+
 export async function disconnectRules() {
   await pool.end();
 }

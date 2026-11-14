@@ -8,12 +8,13 @@ import { OPEN_STATUSES } from "@/lib/domain/task-workflow";
 import { employeeFiles, loadEmployeeProfile, onboardingDefaults } from "@/lib/services/employee-view";
 import { Card, DetailList, humanize, Notice, PageHeader, StatusBadge, TabNav } from "@/components/ui";
 import { OnboardingForm } from "../onboarding-form";
-import { decideOnboardingAction, resendInvitationAction, resetPasswordAction, saveEmployeeDetailsAction, updateAccessAction, updateRightsAction } from "../actions";
+import { decideOnboardingAction, moveToExEmployeeAction, resendInvitationAction, resetPasswordAction, restoreEmployeeAction, saveEmployeeDetailsAction, updateAccessAction, updateRightsAction } from "../actions";
 import { DeleteButton } from "@/components/delete-dialog";
 import { canDelete } from "@/lib/services/deletions";
 import { RightsForm } from "./rights-form";
 import { ActionButton } from "@/components/action-button";
-import { AccessForm, DecisionForm, ResetPasswordForm } from "./admin-forms";
+import { AccessForm, DecisionForm, ExitForm, ResetPasswordForm } from "./admin-forms";
+import { EXIT_TYPES } from "@/lib/services/ex-employees";
 import { LettersTab } from "./letters-tab";
 
 export default async function EmployeeDetailPage({ params, searchParams }: PageProps<"/app/employees/[id]">) {
@@ -62,7 +63,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-mono">{e.permanentEmployeeCode ?? `${e.temporaryEmployeeCode} (temporary)`}</span>
             <StatusBadge status={e.approvalStatus} />
-            <StatusBadge status={e.employmentStatus === "ACTIVE" ? "ACTIVE" : e.employmentStatus} />
+            {e.employmentStatus === "EXITED" ? <StatusBadge status="INACTIVE" label="Ex-Employee" /> : <StatusBadge status={e.employmentStatus} />}
             {e.membership && <span>· {ROLE_LABELS[e.membership.role as Role]}</span>}
           </span>
         }
@@ -92,6 +93,11 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
       ) : (
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <div className="space-y-6">
+            {e.employmentStatus === "EXITED" && (
+              <Notice tone="warn">
+                Ex-Employee — {EXIT_TYPES[(e.exitType ?? "OTHER") as keyof typeof EXIT_TYPES] ?? "Left"}{e.exitDate ? `, last working day ${formatDate(e.exitDate)}` : ""}.{e.exitReason ? ` ${e.exitReason}` : ""} Sign-in is disabled; attendance, payroll and letters are kept as history.
+              </Notice>
+            )}
             <Card title="Employment">
               <DetailList
                 items={[
@@ -186,7 +192,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
                   />
                 </Card>
               )}
-              {manage && e.membership && e.membership.role !== "OWNER" && (
+              {manage && e.membership && e.membership.role !== "OWNER" && e.employmentStatus !== "EXITED" && (
                 <Card title="Access, role & reporting">
                   <AccessForm
                     action={updateAccessAction.bind(null, e.id)}
@@ -205,7 +211,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
                   />
                 </Card>
               )}
-              {e.membership && (manage || invite) && (
+              {e.membership && (manage || invite) && e.employmentStatus !== "EXITED" && (
                 <Card title="Sign-in">
                   <p className="mb-3 text-sm">Email: <span className="font-medium">{e.membership.user.email}</span></p>
                   {lastEmail && (
@@ -225,6 +231,18 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
                     <ResetPasswordForm action={resetPasswordAction.bind(null, e.id)} />
                   ) : null}
                 </Card>
+              )}
+              {manage && e.membership?.role !== "OWNER" && e.membership?.userId !== ctx.user.id && e.approvalStatus === "APPROVED" && (
+                e.employmentStatus === "EXITED" ? (
+                  <Card title="Ex-Employee">
+                    <p className="mb-3 text-sm text-muted">Joined again or moved by mistake? Bring them back: sign-in is allowed again. Allocate clients afresh if needed.</p>
+                    <ActionButton action={restoreEmployeeAction.bind(null, e.id)} confirm={`Bring ${name} back as an active employee?`}>Bring back as active</ActionButton>
+                  </Card>
+                ) : (
+                  <Card title="Resigned or terminated?">
+                    <ExitForm action={moveToExEmployeeAction.bind(null, e.id)} today={isoDateInTz(new Date(), ctx.organization.timezone)} />
+                  </Card>
+                )
               )}
             </div>
           )}

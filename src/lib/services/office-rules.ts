@@ -1,6 +1,8 @@
 import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { readTableFile, TableFileError } from "@/lib/table-file";
+import { parseHolidayRows } from "@/lib/domain/holiday-import";
 import { BusinessRuleError, zIsoDate } from "@/lib/actions";
 import { dateOnly, toIsoDate } from "@/lib/dates";
 import { scheduleFor, type PolicyNumbers, type PolicyTimes, type ScheduleOwner } from "@/lib/domain/attendance-policy";
@@ -80,6 +82,36 @@ export async function removeHoliday(ctx: AppContext, id: string) {
     await audit(tx, ctx, "holiday.removed", "holiday", id);
   });
   return h.name;
+}
+
+/**
+ * Replace the holiday list from an uploaded Excel / CSV (the firm's "List of Holiday" file).
+ * Holidays before `effectiveFrom` are left as they were, so past attendance and payroll keep the
+ * calendar they were worked out with; from that date on, the uploaded list is the calendar.
+ */
+export async function importHolidays(ctx: AppContext, file: File, effectiveFrom: string) {
+  let rows;
+  try {
+    rows = await readTableFile(file, { preferSheet: /erp ?import/i, what: "holiday" });
+  } catch (e) {
+    if (e instanceof TableFileError) throw new BusinessRuleError(e.message);
+    throw e;
+  }
+  const parsed = parseHolidayRows(rows);
+  if (parsed.errors.length) {
+    const shown = parsed.errors.slice(0, 5).map((e) => `Row ${e.row}: ${e.message}`).join(" ");
+    throw new BusinessRuleError(`Nothing was changed. ${shown}${parsed.errors.length > 5 ? ` …and ${parsed.errors.length - 5} more.` : ""}`);
+  }
+  const from = dateOnly(effectiveFrom);
+  const apply = parsed.holidays.filter((h) => h.date >= effectiveFrom);
+  const before = parsed.holidays.length - apply.length;
+  const result = await prisma.$transaction(async (tx) => {
+    const removed = await tx.holiday.deleteMany({ where: { organizationId: ctx.organization.id, holidayDate: { gte: from } } });
+    await tx.holiday.createMany({ data: apply.map((h) => ({ organizationId: ctx.organization.id, holidayDate: dateOnly(h.date), name: h.name })) });
+    await audit(tx, ctx, "holiday.list_uploaded", "organization", ctx.organization.id, { effectiveFrom, added: apply.length, replaced: removed.count, fileName: file.name.slice(0, 120) });
+    return { removed: removed.count };
+  });
+  return { added: apply.length, replaced: result.removed, before, sundays: parsed.sundays.filter((h) => h.date >= effectiveFrom).length };
 }
 
 // ---------------------------------------------------------------- team leads

@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { parseForm, safeAction, zInt, zIsoDate, zOptionalText, zRequiredText, type ActionState } from "@/lib/actions";
-import { dateOnly } from "@/lib/dates";
+import { dateOnly, formatDate } from "@/lib/dates";
 import { actionContext } from "@/lib/session";
-import { addHoliday, holidaySchema, removeHoliday } from "@/lib/services/office-rules";
+import { addHoliday, holidaySchema, importHolidays, removeHoliday } from "@/lib/services/office-rules";
 import { audit } from "@/lib/services/audit";
 import { hasFile, storeUpload } from "@/lib/services/files";
 import { gstinSchema, intlMobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
@@ -154,6 +154,27 @@ export async function addHolidayAction(_p: ActionState, fd: FormData): Promise<A
     await addHoliday(ctx, parsed.data);
     revalidatePath("/app/settings");
     return { ok: true, message: `${parsed.data.name} added.` };
+  });
+}
+
+/** Upload the holiday list: from the chosen date on, it replaces the holidays in the ERP. */
+export async function uploadHolidaysAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(z.object({ effectiveFrom: zIsoDate }), fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const ctx = await actionContext("org.manage");
+    const file = fd.get("file");
+    if (!hasFile(file)) return { ok: false, fieldErrors: { file: ["Choose the holiday list file"] }, message: "Choose the holiday list (Excel or CSV)." };
+    const r = await importHolidays(ctx, file, parsed.data.effectiveFrom);
+    revalidatePath("/app/settings");
+    revalidatePath("/app/rules");
+    const from = formatDate(dateOnly(parsed.data.effectiveFrom));
+    return {
+      ok: true,
+      message: `Holiday list updated from ${from}: ${r.added} holiday${r.added === 1 ? "" : "s"}${r.replaced ? ` (replacing ${r.replaced} from the old list)` : ""}.`
+        + (r.before ? ` ${r.before} earlier date${r.before === 1 ? " was" : "s were"} left as before.` : "")
+        + (r.sundays ? ` ${r.sundays} falling on a Sunday ${r.sundays === 1 ? "was" : "were"} not added (Sundays are always off).` : ""),
+    };
   });
 }
 

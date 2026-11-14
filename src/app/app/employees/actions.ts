@@ -18,6 +18,7 @@ import {
 } from "@/lib/services/employees";
 import type { MailResult } from "@/lib/services/mailer";
 import { isGrantable, MODULES, type ModuleKey } from "@/lib/permissions";
+import { exitSchema, moveToExEmployee, restoreEmployee } from "@/lib/services/ex-employees";
 
 const mailNote = (m: MailResult, to: string) =>
   m.status === "SENT" ? `An email was sent to ${to}.` : m.status === "SKIPPED" ? `No email sent to ${to} (test address).` : `The email to ${to} could NOT be sent (${m.error}). Use “Resend invitation” once email works.`;
@@ -93,7 +94,7 @@ const accessSchema = z.object({
   status: z.enum(["ACTIVE", "DISABLED"]),
   designationId: z.uuid().optional(),
   departmentId: z.uuid().optional(),
-  employmentStatus: z.enum(["PROBATION", "ACTIVE", "EXITED"]),
+  employmentStatus: z.enum(["PROBATION", "ACTIVE"], "Use “Move to Ex-Employee” for someone who has left"),
   attendanceProfile: z.enum(["STANDARD", "ONSITE", "FAR_CLIENT", "REDUCED_HOURS"]),
   "managerIds[]": z.array(z.uuid()).default([]),
 });
@@ -104,8 +105,9 @@ export async function updateAccessAction(employeeId: string, _p: ActionState, fd
   const v = parsed.data;
   return safeAction(async () => {
     const ctx = await actionContext("employees.manage");
-    const emp = await prisma.employee.findFirst({ where: { id: employeeId, organizationId: ctx.organization.id }, select: { id: true } });
+    const emp = await prisma.employee.findFirst({ where: { id: employeeId, organizationId: ctx.organization.id }, select: { id: true, employmentStatus: true } });
     if (!emp) throw new BusinessRuleError("Employee not found.");
+    if (emp.employmentStatus === "EXITED") throw new BusinessRuleError("This person is an Ex-Employee. Bring them back first.");
     const managers = v["managerIds[]"].filter((m) => m !== employeeId);
     const valid = await prisma.employee.count({ where: { id: { in: managers }, organizationId: ctx.organization.id } });
     if (valid !== managers.length) throw new BusinessRuleError("Invalid manager selection.");
@@ -175,5 +177,27 @@ export async function updateRightsAction(employeeId: string, _p: ActionState, fd
     });
     revalidatePath(`/app/employees/${employeeId}`);
     return { ok: true, message: "Rights updated." };
+  });
+}
+
+export async function moveToExEmployeeAction(employeeId: string, _p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(exitSchema, fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const ctx = await actionContext("employees.manage");
+    const r = await moveToExEmployee(ctx, employeeId, parsed.data);
+    revalidatePath(`/app/employees/${employeeId}`);
+    revalidatePath("/app/employees");
+    return { ok: true, message: `${r.name} moved to Ex-Employees. Sign-in is disabled${r.allocationsEnded ? ` and ${r.allocationsEnded} client allocation${r.allocationsEnded > 1 ? "s" : ""} ended` : ""}.` };
+  });
+}
+
+export async function restoreEmployeeAction(employeeId: string): Promise<ActionState> {
+  return safeAction(async () => {
+    const ctx = await actionContext("employees.manage");
+    await restoreEmployee(ctx, employeeId);
+    revalidatePath(`/app/employees/${employeeId}`);
+    revalidatePath("/app/employees");
+    return { ok: true, message: "Brought back as an active employee. Sign-in is allowed again." };
   });
 }

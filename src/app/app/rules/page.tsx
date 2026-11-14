@@ -3,7 +3,7 @@ import { BookOpenCheck } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
-import { formatDateTime, hhmmToMinutes } from "@/lib/dates";
+import { formatDateTime, hhmmToMinutes, isoDateInTz, toIsoDate } from "@/lib/dates";
 import { hhmm } from "@/lib/domain/attendance-policy";
 import { getPolicy, hasAcceptedRules, scheduleOf } from "@/lib/services/office-rules";
 import { ActionButton } from "@/components/action-button";
@@ -31,6 +31,13 @@ export default async function RulesPage() {
     return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
   };
   const otFrom = t(hhmm(hhmmToMinutes(p.leavingGraceUntil) + 1));
+  const todayIso = isoDateInTz(new Date(), tz);
+  const year = Number(todayIso.slice(0, 4));
+  const holidays = await prisma.holiday.findMany({
+    where: { organizationId: ctx.organization.id, holidayDate: { gte: new Date(Date.UTC(year, 0, 1)), lte: new Date(Date.UTC(year, 11, 31)) } },
+    orderBy: { holidayDate: "asc" },
+    select: { id: true, name: true, holidayDate: true },
+  });
 
   const sections: { title: string; points: React.ReactNode[] }[] = [
     {
@@ -128,6 +135,19 @@ export default async function RulesPage() {
             </ul>
           </Card>
         ))}
+        <Card title={`Office holidays ${year}`} actions={can(ctx, "org.manage") && <Link href="/app/settings?tab=policy" className="text-xs font-medium text-brand-700 hover:underline">Update the list</Link>}>
+          {holidays.length === 0 ? <p className="text-sm text-muted">No office holidays have been set for {year} yet. Sundays are always off.</p> : (
+            <ul className="divide-y divide-line text-sm">
+              {holidays.map((h) => (
+                <li key={h.id} className={`flex justify-between gap-3 py-1.5 ${toIsoDate(h.holidayDate) < todayIso ? "text-muted" : ""}`}>
+                  <span>{h.name}</span>
+                  <span className="whitespace-nowrap">{h.holidayDate.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-2 text-xs text-muted">Holidays and Sundays are not working days: nobody is marked absent, and they count as leave only inside a continuous leave.</p>
+        </Card>
         <Card title="11. Declaration">
           <p className="text-sm leading-relaxed">Every employee is expected to arrive on time, complete their work, leave at the scheduled time and enjoy their personal life.</p>
           {ctx.employee && ctx.role !== "OWNER" && (

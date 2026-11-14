@@ -10,7 +10,7 @@ import { canDelete } from "@/lib/services/deletions";
 import { daysPending } from "@/lib/domain/derived";
 import { STATUS_OF_WORK_LABEL } from "@/lib/domain/tracker";
 import { loadTimesheetEntryForCtx } from "@/lib/services/worklog";
-import { activeClientOptions, employeeOptions } from "@/lib/services/lookups";
+import { activeClientOptions, employeeOptions, ownWorkClientOptions } from "@/lib/services/lookups";
 import { Badge, Card, DetailList, humanize, Notice, PageHeader, StatusBadge } from "@/components/ui";
 import { correctEntryAction, createPendingAction, reviewEntryAction } from "../../worklog-actions";
 import { EntryCorrectionForm, EntryReviewForm, PendingForm } from "../../worklog-forms";
@@ -50,7 +50,9 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
   const canCorrect = (own && e.status !== "REVIEWED") || can(ctx, "org.manage");
   const [clients, workTypes, employees, lines] = canCorrect || own
     ? await Promise.all([
-        activeClientOptions(ctx.organization.id),
+        own && !can(ctx, "org.manage")
+          ? ownWorkClientOptions(ctx, e.workDate).then((l) => (e.clientId && !l.some((c) => c.value === e.clientId) ? [{ value: e.clientId, label: e.clientNameText ?? "Current client" }, ...l] : l))
+          : activeClientOptions(ctx.organization.id),
         prisma.workType.findMany({ where: { organizationId: ctx.organization.id, OR: [{ isActive: true }, ...(e.workTypeId ? [{ id: e.workTypeId }] : [])] }, orderBy: { sortOrder: "asc" } }),
         employeeOptions(ctx.organization.id),
         prisma.trackerLine.findMany({

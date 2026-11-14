@@ -1264,6 +1264,9 @@ model Employee {
   probationStartDate DateTime?        @map("probation_start_date") @db.Date
   probationEndDate   DateTime?        @map("probation_end_date") @db.Date
   exitDate           DateTime?        @map("exit_date") @db.Date
+  /// Why the person left: RESIGNED, TERMINATED or OTHER (Ex-Employee).
+  exitType           String?          @map("exit_type") @db.VarChar(20)
+  exitReason         String?          @map("exit_reason") @db.Text
 
   // Personal
   firstName     String         @map("first_name")

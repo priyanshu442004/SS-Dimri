@@ -70,8 +70,8 @@ function LogFields({ clients, workTypes, lines, d, years, tasks }: {
       <TextField label="Date of visit / work" name="workDate" type="date" required defaultValue={d.workDate} />
       <SelectField label="Tracker Ref No." name="trackerLineId" options={lines} defaultValue={d.trackerLineId} placeholder="New work (no Ref No.)" hint="Work given to you in the tracker; leave as new otherwise" />
       <SelectField label="Branch" name="branch" options={opts(BRANCHES)} defaultValue={d.branch} />
-      <SearchSelect label="Client" name="clientId" options={clients} defaultValue={d.clientId} placeholder="Search clients…" emptyLabel="Not in the list" />
-      <TextField label="Client name (if not in list)" name="clientNameText" defaultValue={d.clientNameText} />
+      <SearchSelect label="Client" name="clientId" options={clients} defaultValue={d.clientId} placeholder="Search your clients…" emptyLabel="Office / Other" hint="Your allocated clients for this date" />
+      <TextField label="Office / other — what was it?" name="clientNameText" defaultValue={d.clientNameText} hint="Optional, e.g. office work or a client not allocated to you" />
       <SelectField label="Place of work" name="placeOfWork" options={opts(PLACES_OF_WORK)} defaultValue={d.placeOfWork} />
       <SelectField label="Type of work" name="workTypeId" options={workTypes} defaultValue={d.workTypeId} required />
       <TextField label="Bank name" name="bankName" defaultValue={d.bankName} hint="Required for bank posting, reconciliation and card work" />

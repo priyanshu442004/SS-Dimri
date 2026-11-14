@@ -38,7 +38,7 @@ export function LeaveDecisionForm({ action }: { action: Act }) {
 }
 
 const KINDS = [
-  { value: "LATE_ARRIVAL", label: "I'll be late", hint: "Before your reporting time: your reason and when you expect to arrive. One late arrival a month informed in advance is a warning only." },
+  { value: "LATE_ARRIVAL", label: "I'll be late / half day", hint: "Before your reporting time: your reason and when you expect to arrive (for a half day, your second-half arrival time). Mark in with your location when you reach. One late arrival a month informed in advance is a warning only." },
   { value: "ABSENT", label: "I can't come today", hint: "Raises a leave request for the day for your Team Lead to decide. Without a request in the ERP an absence counts double." },
   { value: "EARLY_LEAVE", label: "Leave early", hint: "Your Team Lead's permission to leave before your scheduled time. Leaving before the half-day time still counts as a half day." },
   { value: "OVERTIME", label: "Stay late (overtime)", hint: "Prior permission to stay after 6:45 PM: what task, and why it cannot wait till tomorrow. Only approved overtime is counted, in real minutes." },

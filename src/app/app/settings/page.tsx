@@ -2,12 +2,12 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireCapability } from "@/lib/session";
 import { CAPABILITIES, can, ROLE_LABELS, type Capability, type Role } from "@/lib/permissions";
-import { formatDate, formatDateTime, toIsoDate } from "@/lib/dates";
+import { formatDate, formatDateTime, isoDateInTz, toIsoDate } from "@/lib/dates";
 import { getPolicy } from "@/lib/services/attendance";
 import { Card, DetailList, humanize, Notice, PageHeader, Pagination, TabNav, Table, Td, Th } from "@/components/ui";
 import { ActionButton } from "@/components/action-button";
-import { addHolidayAction, addListItemAction, removeHolidayAction, saveCertificateAction, saveOrganizationAction, savePolicyAction, savePreferencesAction, toggleListItemAction, uploadLeavePolicyAction } from "./actions";
-import { CertificateForm, HolidayForm, LeavePolicyDocForm, ListItemForm, OrganizationForm, PolicyForm, PreferencesForm } from "./forms";
+import { addHolidayAction, uploadHolidaysAction, addListItemAction, removeHolidayAction, saveCertificateAction, saveOrganizationAction, savePolicyAction, savePreferencesAction, toggleListItemAction, uploadLeavePolicyAction } from "./actions";
+import { CertificateForm, HolidayForm, HolidayUploadForm, LeavePolicyDocForm, ListItemForm, OrganizationForm, PolicyForm, PreferencesForm } from "./forms";
 import { Settings } from "lucide-react";
 
 export default async function SettingsPage({ searchParams }: PageProps<"/app/settings">) {
@@ -140,6 +140,11 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/set
               ))}
               {upcoming.length === 0 && <li className="py-2 text-muted">No holidays added for {year} yet.</li>}
             </ul>
+            <details className="mb-4 rounded-lg border border-line p-3" open={upcoming.length === 0}>
+              <summary className="cursor-pointer text-sm font-medium">Upload the holiday list</summary>
+              <div className="mt-3"><HolidayUploadForm action={uploadHolidaysAction} today={isoDateInTz(new Date(), ctx.organization.timezone)} /></div>
+            </details>
+            <p className="mb-2 text-xs font-medium text-muted">Or add one holiday</p>
             <HolidayForm action={addHolidayAction} />
           </Card>
           <RulesAcceptance updatedAt={row.updatedAt} />

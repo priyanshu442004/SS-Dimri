@@ -16,6 +16,7 @@ import { audit } from "./audit";
 import { clientComplianceFields, saveClientCompliances } from "./client-compliances";
 import { nextClientCode } from "./codes";
 import { hasFile, storeUpload } from "./files";
+import { checkClientUploads, storeClientUploads } from "./client-registration";
 import { notifyClientUsers, notifyRoles } from "./notifications";
 import { createPasswordLink } from "./password-links";
 
@@ -52,16 +53,18 @@ export const quickRegistrationSchema = z.object({
   pan: panSchema.optional(),
   gstins: gstinList,
   natureOfClient: z.enum(["ONE_TIME", "RETAINER"]).optional(),
-  contactName: zOptionalText(120),
+  // Contact Person is mandatory (tracker, 3 Nov 2026): every client has someone to call.
+  contactName: z.string({ error: "Enter the contact person's name" }).trim().min(1, "Enter the contact person's name").max(120),
   contactMobile: intlMobileSchema.optional(),
   contactEmail: z.email().optional(),
   "serviceIds[]": z.array(z.uuid()).default([]),
   ...clientComplianceFields,
 });
 
-export async function quickRegisterClient(ctx: AppContext, v: z.infer<typeof quickRegistrationSchema>) {
+export async function quickRegisterClient(ctx: AppContext, v: z.infer<typeof quickRegistrationSchema>, fd: FormData) {
   const services = await prisma.service.findMany({ where: { id: { in: v["serviceIds[]"] }, organizationId: ctx.organization.id }, select: { id: true } });
-  return prisma.$transaction(async (tx) => {
+  await checkClientUploads(fd);
+  const client = await prisma.$transaction(async (tx) => {
     const clientCode = await nextClientCode(tx, ctx.organization.id);
     const client = await tx.client.create({
       data: {
@@ -76,7 +79,7 @@ export async function quickRegisterClient(ctx: AppContext, v: z.infer<typeof qui
         createdById: ctx.user.id,
         submittedAt: new Date(),
         gstRegistrations: { create: [...new Set(v.gstins)].map((gstin) => ({ gstin })) },
-        contacts: v.contactName ? { create: { name: v.contactName, mobile: v.contactMobile, email: v.contactEmail, isPrimary: true } } : undefined,
+        contacts: { create: { name: v.contactName, mobile: v.contactMobile, email: v.contactEmail, isPrimary: true } },
         services: {
           create: services.map((s) => ({ organizationId: ctx.organization.id, serviceId: s.id, engagementNature: v.natureOfClient })),
         },
@@ -91,6 +94,8 @@ export async function quickRegisterClient(ctx: AppContext, v: z.infer<typeof qui
     }, ctx.user.id);
     return client;
   });
+  await storeClientUploads(ctx, client.id, fd);
+  return client;
 }
 
 // ------------------------------------------------------------- full details
@@ -328,6 +333,37 @@ export async function addEngagement(ctx: AppContext, clientId: string, v: z.infe
       pocEmail: v.pocEmail,
       pocAddress: v.pocAddress,
     },
+  });
+}
+
+/** Correct a service already on the client: the service itself, its terms and its contact. */
+export async function updateEngagement(ctx: AppContext, clientId: string, engagementId: string, v: z.infer<typeof engagementSchema>) {
+  const client = await getClientForCtx(ctx, clientId);
+  if (!client) throw new BusinessRuleError("Client not found.");
+  const row = await prisma.clientService.findFirst({ where: { id: engagementId, clientId: client.id }, select: { id: true, serviceId: true } });
+  if (!row) throw new BusinessRuleError("Service not found on this client.");
+  if (v.serviceId !== row.serviceId && !(await prisma.service.findFirst({ where: { id: v.serviceId, organizationId: ctx.organization.id }, select: { id: true } }))) {
+    throw new BusinessRuleError("Service not found.");
+  }
+  await prisma.$transaction(async (tx) => {
+    await tx.clientService.update({
+      where: { id: row.id },
+      data: {
+        serviceId: v.serviceId,
+        agreedFee: v.agreedFee ?? null,
+        engagementNature: v.engagementNature ?? null,
+        startDate: v.startDate ? dateOnly(v.startDate) : null,
+        dueDate: v.dueDate ? dateOnly(v.dueDate) : null,
+        retainerStartDate: v.engagementNature === "RETAINER" && v.startDate ? dateOnly(v.startDate) : null,
+        timelineNote: v.timelineNote ?? null,
+        description: v.description ?? null,
+        pocName: v.pocName ?? null,
+        pocMobile: v.pocMobile ?? null,
+        pocEmail: v.pocEmail ?? null,
+        pocAddress: v.pocAddress ?? null,
+      },
+    });
+    await audit(tx, ctx, "client.service_updated", "client", client.id, { engagementId: row.id, serviceChanged: v.serviceId !== row.serviceId });
   });
 }
 

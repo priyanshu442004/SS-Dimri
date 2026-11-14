@@ -70,7 +70,7 @@ export function PlanEditor({ action, mode, lines: initial, clients, today, submi
   return (
     <ActionForm action={action}>
       <input type="hidden" name="items" value={payload} />
-      <datalist id={listId}>{clients.map((c) => <option key={c.value} value={c.label} />)}</datalist>
+      <datalist id={listId}>{clients.map((c) => <option key={c.value} value={c.label} />)}<option value="Office / Other" /></datalist>
       {lines.length === 0 && <p className="rounded-lg border border-dashed border-line p-4 text-center text-sm text-muted">{eod ? "No lines yet. Add the work you did today." : "No tasks yet. Add what you will work on today."}</p>}
       <ol className="space-y-3">
         {lines.map((l, i) => (

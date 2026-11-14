@@ -6,16 +6,16 @@ import { requireCapability } from "@/lib/session";
 import { dateTimeLocalInTz, formatDateTime } from "@/lib/dates";
 import { isTaskOverdue } from "@/lib/domain/derived";
 import { TASK_ACTION_LABELS } from "@/lib/domain/task-workflow";
-import { loadTaskForCtx, taskActionsFor } from "@/lib/services/tasks";
-import { taskEmployeeOptions } from "@/lib/services/lookups";
+import { loadTaskForCtx, mayEditTask, taskActionsFor } from "@/lib/services/tasks";
+import { taskEmployeeOptions, visibleClientOptions } from "@/lib/services/lookups";
 import { Badge, Card, DetailList, humanize, PageHeader, StatusBadge } from "@/components/ui";
-import { addReminderAction, addRemarkAction, cancelReminderAction, setAssigneesAction, setClientSharingAction, taskTransitionAction } from "../actions";
+import { addReminderAction, addRemarkAction, editTaskAction, cancelReminderAction, setAssigneesAction, setClientSharingAction, taskTransitionAction } from "../actions";
 import { ActionButton } from "@/components/action-button";
 import { DeleteButton } from "@/components/delete-dialog";
 import { VoicePlayer } from "@/components/voice-note";
 import { canDelete } from "@/lib/services/deletions";
 import { FileText, Image as ImageIcon, Mic } from "lucide-react";
-import { AssignForm, ReminderForm, RemarkForm, SharingForm, TransitionForm } from "./forms";
+import { AssignForm, EditTaskForm, ReminderForm, RemarkForm, SharingForm, TransitionForm } from "./forms";
 
 export default async function TaskDetailPage({ params }: PageProps<"/app/tasks/[id]">) {
   const ctx = await requireCapability("tasks.use");
@@ -47,6 +47,9 @@ export default async function TaskDetailPage({ params }: PageProps<"/app/tasks/[
   const employees = canAssign ? await taskEmployeeOptions(ctx.organization.id) : [];
   const nameOf = new Map(employees.map((e) => [e.value, e.label.split(" — ")[0]]));
   const person = (p: { firstName: string; lastName: string | null } | null) => (p ? `${p.firstName} ${p.lastName ?? ""}`.trim() : "—");
+  const editable = mayEditTask(ctx, t);
+  const editClients = editable ? await visibleClientOptions(ctx) : [];
+  const local = (d: Date | null) => (d ? dateTimeLocalInTz(d, ctx.organization.timezone) : "");
 
   return (
     <>
@@ -140,9 +143,29 @@ export default async function TaskDetailPage({ params }: PageProps<"/app/tasks/[
             {actions.length === 0 ? (
               <p className="text-sm text-muted">No status changes available to you right now.</p>
             ) : (
-              <TransitionForm action={taskTransitionAction.bind(null, t.id)} actions={actions.map((a) => ({ action: a, label: TASK_ACTION_LABELS[a] }))} />
+              <>
+                <TransitionForm action={taskTransitionAction.bind(null, t.id)} actions={actions.map((a) => ({ action: a, label: TASK_ACTION_LABELS[a] }))} />
+                {actions.includes("submit") && ctx.employee && <p className="mt-3 text-xs text-muted">When you submit for review, the time you worked on this task (from “Start / resume work”) is added to your timesheet.</p>}
+              </>
             )}
           </Card>
+          {editable && (
+            <Card title="Correct the task">
+              <details>
+                <summary className="cursor-pointer text-sm text-muted">Entered something wrong? You can edit the details until the work is started.</summary>
+                <div className="mt-3">
+                  <EditTaskForm
+                    action={editTaskAction.bind(null, t.id)}
+                    clients={t.client && !editClients.some((c) => c.value === t.client!.id) ? [{ value: t.client.id, label: t.client.tradeName }, ...editClients] : editClients}
+                    d={{
+                      title: t.title, clientId: t.clientId ?? "", priority: t.priority, isAsap: t.isAsap ? "on" : "", startAt: local(t.startAt), dueAt: local(t.dueAt),
+                      description: t.description ?? "", writingForRemark: t.writingForRemark ?? "", writingFromRemark: t.writingFromRemark ?? "",
+                    }}
+                  />
+                </div>
+              </details>
+            </Card>
+          )}
           {t.reviews.length > 0 && (
             <Card title="Checker reviews">
               <ul className="space-y-2 text-sm">

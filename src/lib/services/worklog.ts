@@ -1,4 +1,5 @@
 import "server-only";
+import { mayLogWorkFor, OFFICE_OTHER } from "./lookups";
 import { NO_EMPLOYEE } from "@/lib/ids";
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
@@ -76,10 +77,13 @@ async function trackerLineFor(ctx: AppContext, id?: string) {
 
 export async function addTimesheetEntry(ctx: AppContext, v: TimesheetInput) {
   const employeeId = requireEmployee(ctx);
-  if (!v.clientId && !v.clientNameText) throw new BusinessRuleError("Select a client or type the client name.");
+  if (!v.clientId && !v.clientNameText) v = { ...v, clientNameText: OFFICE_OTHER };
   if (v.periodFrom && v.periodTo && v.periodTo < v.periodFrom) throw new BusinessRuleError("Period to is before period from.");
   const client = v.clientId ? await prisma.client.findFirst({ where: { id: v.clientId, organizationId: ctx.organization.id }, select: { id: true, tradeName: true } }) : null;
   if (v.clientId && !client) throw new BusinessRuleError("Client not found.");
+  if (client && !(await mayLogWorkFor(ctx, client.id, dateOnly(v.workDate)))) {
+    throw new BusinessRuleError(`${client.tradeName} is not allocated to you on this date. Choose one of your clients, or Office / Other.`);
+  }
   const workType = v.workTypeId ? await prisma.workType.findFirst({ where: { id: v.workTypeId, organizationId: ctx.organization.id } }) : null;
   const day = dateOnly(v.workDate);
   // Link the entry to the active allocation for this client, if any ("connection with timesheet").
@@ -213,7 +217,10 @@ export async function correctTimesheetEntry(ctx: AppContext, entryId: string, v:
   if (!own && !v.reason) throw new BusinessRuleError("Give a reason for correcting another person's entry.");
   const client = v.clientId ? await prisma.client.findFirst({ where: { id: v.clientId, organizationId: ctx.organization.id }, select: { id: true, tradeName: true } }) : null;
   if (v.clientId && !client) throw new BusinessRuleError("Client not found.");
-  if (!client && !v.clientNameText) throw new BusinessRuleError("Select a client or type the client name.");
+  if (!client && !v.clientNameText) v = { ...v, clientNameText: OFFICE_OTHER };
+  if (client && own && client.id !== e.clientId && !(await mayLogWorkFor(ctx, client.id, dateOnly(v.workDate)))) {
+    throw new BusinessRuleError(`${client.tradeName} is not allocated to you on this date. Choose one of your clients, or Office / Other.`);
+  }
   const workType = v.workTypeId ? await prisma.workType.findFirst({ where: { id: v.workTypeId, organizationId: ctx.organization.id } }) : null;
   const minutes = minutesFrom(v);
   checkLogRules(v, workType?.name ?? v.typeOfWork, minutes);

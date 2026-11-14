@@ -10,7 +10,7 @@ import { CalendarCheck2, CalendarOff, Camera, CircleSlash, Clock4, LogOut, MapPi
 import { hhmm, noticeDays } from "@/lib/domain/attendance-policy";
 import { leaveUsedThisMonth, parseTeamFilters, teamAttendanceRows, todayIso, type AttendanceFilter } from "@/lib/services/attendance";
 import { getPolicy, hasAcceptedRules, holidaySet, isOffDay, reporteeIds, scheduleOf, workLocationLabels } from "@/lib/services/office-rules";
-import { activeClientOptions } from "@/lib/services/lookups";
+import { ownWorkClientOptions } from "@/lib/services/lookups";
 import { KIND_LABEL, myRequests, pendingRequestCount, requestsToDecide } from "@/lib/services/attendance-requests";
 import { scheduleRows } from "@/lib/services/team-schedules";
 import { payrollForMonth } from "@/lib/services/payroll";
@@ -37,13 +37,17 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
   const sp = await searchParams;
   const viewAll = can(ctx, "attendance.view_all");
   // Team Lead = the person others report to (or an administrator, for everyone).
-  const lead = can(ctx, "org.manage") || (await reporteeIds(ctx)).length > 0;
+  const myTeam = await reporteeIds(ctx);
+  const lead = can(ctx, "org.manage") || myTeam.length > 0;
   const markOthers = can(ctx, "attendance.mark_others");
   const manageWorkers = can(ctx, "attendance.workers");
   const [photoChecks, requestCount] = await Promise.all([pendingPhotoChecks(ctx), lead ? pendingRequestCount(ctx) : Promise.resolve(0)]);
   const seePhotos = viewAll || can(ctx, "attendance.review_photos") || photoChecks > 0;
-  const allowed: Record<string, boolean> = { team: viewAll, leave: true, requests: true, schedules: lead, others: markOthers, photos: seePhotos, visits: viewAll, workers: manageWorkers };
-  const tab = typeof sp.tab === "string" && allowed[sp.tab] ? sp.tab : "mine";
+  const allowed: Record<string, boolean> = { team: viewAll, myteam: myTeam.length > 0, leave: true, requests: true, schedules: lead, others: markOthers, photos: seePhotos, visits: viewAll, workers: manageWorkers };
+  // Team Lead portal: "My team" (only those who report to them) and "All attendance" (everyone, with the right).
+  // Links to the team list from a lead who cannot see everyone open their own team.
+  const requested = sp.tab === "team" && !viewAll && myTeam.length ? "myteam" : sp.tab;
+  const tab = typeof requested === "string" && allowed[requested] ? requested : "mine";
   const today = todayIso(ctx);
   const tz = ctx.organization.timezone;
   const policy = await getPolicy(ctx.organization.id);
@@ -61,7 +65,8 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
           { key: "mine", label: "My attendance", href: "/app/attendance" },
           { key: "requests", label: lead ? "Requests & intimations" : "Inform / request", href: "/app/attendance?tab=requests", ...(requestCount ? { count: requestCount } : {}) },
           { key: "leave", label: "Leave", href: "/app/attendance?tab=leave" },
-          ...(viewAll ? [{ key: "team", label: "Team attendance", href: "/app/attendance?tab=team" }] : []),
+          ...(myTeam.length ? [{ key: "myteam", label: "My team", href: "/app/attendance?tab=myteam" }] : []),
+          ...(viewAll ? [{ key: "team", label: myTeam.length ? "All attendance" : "Team attendance", href: "/app/attendance?tab=team" }] : []),
           ...(lead ? [{ key: "schedules", label: "Team timings", href: "/app/attendance?tab=schedules" }] : []),
           ...(markOthers ? [{ key: "others", label: "Mark for others", href: "/app/attendance?tab=others" }] : []),
           ...(seePhotos ? [{ key: "photos", label: "Photo check", href: "/app/attendance?tab=photos", ...(photoChecks ? { count: photoChecks } : {}) }] : []),
@@ -72,7 +77,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
       {tab === "mine" && <Mine />}
       {tab === "requests" && <Requests />}
       {tab === "others" && <OthersTab ctx={ctx} />}
-      {tab === "team" && <Team />}
+      {(tab === "team" || tab === "myteam") && <Team scope={tab} />}
       {tab === "schedules" && <Schedules />}
       {tab === "photos" && <PhotosTab ctx={ctx} sp={sp} today={today} />}
       {tab === "visits" && <VisitsTab ctx={ctx} sp={sp} today={today} />}
@@ -82,7 +87,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
   );
 
   async function Mine() {
-    const clientNames = (await activeClientOptions(ctx.organization.id)).map((c) => c.label);
+    const clientNames = (await ownWorkClientOptions(ctx, dateOnly(today))).map((c) => c.label);
     if (!ctx.employee) {
       // The owner and administrators get their attendance record at their first mark-in.
       if (!can(ctx, "org.manage")) return <EmptyState kind="people" title="No staff record">Your login is not linked to an employee, so there is no attendance to mark.</EmptyState>;
@@ -408,8 +413,8 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
     );
   }
 
-  async function Team() {
-    const f = parseTeamFilters(sp, today);
+  async function Team({ scope }: { scope: "team" | "myteam" }) {
+    const f = { ...parseTeamFilters(sp, today), ...(scope === "myteam" ? { onlyEmployeeIds: myTeam } : {}) };
     const [{ rows, counts, employeeCount }, departments, visitGroups] = await Promise.all([
       teamAttendanceRows(ctx, policy, f),
       prisma.department.findMany({ where: { organizationId: ctx.organization.id, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -429,21 +434,21 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
     const singleDay = f.from === f.to;
 
     const query = (extra: Record<string, string>) => {
-      const p = new URLSearchParams({ tab: "team", from: f.from, to: f.to, ...(f.q && { q: f.q }), ...(f.departmentId && { department: f.departmentId }), ...(f.employeeId && { employee: f.employeeId }), ...(f.status && { status: f.status }), ...extra });
+      const p = new URLSearchParams({ tab: scope, from: f.from, to: f.to, ...(f.q && { q: f.q }), ...(f.departmentId && { department: f.departmentId }), ...(f.employeeId && { employee: f.employeeId }), ...(f.status && { status: f.status }), ...extra });
       for (const [k, v] of [...p.entries()]) if (!v) p.delete(k);
       return p.toString();
     };
     const tile = (status: AttendanceFilter | "") => `/app/attendance?${query({ status })}#attendance-list`;
-    const exportHref = `/app/attendance/export?${query({ tab: "" })}`;
+    const exportHref = `/app/attendance/export?${query({ tab: "", ...(scope === "myteam" ? { scope: "mine" } : {}) })}`;
     const LIST_TITLE: Record<string, string> = { PRESENT: "Present", ABSENT: "Absent", HALF_DAY: "Half day", LEAVE: "On leave", NOT_MARKED: "Not marked", LATE: "Late arrivals", NO_OUT: "No time out", PROXY: "Marked by a colleague", STAYING: "Staying late without approval", "": "All team members" };
     const map = (lat: unknown, lng: unknown) => (lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : null);
     const monthStart = `${today.slice(0, 7)}-01`;
-    const personHref = (id: string) => `/app/attendance?tab=team&employee=${id}&from=${monthStart}&to=${today}`;
+    const personHref = (id: string) => `/app/attendance?tab=${scope}&employee=${id}&from=${monthStart}&to=${today}`;
 
     return (
       <div className="space-y-6">
         <form className="flex flex-wrap items-end gap-2" aria-label="Filter attendance">
-          <input type="hidden" name="tab" value="team" />
+          <input type="hidden" name="tab" value={scope} />
           <label className="text-sm">
             <span className="mb-1 block font-medium">From</span>
             <input type="date" name="from" defaultValue={f.from} max={today} className="h-10 rounded-md border border-line bg-surface px-3 text-sm" />
@@ -480,14 +485,14 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
             </label>
           )}
           <button className="h-10 rounded-md border border-line bg-surface px-4 text-sm hover:bg-subtle">Apply</button>
-          <a href="/app/attendance?tab=team" className="flex h-10 items-center px-2 text-sm text-muted hover:text-ink">Clear</a>
+          <a href={`/app/attendance?tab=${scope}`} className="flex h-10 items-center px-2 text-sm text-muted hover:text-ink">Clear</a>
           <span className="ml-auto"><DownloadButton href={exportHref}>Export to Excel</DownloadButton></span>
         </form>
 
         {person && (
           <Notice tone="info">
             Showing only <strong>{person.firstName} {person.lastName}</strong>. Change the dates above to see another period.{" "}
-            <Link href={`/app/attendance?tab=team&from=${f.from}&to=${f.to}`} className="font-medium underline">Show everyone</Link>
+            <Link href={`/app/attendance?tab=${scope}&from=${f.from}&to=${f.to}`} className="font-medium underline">Show everyone</Link>
           </Notice>
         )}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">

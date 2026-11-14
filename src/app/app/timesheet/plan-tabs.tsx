@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import type { AppContext } from "@/lib/session";
 import { addDays, dateOnly, formatDate, formatDateTime, formatTime, isoDateInTz, minutesToHhmm, toIsoDate } from "@/lib/dates";
-import { activeClientOptions } from "@/lib/services/lookups";
+import { activeClientOptions, ownWorkClientOptions } from "@/lib/services/lookups";
 import { dayView, finesForMonth, teamPlans, toEscalate, type PlanWithItems } from "@/lib/services/daily-plans";
 import { getPolicy, leadsOf, plansApplyTo, reporteeIds } from "@/lib/services/office-rules";
 import type { EodState } from "@/lib/domain/daily-plan";
@@ -62,7 +62,7 @@ export async function MyPlanTab({ ctx, sp }: { ctx: AppContext; sp: SP }) {
   const me = ctx.employee.id;
   const [v, clients, leads, logged] = await Promise.all([
     dayView(ctx, me, iso),
-    activeClientOptions(ctx.organization.id),
+    ownWorkClientOptions(ctx, dateOnly(iso)),
     leadsOf([me]),
     prisma.timesheetEntry.aggregate({ where: { employeeId: me, workDate: dateOnly(iso) }, _count: true, _sum: { approxMinutes: true } }),
   ]);

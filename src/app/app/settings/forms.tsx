@@ -2,6 +2,7 @@
 
 import { useId } from "react";
 import { ActionForm, SelectField, SubmitButton, TextArea, TextField, type FormState } from "@/components/form";
+import { TABLE_FILE_ACCEPT } from "@/lib/table-file-accept";
 
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
 type D = Record<string, string>;
@@ -108,6 +109,23 @@ export function PolicyForm({ action, d }: { action: Act; d: D }) {
         {n("Fine for a Team Lead not escalating (₹)", "leadPenaltyRupees")}
       </fieldset>
       <SubmitButton>Save policy</SubmitButton>
+    </ActionForm>
+  );
+}
+
+/** Upload the firm's holiday list (Excel "ERP Import" sheet, or CSV); replaces the list from a date. */
+export function HolidayUploadForm({ action, today }: { action: Act; today: string }) {
+  const id = useId();
+  return (
+    <ActionForm action={action}>
+      <div>
+        <label htmlFor={id} className="mb-1 block text-sm font-medium">Holiday list (Excel or CSV)</label>
+        <input id={id} name="file" type="file" required accept={TABLE_FILE_ACCEPT} className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-sm" />
+        <p className="mt-1 text-xs text-muted">Same layout as the firm&apos;s List of Holiday file, sheet “ERP Import”: Date | Holiday Name | Day | Year | Holiday Type | Remark.</p>
+      </div>
+      <TextField label="New list applies from" name="effectiveFrom" type="date" required defaultValue={today}
+        hint="From this date the uploaded list replaces the holidays here. Earlier dates keep the old list, so past attendance and salary do not change." />
+      <SubmitButton variant="secondary" confirm="Replace the holidays from this date with the uploaded list?">Upload holiday list</SubmitButton>
     </ActionForm>
   );
 }

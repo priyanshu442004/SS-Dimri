@@ -287,6 +287,16 @@ test("office rules (14 Nov 2026): rules page, mark in with location, plans, requ
   await page.goto("/app/settings?tab=policy");
   await expect(page.getByLabel("Office name")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Office holidays" })).toBeVisible();
+  // Tracker 14 Nov: holiday list upload, Ex-employees, several clients on a task, task correction.
+  await expect(page.getByText("Upload the holiday list")).toBeVisible();
+  await page.goto("/app/rules");
+  await expect(page.getByRole("heading", { name: /Office holidays \d{4}/ })).toBeVisible();
+  await page.goto("/app/employees");
+  await expect(page.getByRole("link", { name: /Ex-employees/ })).toBeVisible();
+  await page.goto("/app/tasks/new");
+  await expect(page.getByRole("combobox", { name: "Client(s)", exact: true })).toBeVisible();
+  await page.goto("/app/clients/new");
+  await expect(page.getByLabel("IT file no.", { exact: true })).toBeVisible();
   await page.goto("/app/admin");
   await expect(page.getByRole("heading", { name: /Firm today/ }).first()).toBeVisible();
   expect(problems).toEqual([]);

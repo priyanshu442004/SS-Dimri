@@ -6,7 +6,7 @@ import { requireCapability } from "@/lib/session";
 import { dateOnly, formatDate, formatDateTime, isoDateInTz } from "@/lib/dates";
 import { daysPending } from "@/lib/domain/derived";
 import { pendingScope } from "@/lib/services/worklog";
-import { activeClientOptions, employeeOptions } from "@/lib/services/lookups";
+import { employeeOptions, visibleClientOptions } from "@/lib/services/lookups";
 import { DeleteButton } from "@/components/delete-dialog";
 import { canDelete } from "@/lib/services/deletions";
 import { Badge, Card, EmptyState, PageHeader, Stat, StatusBadge, TabNav } from "@/components/ui";
@@ -50,7 +50,7 @@ export default async function PendingPage({ searchParams }: PageProps<"/app/pend
       },
     }),
     prisma.pendingItem.groupBy({ by: ["pendingWith"], where: { AND: [pendingScope(ctx), { category, status: { not: "CLOSED" } }] }, _count: true }),
-    activeClientOptions(ctx.organization.id),
+    visibleClientOptions(ctx),
     employeeOptions(ctx.organization.id),
   ]);
   const countFor = (w: string) => openCounts.find((c) => c.pendingWith === w)?._count ?? 0;

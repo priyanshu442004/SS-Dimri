@@ -10,22 +10,26 @@ import { ChartCard, Donut, TrendLine } from "@/components/charts";
 import { IdCard } from "lucide-react";
 
 /** Staff onboarding stages (owner decision, 27 Oct 2026). */
+// Resigned / terminated people are kept apart under "Ex-employees" (tracker, 3 Nov 2026).
+const CURRENT: Prisma.EmployeeWhereInput = { employmentStatus: { not: "EXITED" } };
 const FILTERS: Record<string, { label: string; where: Prisma.EmployeeWhereInput }> = {
-  all: { label: "All", where: {} },
-  invited: { label: "Invited", where: { approvalStatus: "PENDING", onboardingSubmittedAt: null } },
-  review: { label: "Under review", where: { OR: [{ approvalStatus: "UNDER_REVIEW" }, { approvalStatus: "PENDING", onboardingSubmittedAt: { not: null } }] } },
-  hold: { label: "On hold", where: { approvalStatus: "ON_HOLD" } },
-  approved: { label: "Approved", where: { approvalStatus: "APPROVED" } },
-  rejected: { label: "Rejected", where: { approvalStatus: "REJECTED" } },
+  all: { label: "All", where: CURRENT },
+  invited: { label: "Invited", where: { ...CURRENT, approvalStatus: "PENDING", onboardingSubmittedAt: null } },
+  review: { label: "Under review", where: { ...CURRENT, OR: [{ approvalStatus: "UNDER_REVIEW" }, { approvalStatus: "PENDING", onboardingSubmittedAt: { not: null } }] } },
+  hold: { label: "On hold", where: { ...CURRENT, approvalStatus: "ON_HOLD" } },
+  approved: { label: "Approved", where: { ...CURRENT, approvalStatus: "APPROVED" } },
+  rejected: { label: "Rejected", where: { ...CURRENT, approvalStatus: "REJECTED" } },
+  exited: { label: "Ex-employees", where: { employmentStatus: "EXITED" } },
 };
 // Old links used ?status=pending for "awaiting approval".
 const ALIASES: Record<string, string> = { pending: "review" };
 
-function stageLabel(e: { approvalStatus: string; onboardingSubmittedAt: Date | null }) {
+function stageLabel(e: { approvalStatus: string; onboardingSubmittedAt: Date | null; employmentStatus?: string }) {
+  if (e.employmentStatus === "EXITED") return "Ex-employees";
   if (e.approvalStatus === "PENDING") return e.onboardingSubmittedAt ? "Under review" : "Invited";
   return { UNDER_REVIEW: "Under review", ON_HOLD: "On hold", APPROVED: "Approved", REJECTED: "Rejected" }[e.approvalStatus] ?? e.approvalStatus;
 }
-const STAGE_STATUS: Record<string, string> = { Invited: "PLANNED", "Under review": "PENDING_REVIEW", "On hold": "ON_HOLD", Approved: "APPROVED", Rejected: "REJECTED" };
+const STAGE_STATUS: Record<string, string> = { Invited: "PLANNED", "Under review": "PENDING_REVIEW", "On hold": "ON_HOLD", Approved: "APPROVED", Rejected: "REJECTED", "Ex-employees": "INACTIVE" };
 
 export default async function EmployeesPage({ searchParams }: PageProps<"/app/employees">) {
   const ctx = await requireCapability("employees.view");
@@ -59,12 +63,12 @@ export default async function EmployeesPage({ searchParams }: PageProps<"/app/em
       take: 200,
       select: {
         id: true, firstName: true, lastName: true, email: true, mobile: true, temporaryEmployeeCode: true, permanentEmployeeCode: true, approvalStatus: true,
-        onboardingSubmittedAt: true, dateOfJoining: true, createdAt: true,
+        onboardingSubmittedAt: true, dateOfJoining: true, createdAt: true, employmentStatus: true, exitDate: true,
         designation: { select: { name: true } }, department: { select: { name: true } },
         membership: { select: { role: true, status: true, mustChangePassword: true, userId: true } },
       },
     }),
-    prisma.employee.findMany({ where: { organizationId: org }, select: { approvalStatus: true, onboardingSubmittedAt: true } }),
+    prisma.employee.findMany({ where: { organizationId: org }, select: { approvalStatus: true, onboardingSubmittedAt: true, employmentStatus: true } }),
     staffInvitationFlow(ctx),
   ]);
   const lastEmails = await prisma.emailOutbox.findMany({
@@ -78,7 +82,7 @@ export default async function EmployeesPage({ searchParams }: PageProps<"/app/em
 
   const counts = new Map<string, number>();
   for (const e of all) counts.set(stageLabel(e), (counts.get(stageLabel(e)) ?? 0) + 1);
-  const tabCount = (key: string) => (key === "all" ? all.length : counts.get(FILTERS[key].label) ?? 0);
+  const tabCount = (key: string) => (key === "all" ? all.length - (counts.get("Ex-employees") ?? 0) : counts.get(FILTERS[key].label) ?? 0);
   const stages = ["Invited", "Under review", "On hold", "Approved", "Rejected"].map((label) => ({
     label, value: counts.get(label) ?? 0, href: `/app/employees?status=${Object.keys(FILTERS).find((k) => FILTERS[k].label === label)}`,
   }));
@@ -121,7 +125,7 @@ export default async function EmployeesPage({ searchParams }: PageProps<"/app/em
                 <Link href={`/app/employees/${e.id}`} className="block px-4 py-3">
                   <span className="flex items-start justify-between gap-2">
                     <span className="font-medium text-brand-700">{e.firstName} {e.lastName}</span>
-                    <StatusBadge status={STAGE_STATUS[stageLabel(e)]} label={stageLabel(e)} />
+                    <StatusBadge status={STAGE_STATUS[stageLabel(e)]} label={stageLabel(e) === "Ex-employees" ? `Ex-Employee${e.exitDate ? ` · left ${formatDate(e.exitDate)}` : ""}` : stageLabel(e)} />
                   </span>
                   <span className="mt-1 block text-xs text-muted">{[e.email, e.membership ? ROLE_LABELS[e.membership.role as Role] : null].filter(Boolean).join(" · ")}</span>
                 </Link>
@@ -145,7 +149,7 @@ export default async function EmployeesPage({ searchParams }: PageProps<"/app/em
                       <Td className="text-xs">{e.email ?? "—"}<div className="text-muted">{e.mobile ?? ""}</div></Td>
                       <Td>{e.membership ? ROLE_LABELS[e.membership.role as Role] : "—"}</Td>
                       <Td>
-                        <StatusBadge status={STAGE_STATUS[stageLabel(e)]} label={stageLabel(e)} />
+                        <StatusBadge status={STAGE_STATUS[stageLabel(e)]} label={stageLabel(e) === "Ex-employees" ? `Ex-Employee${e.exitDate ? ` · left ${formatDate(e.exitDate)}` : ""}` : stageLabel(e)} />
                         {e.membership?.status === "DISABLED" && <div className="mt-1"><StatusBadge status="INACTIVE" label="Login disabled" /></div>}
                       </Td>
                       <Td className="text-xs">

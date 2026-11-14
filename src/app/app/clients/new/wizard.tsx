@@ -7,6 +7,7 @@ import { Check } from "lucide-react";
 import { buttonClass } from "@/components/ui";
 import { upperCaseInput, useSubmitWithoutReset, type FormState } from "@/components/form";
 import { toast } from "@/components/toaster";
+import { checkFileInput, uploadsTooLarge } from "@/components/upload-guard";
 import { PeopleEditor, ROLE_LABEL, emptyPerson, peopleToJson, personErrors, type ConstitutionOption, type Person } from "@/components/representatives";
 import { mobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
 import { fullRegisterClientAction } from "../actions";
@@ -21,12 +22,18 @@ const STEPS = ["Business identity", "Constitution & people", "GST registrations"
 
 // Which step owns each server-side field (to jump back on validation errors).
 const FIELD_STEP: Record<string, number> = {
-  tradeName: 0, legalName: 0, address: 0, pan: 0, tan: 0, primaryBusinessNatureId: 0, contactName: 0, contactMobile: 0, contactEmail: 0, contactDesignation: 0,
+  tradeName: 0, legalName: 0, address: 0, pan: 0, tan: 0, primaryBusinessNatureId: 0, contactName: 0, contactMobile: 0, contactEmail: 0, contactDesignation: 0, state: 0, dateOfBirth: 0, itFileNo: 0,
+  gstUserId: 3, gstPassword: 3, incomeTaxUserId: 3, incomeTaxPassword: 3, tracesUserId: 3, tracesPassword: 3, masterRemark: 5,
   constitutionId: 1, people: 1, gstins: 2,
   isMsme: 3, msmeRegistrationNumber: 3, esiNumber: 3, pfNumber: 3, "departments[]": 3, "complianceItemIds[]": 3,
   "serviceIds[]": 4, natureOfClient: 4,
 };
 
+const STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Delhi", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir", "Jharkhand",
+  "Karnataka", "Kerala", "Ladakh", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Puducherry", "Punjab", "Rajasthan",
+  "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Chandigarh", "Andaman and Nicobar Islands", "Dadra and Nagar Haveli and Daman and Diu", "Lakshadweep",
+];
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const input = "block w-full rounded-md border border-line bg-surface px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-100 aria-[invalid=true]:border-danger";
 const valid = (schema: z.ZodType, value: string) => schema.safeParse(value).success;
@@ -194,6 +201,11 @@ export function BusinessWizard({ constitutions, natures, services, compliances }
         return;
       }
     }
+    if (uploadsTooLarge(e.currentTarget)) {
+      e.preventDefault();
+      go(3);
+      return;
+    }
     setStepError(null);
     onSubmit(e);
   }
@@ -209,12 +221,14 @@ export function BusinessWizard({ constitutions, natures, services, compliances }
       ["Legal name", v("legalName"), 0],
       ["Address", v("address"), 0],
       ["PAN / TAN", [v("pan"), v("tan")].filter(Boolean).join(" / ").toUpperCase(), 0],
+      ["State · IT file no.", [v("state"), v("itFileNo")].filter(Boolean).join(" · "), 0],
       ["Contact", [v("contactName"), v("contactMobile"), v("contactEmail")].filter(Boolean).join(" · "), 0],
       ["Constitution", constitution?.name ?? "", 1],
       ["People", people.filter((p) => p.fullName).map((p) => `${p.fullName} (${ROLE_LABEL[p.role]})`).join(", "), 1],
       ["GSTINs", gstins.join(", "), 2],
       ["MSME", v("isMsme") === "yes" ? `Yes ${v("msmeRegistrationNumber")}` : v("isMsme") === "no" ? "No" : "", 3],
       ["ESI / PF", [v("esiNumber"), v("pfNumber")].filter(Boolean).join(" / "), 3],
+      ["Portal logins", [v("gstUserId") && `GST: ${v("gstUserId")}`, `Income Tax: ${v("incomeTaxUserId") || v("pan").toUpperCase() || "—"}`, v("tracesUserId") && `TRACES: ${v("tracesUserId")}`].filter(Boolean).join(" · "), 3],
       ["Departments", fd.getAll("departments[]").join(", "), 3],
       ["Compliances", fd.getAll("complianceItemIds[]").length ? `${fd.getAll("complianceItemIds[]").length} selected` : "", 3],
       ["Documents", files.join(", "), 3],
@@ -257,12 +271,16 @@ export function BusinessWizard({ constitutions, natures, services, compliances }
             </select>
           </Field>
           <Field label="Logo / profile picture" name="profilePicture" hint="Optional · image up to 10 MB">
-            <input id="f-profilePicture" name="profilePicture" type="file" accept="image/*" className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5" />
+            <input id="f-profilePicture" name="profilePicture" type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => checkFileInput(e.currentTarget, true)} className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5" />
           </Field>
           <Field label="Contact person" name="contactName" required error={err("contactName")}><input id="f-contactName" name="contactName" autoComplete="name" className={input} aria-invalid={!!err("contactName")} /></Field>
           <Field label="Contact mobile" name="contactMobile" required hint="10-digit mobile number" error={err("contactMobile")}><input id="f-contactMobile" name="contactMobile" type="tel" inputMode="tel" maxLength={13} autoComplete="tel" className={input} aria-invalid={!!err("contactMobile")} /></Field>
           <Field label="Contact email" name="contactEmail" hint="Used later to invite the client to the portal" error={err("contactEmail")}><input id="f-contactEmail" name="contactEmail" type="email" autoComplete="off" className={input} aria-invalid={!!err("contactEmail")} /></Field>
           <Field label="Contact's designation" name="contactDesignation"><input id="f-contactDesignation" name="contactDesignation" className={input} /></Field>
+          <Field label="State" name="state"><input id="f-state" name="state" list="f-state-list" className={input} /></Field>
+          <datalist id="f-state-list">{STATES.map((st) => <option key={st} value={st} />)}</datalist>
+          <Field label="Date of birth / incorporation" name="dateOfBirth"><input id="f-dateOfBirth" name="dateOfBirth" type="date" className={input} /></Field>
+          <Field label="IT file no." name="itFileNo" hint="e.g. SSDA-373"><input id="f-itFileNo" name="itFileNo" className={input} /></Field>
         </section>
 
         {/* B — Constitution & people */}
@@ -342,8 +360,17 @@ export function BusinessWizard({ constitutions, natures, services, compliances }
           <Field label="MSME registration number" name="msmeRegistrationNumber"><input id="f-msmeRegistrationNumber" name="msmeRegistrationNumber" className={input} /></Field>
           <Field label="ESI number" name="esiNumber"><input id="f-esiNumber" name="esiNumber" className={input} /></Field>
           <Field label="PF number" name="pfNumber"><input id="f-pfNumber" name="pfNumber" className={input} /></Field>
+          <fieldset className="grid gap-3 rounded-lg border border-line p-3 sm:col-span-2 sm:grid-cols-2">
+            <legend className="px-1 text-sm font-medium">Portal logins <span className="font-normal text-muted">(optional · passwords are stored encrypted and never shown again)</span></legend>
+            <Field label="GST user ID" name="gstUserId"><input id="f-gstUserId" name="gstUserId" autoComplete="off" className={input} /></Field>
+            <Field label="GST password" name="gstPassword"><input id="f-gstPassword" name="gstPassword" type="password" autoComplete="new-password" className={input} /></Field>
+            <Field label="Income Tax user ID" name="incomeTaxUserId" hint="Left blank, the PAN is used"><input id="f-incomeTaxUserId" name="incomeTaxUserId" autoComplete="off" className={input} /></Field>
+            <Field label="Income Tax password" name="incomeTaxPassword"><input id="f-incomeTaxPassword" name="incomeTaxPassword" type="password" autoComplete="new-password" className={input} /></Field>
+            <Field label="TRACES user ID" name="tracesUserId"><input id="f-tracesUserId" name="tracesUserId" autoComplete="off" className={input} /></Field>
+            <Field label="TRACES password" name="tracesPassword"><input id="f-tracesPassword" name="tracesPassword" type="password" autoComplete="new-password" className={input} /></Field>
+          </fieldset>
           <div className="space-y-3 sm:col-span-2">
-            <p className="text-sm font-medium">Documents <span className="font-normal text-muted">(PDF, JPG, PNG, DOCX · max 10 MB each · stored privately)</span></p>
+            <p className="text-sm font-medium">Documents <span className="font-normal text-muted">(PDF, JPG, PNG, DOCX · max 10 MB each, 11 MB together · stored privately)</span></p>
             {[
               ["certificates", "Registration certificates (GST, incorporation, etc.)", true],
               ["msmeCertificate", "MSME certificate", false],
@@ -352,7 +379,7 @@ export function BusinessWizard({ constitutions, natures, services, compliances }
             ].map(([name, label, multiple]) => (
               <label key={String(name)} className="block text-sm">
                 {label}
-                <input name={String(name)} type="file" multiple={!!multiple} accept="application/pdf,image/*,.docx" className="mt-1 block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5" />
+                <input name={String(name)} type="file" multiple={!!multiple} accept="application/pdf,image/jpeg,image/png,image/webp,.docx,.xlsx" onChange={(e) => checkFileInput(e.currentTarget)} className="mt-1 block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5" />
               </label>
             ))}
           </div>
@@ -419,6 +446,7 @@ export function BusinessWizard({ constitutions, natures, services, compliances }
               </div>
             ))}
           </dl>
+          <div className="mt-4"><Field label="Remark" name="masterRemark" hint="Anything the team should know about this client"><textarea id="f-masterRemark" name="masterRemark" rows={2} className={input} /></Field></div>
         </section>
       </div>
 

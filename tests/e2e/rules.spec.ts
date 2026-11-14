@@ -384,8 +384,8 @@ test("owner: policy values, office holidays and who has accepted the rules", asy
   await expect(own.getByText(/Rules accepted: 0 of 5/)).toBeVisible(); // a change asks everyone again
   const holiday = addDaysIso(today, new Date(`${addDaysIso(today, 20)}T00:00:00Z`).getUTCDay() === 0 ? 21 : 20);
   await own.getByLabel("Date").fill(holiday);
-  await own.getByLabel("Holiday").fill("Test festival");
-  await own.getByRole("button", { name: "Add" }).click();
+  await own.getByRole("textbox", { name: "Holiday", exact: true }).fill("Test festival");
+  await own.getByRole("button", { name: "Add", exact: true }).click();
   await expect(own.getByText("Test festival added.")).toBeVisible();
   await own.goto("/app/attendance");
   await expect(own.getByRole("radio", { name: "Naraina Office" })).toBeVisible();

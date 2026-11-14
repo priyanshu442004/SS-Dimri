@@ -3,6 +3,7 @@
 import { ActionForm, FormError, PhoneField, SelectField, SubmitButton, TextArea, TextField, upperCaseInput } from "@/components/form";
 import { quickRegisterAction } from "../../actions";
 import { CompliancePicker, type ComplianceOption } from "@/components/compliance-picker";
+import { checkFileInput, uploadsTooLarge } from "@/components/upload-guard";
 
 type Option = { value: string; label: string };
 
@@ -11,6 +12,8 @@ export function QuickRegistrationForm({ constitutions, services, compliances }: 
 }) {
   const groups = [...new Set(services.map((s) => s.group))];
   return (
+    // Capture phase: files too large together stop the submission before it is sent.
+    <div onSubmitCapture={(e) => { if (uploadsTooLarge(e.target as HTMLFormElement)) { e.preventDefault(); e.stopPropagation(); } }}>
     <ActionForm action={quickRegisterAction}>
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField label="Trade name" name="tradeName" required className="sm:col-span-2" />
@@ -22,7 +25,7 @@ export function QuickRegistrationForm({ constitutions, services, compliances }: 
           { value: "ONE_TIME", label: "One time" }, { value: "RETAINER", label: "Retainer" },
         ]} />
         <div />
-        <TextField label="Point of contact" name="contactName" />
+        <TextField label="Contact person" name="contactName" required />
         <PhoneField label="Contact mobile" name="contactMobile" />
         <TextField label="Contact email" name="contactEmail" type="email" />
       </div>
@@ -44,7 +47,13 @@ export function QuickRegistrationForm({ constitutions, services, compliances }: 
         <FormError name="serviceIds[]" />
       </fieldset>
       <CompliancePicker items={compliances.items} departments={compliances.departments} />
+      <div>
+        <label htmlFor="quick-certificates" className="mb-1 block text-sm font-medium">Documents <span className="font-normal text-muted">(optional)</span></label>
+        <input id="quick-certificates" name="certificates" type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp,.docx,.xlsx" onChange={(e) => checkFileInput(e.currentTarget)} className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5" />
+        <p className="mt-1 text-xs text-muted">GST, PAN or incorporation certificates · PDF, JPG, PNG, DOCX · up to 10 MB each, 11 MB together. More can be added later on the client&apos;s Documents tab.</p>
+      </div>
       <SubmitButton>Submit for approval</SubmitButton>
     </ActionForm>
+    </div>
   );
 }

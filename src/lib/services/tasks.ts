@@ -10,6 +10,9 @@ import { audit } from "./audit";
 import { hasFile, storeUpload } from "./files";
 import { notifyClientUsers, notifyEmployees, notifyUsers } from "./notifications";
 import { deliverComplianceNotices } from "./compliance";
+import { getPolicy } from "./office-rules";
+import { taskWorkSegments } from "@/lib/domain/task-time";
+import { dateOnly } from "@/lib/dates";
 
 /** Tasks the caller may see. Team members see tasks they created, or where they are assignee, maker or checker. */
 export function taskScope(ctx: AppContext): Prisma.TaskWhereInput {
@@ -33,6 +36,8 @@ export const taskSchema = z.object({
   title: zOptionalText(200),
   description: zOptionalText(5000),
   clientId: z.uuid().optional(),
+  /** The same task for several clients: one task per client (tracker, 14 Nov 2026). */
+  "clientIds[]": z.array(z.uuid()).max(100, "At most 100 clients at a time").default([]),
   clientServiceId: z.uuid().optional(),
   priority: z.enum(["HIGH", "MEDIUM", "LOW"]),
   isAsap: zCheckbox.optional(),
@@ -113,6 +118,56 @@ export async function createTask(ctx: AppContext, v: z.infer<typeof taskSchema>,
   return task;
 }
 
+// ------------------------------------------------------------- correcting a task
+
+/**
+ * Wrong details while assigning (tracker, 14 Nov 2026): whoever created the task (and an
+ * administrator) can correct it until the work is started. After that the details stay as the team
+ * member saw them; remarks and the history carry any later change.
+ */
+export function mayEditTask(ctx: AppContext, task: { createdById: string | null; status: string; makerStatus: string }) {
+  return (task.createdById === ctx.user.id || can(ctx, "org.manage")) && (task.status === "PENDING" || task.status === "ASSIGNED") && task.makerStatus === "NOT_STARTED";
+}
+
+export const taskEditSchema = taskSchema.pick({ title: true, description: true, clientId: true, priority: true, isAsap: true, startAt: true, dueAt: true, writingForRemark: true, writingFromRemark: true });
+
+export async function editTask(ctx: AppContext, taskId: string, v: z.infer<typeof taskEditSchema>) {
+  const task = await loadTaskForCtx(ctx, taskId);
+  if (!task) throw new BusinessRuleError("Task not found.");
+  if (!mayEditTask(ctx, task)) throw new BusinessRuleError("This task can no longer be edited: the work has started. Add a remark instead.");
+  if (!v.title) throw new BusinessRuleError("Give the task a title.");
+  if (v.clientId && v.clientId !== task.clientId && !(await prisma.client.findFirst({ where: { id: v.clientId, organizationId: ctx.organization.id }, select: { id: true } }))) {
+    throw new BusinessRuleError("Client not found.");
+  }
+  const startAt = v.startAt ? localDateTimeToUtc(v.startAt) : null;
+  const dueAt = v.dueAt ? localDateTimeToUtc(v.dueAt) : null;
+  if (startAt && dueAt && dueAt < startAt) throw new BusinessRuleError("The due date must be after the start date.");
+  const changed: string[] = [];
+  if (v.title !== task.title) changed.push("title");
+  if ((v.description ?? null) !== task.description) changed.push("details");
+  if ((v.clientId ?? null) !== task.clientId) changed.push("client");
+  if (v.priority !== task.priority || !!v.isAsap !== task.isAsap) changed.push("priority");
+  if (startAt?.getTime() !== task.startAt?.getTime() || dueAt?.getTime() !== task.dueAt?.getTime()) changed.push("timeline");
+  if ((v.writingForRemark ?? null) !== task.writingForRemark || (v.writingFromRemark ?? null) !== task.writingFromRemark) changed.push("remarks");
+  if (!changed.length) return 0;
+  await prisma.$transaction(async (tx) => {
+    const res = await tx.task.updateMany({
+      where: { id: task.id, status: { in: ["PENDING", "ASSIGNED"] }, makerStatus: "NOT_STARTED" },
+      data: {
+        title: v.title, description: v.description ?? null, priority: v.priority, isAsap: !!v.isAsap, startAt, dueAt,
+        writingForRemark: v.writingForRemark ?? null, writingFromRemark: v.writingFromRemark ?? null,
+        ...(v.clientId !== task.clientId ? { clientId: v.clientId ?? null, clientServiceId: null, clientVisible: v.clientId ? task.clientVisible : false } : {}),
+      },
+    });
+    if (res.count !== 1) throw new BusinessRuleError("The work on this task has just started, so it can no longer be edited.");
+    await tx.taskActivity.create({ data: { taskId: task.id, actorUserId: ctx.user.id, type: "UPDATED", note: `Details corrected: ${changed.join(", ")}` } });
+    await notifyEmployees(tx, ctx.organization.id, task.assignments.map((a) => a.employeeId), {
+      type: "task.updated", title: `Task details changed: ${v.title}`, body: `Changed: ${changed.join(", ")}`, link: `/app/tasks/${task.id}`,
+    });
+  });
+  return changed.length;
+}
+
 export async function loadTaskForCtx(ctx: AppContext, taskId: string) {
   return prisma.task.findFirst({
     where: { AND: [taskScope(ctx), { id: taskId }] },
@@ -128,7 +183,11 @@ export async function taskActionsFor(ctx: AppContext, task: NonNullable<Awaited<
   return availableActions(task.status as TaskStatus, actorFor(ctx, task), task);
 }
 
-export async function performTaskAction(ctx: AppContext, taskId: string, action: TaskAction, comment?: string) {
+/**
+ * Returns the minutes added to the person's timesheet when they send the task for review
+ * (time from each "Start / resume work" to the next status change), else 0.
+ */
+export async function performTaskAction(ctx: AppContext, taskId: string, action: TaskAction, comment?: string): Promise<number> {
   const task = await loadTaskForCtx(ctx, taskId);
   if (!task) throw new BusinessRuleError("Task not found.");
   const to = nextStatus(task.status as TaskStatus, action);
@@ -136,9 +195,11 @@ export async function performTaskAction(ctx: AppContext, taskId: string, action:
   if (!canPerform(actorFor(ctx, task), task, action)) throw new BusinessRuleError("You are not allowed to do this on this task.");
   if (action === "request_changes" && !comment) throw new BusinessRuleError("Explain what needs to change.");
 
-  await prisma.$transaction(async (tx) => {
+  const office = action === "submit" && ctx.employee ? (await getPolicy(ctx.organization.id)).row : null;
+  return prisma.$transaction(async (tx) => {
     const data: Prisma.TaskUpdateManyMutationInput = { status: to };
     const now = new Date();
+    let logged = 0;
     if (action === "start") Object.assign(data, { makerStatus: "IN_PROGRESS", makerUpdatedAt: now });
     if (action === "submit") Object.assign(data, { makerStatus: "SUBMITTED", makerUpdatedAt: now, checkerStatus: "IN_REVIEW", checkerUpdatedAt: now });
     if (action === "approve") Object.assign(data, { checkerStatus: "APPROVED", checkerUpdatedAt: now, completedAt: now });
@@ -146,13 +207,37 @@ export async function performTaskAction(ctx: AppContext, taskId: string, action:
     if (action === "reopen") Object.assign(data, { completedAt: null });
     const res = await tx.task.updateMany({ where: { id: task.id, status: task.status }, data });
     if (res.count !== 1) throw new BusinessRuleError("The task was updated by someone else. Refresh and try again.");
-    await tx.taskActivity.create({
+    const change = await tx.taskActivity.create({
       data: { taskId: task.id, actorUserId: ctx.user.id, type: "STATUS_CHANGED", fromValue: task.status, toValue: to, note: comment },
     });
     if ((action === "approve" || action === "request_changes") && ctx.employee) {
       await tx.taskReview.create({
         data: { taskId: task.id, reviewerEmployeeId: ctx.employee.id, decision: action === "approve" ? "APPROVED" : "CHANGES_REQUESTED", comment },
       });
+    }
+    if (action === "submit" && ctx.employee && office) {
+      // The time worked goes to the timesheet by itself: no need to fill it again (tracker, 14 Nov 2026).
+      // Times all come from the database clock: this submission's own row ends the last session.
+      const changes = await tx.taskActivity.findMany({ where: { taskId: task.id, type: "STATUS_CHANGED", id: { not: change.id } }, select: { toValue: true, actorUserId: true, createdAt: true } });
+      const segments = taskWorkSegments(changes, ctx.user.id, change.createdAt, { start: office.officeStart, end: office.officeEnd }, ctx.organization.timezone);
+      const client = task.clientId ? await tx.client.findUnique({ where: { id: task.clientId }, select: { tradeName: true } }) : null;
+      for (const seg of segments) {
+        const day = dateOnly(seg.date);
+        const allocation = task.clientId
+          ? await tx.teamAllocation.findFirst({ where: { clientId: task.clientId, employeeId: ctx.employee.id, status: { in: ["ACTIVE", "PLANNED", "ENDED"] }, startDate: { lte: day }, OR: [{ endDate: null }, { endDate: { gte: day } }] }, select: { id: true, resourceType: true } })
+          : null;
+        const serialNumber = (await tx.timesheetEntry.count({ where: { employeeId: ctx.employee.id, workDate: day } })) + 1;
+        await tx.timesheetEntry.create({
+          data: {
+            organizationId: ctx.organization.id, employeeId: ctx.employee.id, serialNumber, workDate: day,
+            clientId: task.clientId, clientNameText: client?.tradeName ?? "Office / Other", clientServiceId: task.clientServiceId,
+            taskId: task.id, teamAllocationId: allocation?.id, resourceType: allocation?.resourceType,
+            typeOfWork: "Task", startTime: seg.start, endTime: seg.end, approxMinutes: seg.minutes,
+            workDetails: `${task.title} — sent for review (time recorded from the task)`, workStatus: "COMPLETED",
+          },
+        });
+        logged += seg.minutes;
+      }
     }
     if (action === "submit") {
       const reviewers = task.checkerEmployeeId ? [task.checkerEmployeeId] : [];
@@ -167,7 +252,8 @@ export async function performTaskAction(ctx: AppContext, taskId: string, action:
       });
     }
     if (action === "cancel") await audit(tx, ctx, "task.cancelled", "task", task.id, { reason: comment ?? null });
-  });
+    return logged;
+  }, { timeout: 20_000 });
 }
 
 export async function addRemark(ctx: AppContext, taskId: string, note: string, clientVisible = false) {

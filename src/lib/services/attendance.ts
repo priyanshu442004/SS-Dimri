@@ -305,7 +305,8 @@ export const ATTENDANCE_FILTERS = ["PRESENT", "ABSENT", "HALF_DAY", "LEAVE", "NO
 export type AttendanceFilter = (typeof ATTENDANCE_FILTERS)[number];
 export const MAX_RANGE_DAYS = 92;
 
-export type TeamFilters = { from: string; to: string; q: string; status: AttendanceFilter | ""; departmentId: string; employeeId: string };
+/** `onlyEmployeeIds`: a Team Lead's own team ("My team"); absent = everyone the caller may see. */
+export type TeamFilters = { from: string; to: string; q: string; status: AttendanceFilter | ""; departmentId: string; employeeId: string; onlyEmployeeIds?: string[] };
 
 /** Query-string values → safe filters. A single day when no range is given; future days are not counted. */
 export function parseTeamFilters(sp: Record<string, string | string[] | undefined>, today: string): TeamFilters {
@@ -346,6 +347,7 @@ export async function teamAttendanceRows(ctx: AppContext, policy: Policy, f: Tea
         employmentStatus: { not: "EXITED" },
         ...(f.departmentId ? { departmentId: f.departmentId } : {}),
         ...(f.employeeId ? { id: f.employeeId } : {}),
+        ...(f.onlyEmployeeIds ? { AND: [{ id: { in: f.onlyEmployeeIds } }] } : {}),
         ...(text ? { OR: [{ firstName: text }, { lastName: text }, { permanentEmployeeCode: text }] } : {}),
       },
       orderBy: { firstName: "asc" },

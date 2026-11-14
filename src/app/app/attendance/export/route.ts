@@ -3,7 +3,7 @@ import { formatDate, formatTime, minutesToHhmm } from "@/lib/dates";
 import { can } from "@/lib/permissions";
 import { getContext } from "@/lib/session";
 import { getPolicy, parseTeamFilters, teamAttendanceRows, todayIso } from "@/lib/services/attendance";
-import { workLocationLabels } from "@/lib/services/office-rules";
+import { reporteeIds, workLocationLabels } from "@/lib/services/office-rules";
 import { prisma } from "@/lib/db";
 import { dateOnly, toIsoDate } from "@/lib/dates";
 import { xlsxResponse } from "@/lib/xlsx";
@@ -13,11 +13,15 @@ const STATE_LABEL: Record<string, string> = { PRESENT: "Present", ABSENT: "Absen
 /** The team attendance list as an Excel file, with the same filters as the screen. */
 export async function GET(request: Request) {
   const ctx = await getContext();
-  if (!ctx || ctx.role === "CLIENT" || ctx.mustChangePassword || ctx.access.state === "locked" || !can(ctx, "attendance.view_all")) {
+  if (!ctx || ctx.role === "CLIENT" || ctx.mustChangePassword || ctx.access.state === "locked") {
     return new NextResponse("Not found", { status: 404 });
   }
   const sp = Object.fromEntries(new URL(request.url).searchParams.entries());
-  const f = parseTeamFilters(sp, todayIso(ctx));
+  // "My team" (scope=mine): only the people who report to the caller. Everyone else needs "see team attendance".
+  const mine = sp.scope === "mine" || !can(ctx, "attendance.view_all");
+  const team = mine ? await reporteeIds(ctx) : null;
+  if (mine && !team?.length) return new NextResponse("Not found", { status: 404 });
+  const f = { ...parseTeamFilters(sp, todayIso(ctx)), ...(team ? { onlyEmployeeIds: team } : {}) };
   const tz = ctx.organization.timezone;
   const policy = await getPolicy(ctx.organization.id);
   const labels = workLocationLabels(policy.row.officeName);

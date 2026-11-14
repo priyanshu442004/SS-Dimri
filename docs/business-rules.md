@@ -55,6 +55,19 @@ How each point is applied. The calculation is one pure module (`lib/domain/atten
 
 Who the rules apply to: approved staff except the owner. Morning plan, EOD and their fines apply to those who use the timesheet module (not support staff limited to attendance and payroll).
 
+## 1b. Requirements tracker, 14 Nov 2026 — confirmed
+
+- **Office holidays from the firm's list.** Settings → Leave & timing policy → *Upload the holiday list* reads the "List of Holiday" Excel (sheet *ERP Import*: Date | Holiday Name | Day | Year | Holiday Type | Remark; the older CSV layout also works). From the chosen *applies from* date the uploaded list **replaces** the holidays; earlier dates keep the old list, so past attendance and salary never change. Sundays in the list are not stored (always off); two holidays on one day become one entry; half-day holidays are refused. Attendance, auto-absent, leave (Sunday/holiday inside a leave), plans/EOD and payroll all read this one list. Everyone sees the year's holidays on *Office rules*.
+- **Timesheet clients.** A person's own Daily Log, morning plan and mark-in suggestions offer only the clients allocated to them on that date (plus clients of their open tasks and tracker work), and **Office / Other**. The server refuses another client. Owner and administrators see all clients. Pickers for new tasks and pending items show the clients the person can see in *Clients*.
+- **Company-wise tasks.** The Daily Log lists "My clients" with each client's open tasks, *+ Add task* (client pre-filled) and *Log time*.
+- **Task time → timesheet.** When a team member submits a task for review, the time from each *Start / resume work* to the next status change is added to their timesheet (one entry per session per day; a session left open overnight stops at office end and resumes at office start; Sundays in between are skipped). Only time since the previous submission counts.
+- **Correcting an assigned task.** The creator (and administrators) may edit title, client, priority, timeline, details and remarks until the work is started (status Pending/Assigned, maker not started). The assignees are notified; the history notes what changed.
+- **Several clients on one task.** Choosing several clients when creating a task creates one task per client with the same details, people, reminders and attachments.
+- **Team Lead attendance.** *My team* (people who report to me) and *All attendance* (with the "see team attendance" right). Export follows the tab.
+- **Ex-Employee.** *Resigned or terminated?* on the employee page: reason, last working day, note. Sign-in is disabled, client allocations end on the last working day (future ones are cancelled), the person moves to the *Ex-employees* tab. History stays. *Bring back as active* undoes it.
+- **Client registration.** Contact person is mandatory in quick registration. Documents can be attached in quick and full registration; every file is checked (type, 10 MB each, 11 MB together) before the client is created, so a bad file never leaves a half-registered client. The full registration also takes State, Date of birth / incorporation, IT file no., GST / Income Tax / TRACES logins (passwords encrypted) and Remark (SSDA Client Master).
+- **Client services.** Each service on a client can be edited (service, fee, dates, contact) and a completed or cancelled one made active again.
+
 ## 2. Configurable values (Settings)
 
 | Value | Default | Status | Setting |
