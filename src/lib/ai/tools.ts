@@ -279,12 +279,14 @@ async function attendanceReport(ctx: AppContext, args: Record<string, unknown>) 
   return {
     period: { from, to, ...(clipped ? { note: `Range shortened to the last ${MAX_RANGE_DAYS} days.` } : {}) },
     rules: `Office ${p.officeStart}–${p.officeEnd}; arriving after ${p.reportingGraceUntil} (grace) is LATE; over ${p.veryLateAfterMinutes} min late is VERY_LATE. Not marked in by ${p.autoAbsentAt} = absent. Sundays and holidays are off.`,
-    states: "NOT_MARKED = not marked in yet today (before the absent cut-off). ABSENT with autoMarkedAbsent = never marked, so the ERP marked them absent. LEAVE = approved leave. A NOT_MARKED / ABSENT row with `leave` set is on (pending or approved) leave; without it they simply did not mark.",
+    states: "NOT_MARKED = no attendance entry for that day (today: not marked in yet; past days: nothing was recorded, e.g. before staff started marking in the ERP). ABSENT with autoMarkedAbsent = never marked, so the ERP marked them absent. LEAVE = approved leave. A NOT_MARKED / ABSENT row with `leave` set is on (pending or approved) leave; without it they simply did not mark.",
     employeesCovered: employeeCount,
     totals: {
       personDays: counts.total, present: counts.PRESENT, late: counts.LATE, onTime: counts.PRESENT - counts.LATE, absent: counts.ABSENT, leave: counts.LEAVE, halfDay: counts.HALF_DAY, notMarked: counts.NOT_MARKED, missingMarkOut: counts.NO_OUT,
       attendancePercent: pct(counts.PRESENT, markedPersonDays), onTimePercentOfPresent: pct(counts.PRESENT - counts.LATE, counts.PRESENT),
+      presentPercentOfAllWorkingDays: pct(counts.PRESENT, counts.total),
     },
+    percentBasis: "attendancePercent = present ÷ days that have an attendance entry (present / absent / leave). presentPercentOfAllWorkingDays also counts days with no entry. When notMarked is large, say how many days had no entry and quote both figures.",
     ...(multiDay ? { perDay: [...byDay.values()].sort((x, y) => x.date.localeCompare(y.date)) } : {}),
     perPerson: people.sort((x, y) => (y.attendancePercent ?? 0) - (x.attendancePercent ?? 0) || x.late - y.late),
     perRole: [...roles.values()].map((g) => ({ ...g, latePercentOfPresent: pct(g.lateDays, g.presentDays) })).sort((x, y) => (y.latePercentOfPresent ?? 0) - (x.latePercentOfPresent ?? 0)),
