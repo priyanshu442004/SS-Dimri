@@ -138,12 +138,20 @@ export function AssistantApp({ initialConversations, initialConversation, sugges
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
   }, []);
 
+  // Follow the streaming answer only while the reader is at the bottom. Any move up (wheel, touch,
+  // keys, scrollbar) lets go at once; reaching the bottom again (or the ↓ button) follows again.
+  // Our own scrolling only ever goes down, so a smaller scrollTop always means the reader moved.
+  const lastScroll = useRef({ top: 0, height: 0 });
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    stickRef.current = near;
-    setAtBottom(near);
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const last = lastScroll.current;
+    const shrank = el.scrollHeight < last.height; // content got shorter: the browser moved scrollTop, not the reader
+    if (el.scrollTop < last.top - 1 && !shrank) stickRef.current = false;
+    else if (dist < 24) stickRef.current = true;
+    lastScroll.current = { top: el.scrollTop, height: el.scrollHeight };
+    setAtBottom(dist < 120);
   }, []);
 
   useLayoutEffect(() => {
