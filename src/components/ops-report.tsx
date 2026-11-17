@@ -82,10 +82,10 @@ function KpiTile({ k, animate, compare, i, busy }: { k: Kpi; animate: boolean; c
   const tone = TONE[k.tone];
   const value = useAnimatedText(k.display, animate);
   return (
-    <div className={clsx("ops-rise min-w-0 rounded-lg border border-line border-l-[3px] bg-surface px-3 py-2.5", tone.border)} style={{ "--d": `${i * 40}ms` } as CSSProperties}>
+    <div className={clsx("ops-rise min-w-0 rounded-lg border border-line border-l-[3px] bg-surface px-3 py-2.5", tone.border)} style={{ "--d": `${i * 25}ms` } as CSSProperties}>
       <p className="truncate text-[10.5px] font-semibold uppercase tracking-wide text-muted" title={k.label}>{k.label}</p>
       <div className="mt-0.5 flex items-end justify-between gap-1">
-        <p className={clsx("truncate font-editorial text-[26px] leading-none tabular-nums", tone.text, busy && "opacity-50 transition-opacity")}>{value}</p>
+        <p className={clsx("whitespace-nowrap font-editorial text-[26px] leading-none tabular-nums", tone.text, busy && "opacity-50 transition-opacity")}>{value}</p>
         <Spark values={k.spark} stroke={tone.stroke} animate={animate} />
       </div>
       <p className={clsx("mt-1 truncate text-[11px] font-semibold", deltaTone(k))}>{k.deltaDisplay}{k.delta !== null && k.key !== "lateLeave" ? ` ${compare}` : ""}</p>
@@ -96,7 +96,7 @@ function KpiTile({ k, animate, compare, i, busy }: { k: Kpi; animate: boolean; c
 
 function Section({ title, badge, children, className, i = 0, action }: { title: string; badge?: ReactNode; children: ReactNode; className?: string; i?: number; action?: ReactNode }) {
   return (
-    <section className={clsx("ops-rise min-w-0 break-inside-avoid", className)} style={{ "--d": `${120 + i * 50}ms` } as CSSProperties}>
+    <section className={clsx("ops-rise min-w-0 break-inside-avoid", className)} style={{ "--d": `${60 + i * 30}ms` } as CSSProperties}>
       <header className="mb-2 flex items-center gap-2 border-b-2 border-night pb-1">
         <h2 className="text-[15px] font-bold text-night dark:text-ink">{title}</h2>
         {badge}
@@ -111,17 +111,18 @@ const Badge = ({ children, tone = "ai" }: { children: ReactNode; tone?: "ai" | "
   <span className={clsx("rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide", tone === "ai" ? "bg-marigold text-night" : "bg-marigold-soft text-warn")}>{children}</span>
 );
 
-function Grid({ head, rows, total, align, empty = "Nothing to show." }: { head: string[]; rows: ReactNode[][]; total?: ReactNode[]; align?: ("l" | "r" | "c")[]; empty?: string }) {
+/** `narrow`: a table in a third of the page wraps its text instead of scrolling sideways. */
+function Grid({ head, rows, total, align, empty = "Nothing to show.", narrow = false }: { head: string[]; rows: ReactNode[][]; total?: ReactNode[]; align?: ("l" | "r" | "c")[]; empty?: string; narrow?: boolean }) {
   const cls = (i: number) => (align?.[i] === "r" ? "text-right" : align?.[i] === "c" ? "text-center" : "text-left");
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[420px] border-collapse text-[12.5px]">
+      <table className={clsx("w-full border-collapse text-[12.5px]", narrow ? "min-w-0" : "min-w-[420px]")}>
         <thead><tr className="bg-night text-paper">{head.map((h, i) => <th key={h} scope="col" className={clsx("px-2 py-1.5 font-semibold", cls(i))}>{h}</th>)}</tr></thead>
         <tbody>
           {rows.length === 0 ? <tr><td colSpan={head.length} className="px-2 py-3 text-center text-muted">{empty}</td></tr> : rows.map((r, n) => (
             <tr key={n} className="border-b border-line/70 odd:bg-surface even:bg-paper/60">{r.map((c, i) => <td key={i} className={clsx("px-2 py-1.5 align-top", cls(i))}>{c}</td>)}</tr>
           ))}
-          {total && rows.length > 0 && <tr className="bg-subtle font-bold">{total.map((c, i) => <td key={i} className={clsx("px-2 py-1.5", cls(i))}>{c}</td>)}</tr>}
+          {total && rows.length > 0 && <tr className="bg-subtle font-bold">{total.map((c, i) => <td key={i} className={clsx("whitespace-nowrap px-2 py-1.5", cls(i))}>{c}</td>)}</tr>}
         </tbody>
       </table>
     </div>
@@ -214,7 +215,7 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
   const k = data.period; // re-key sections so a new period animates in
 
   return (
-    <div ref={ref} className={clsx("relative", busy && "pointer-events-none")} aria-busy={busy}>
+    <div ref={ref} className={clsx("relative", busy && "pointer-events-none", print && "ops-static")} aria-busy={busy}>
       {/* Band */}
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 rounded-t-xl bg-night px-5 py-3 text-paper">
         <div className="min-w-0">
@@ -232,7 +233,7 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
 
       <div className={clsx("space-y-5 rounded-b-xl border border-t-0 border-line bg-paper/40 p-4 transition-opacity duration-300", busy && "opacity-60")}>
         {/* KPI tiles */}
-        <div key={`k-${k}`} className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+        <div key={`k-${k}`} className={clsx("grid gap-2", print ? "grid-cols-4" : "grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8")}>
           {data.kpis.map((kpi, i) => <KpiTile key={kpi.key} k={kpi} animate={animate} compare={data.compareLabel} i={i} busy={busy} />)}
         </div>
 
@@ -298,6 +299,7 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
               rows={cap(data.pendingClient, 5).map((r) => [<strong key="c">{r.client}</strong>, r.items, <D key="d" v={r.delta} />, `${r.age} d`, r.awaited])}
               total={["Total", data.pendingClientTotal.items, <D key="d" v={data.pendingClientTotal.delta} />, "", <span key="n" className="font-normal text-muted">{data.pendingClientTotal.note}</span>]}
               empty="Nothing is waiting on clients."
+              narrow
             />
           </Section>
           <Section title="Late arrivals & reasons" i={5}>
@@ -309,6 +311,7 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
                 data.singleDay ? r.inTime : `${r.date} · ${r.inTime}`, `${r.lateBy} min`, r.reason,
               ])}
               empty="Nobody was late."
+              narrow
             />
             <p className="mt-1.5 rounded bg-subtle px-2 py-1 text-[12px]"><strong>By role:</strong> {data.lateByRole}</p>
           </Section>
@@ -317,6 +320,7 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
               head={["Member", "Client visited", "Purpose", data.singleDay ? "Time" : "Day · time"]}
               rows={cap(data.offsite, 5).map((r) => [<strong key="m">{r.member}</strong>, r.client, r.purpose, data.singleDay ? r.time : `${r.date} · ${r.time}`])}
               empty="No offsite work."
+              narrow
             />
             <p className="mt-1.5 rounded bg-subtle px-2 py-1 text-[12px] font-semibold">{data.offsiteTotal}</p>
           </Section>

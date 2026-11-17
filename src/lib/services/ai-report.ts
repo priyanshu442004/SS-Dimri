@@ -6,7 +6,7 @@ import { dateOnly, isoDateInTz, minutesOfDayInTz } from "@/lib/dates";
 import { AI_REPORTING_EMAILS, type Role } from "@/lib/permissions";
 import type { AppContext } from "@/lib/session";
 import { streamStep } from "@/lib/ai/deepseek";
-import { opsSummary, type OpsSummary } from "./ops-summary";
+import { opsSummary, type OpsSummary, type PeriodKey } from "./ops-summary";
 
 // AI Reporting (client format "Daily AI Summary Report", 17 Nov 2026). The figures come from the ERP
 // (ops-summary.ts); the AI writes the executive summary and tomorrow's priorities from those figures
@@ -112,12 +112,12 @@ export async function reportById(organizationId: string, id: string): Promise<St
 }
 
 /** Builds and stores one report. `rowId` = an already claimed row (the evening run). */
-export async function generateReport(ctx: AppContext, opts: { trigger: "SCHEDULED" | "MANUAL"; rowId?: string }): Promise<StoredReport> {
+export async function generateReport(ctx: AppContext, opts: { trigger: "SCHEDULED" | "MANUAL"; rowId?: string; period?: PeriodKey }): Promise<StoredReport> {
   const row = opts.rowId
     ? { id: opts.rowId }
     : await prisma.aiReport.create({ data: { organizationId: ctx.organization.id, trigger: opts.trigger, requestedById: ctx.user.id } });
   try {
-    const data = await opsSummary(ctx, "today");
+    const data = await opsSummary(ctx, opts.period ?? "today");
     const narrative = await writeNarrative(data);
     const done = await prisma.aiReport.update({
       where: { id: row.id },
@@ -160,7 +160,9 @@ export async function reportPdf(reportId: string): Promise<Buffer> {
       const res = await page.goto(`${baseUrl()}/print/ai-report/${reportId}?t=${printToken(reportId)}`, { waitUntil: "networkidle", timeout: 60_000 });
       if (!res?.ok()) throw new Error(`Print page answered ${res?.status() ?? "nothing"}`);
       await page.emulateMedia({ media: "print" });
-      return await page.pdf({ format: "A4", landscape: true, printBackground: true, margin: { top: "8mm", bottom: "8mm", left: "8mm", right: "8mm" }, scale: 0.92 });
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(250);
+      return await page.pdf({ format: "A4", landscape: true, printBackground: true, margin: { top: "7mm", bottom: "7mm", left: "7mm", right: "7mm" }, scale: 0.7 });
     } finally {
       await browser.close();
     }
@@ -193,14 +195,16 @@ export async function mailReport(reportId: string, toOverride?: string[]): Promi
   const to = toOverride?.length ? toOverride : cfg.to;
   if (!cfg.host || !cfg.user || !cfg.pass || !to.length) return { status: "DISABLED", to, error: "AI report mail is not configured (AI_REPORT_SMTP_* / AI_REPORT_MAIL_TO)." };
   let result: { status: "SENT" | "FAILED"; to: string[]; error?: string };
+  const row = await prisma.aiReport.findUnique({ where: { id: reportId }, select: { data: true } });
+  const asOf = (row?.data as { asOfDate?: string } | null)?.asOfDate;
+  const day = asOf && /^\d{4}-\d{2}-\d{2}$/.test(asOf) ? `${asOf.slice(8, 10)}-${asOf.slice(5, 7)}-${asOf.slice(0, 4)}` : ddmmyyyy(new Date());
   try {
     const pdf = await reportPdf(reportId);
     transport ??= nodemailer.createTransport({ host: cfg.host, port: cfg.port, secure: cfg.port === 465, auth: { user: cfg.user, pass: cfg.pass }, connectionTimeout: 20_000, greetingTimeout: 20_000, socketTimeout: 60_000 });
-    const now = new Date();
     await transport.sendMail({
-      from: cfg.from, to, subject: `${MAIL_SUBJECT} – Dated: ${ddmmyyyy(now)}`, text: MAIL_BODY,
+      from: cfg.from, to, subject: `${MAIL_SUBJECT} – Dated: ${day}`, text: MAIL_BODY,
       html: `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2937">${MAIL_BODY.split("\n\n").map((p) => `<p style="margin:0 0 14px">${p.replace(/\n/g, "<br>")}</p>`).join("")}</div>`,
-      attachments: [{ filename: `Daily_AI_Summary_Report_${ddmmyyyy(now)}.pdf`, content: pdf, contentType: "application/pdf" }],
+      attachments: [{ filename: `Daily_AI_Summary_Report_${day}.pdf`, content: pdf, contentType: "application/pdf" }],
     });
     result = { status: "SENT", to };
   } catch (e) {

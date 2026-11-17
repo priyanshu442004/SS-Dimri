@@ -34,6 +34,8 @@ export type OpsSummary = {
   rangeLabel: string;
   compareLabel: string;
   singleDay: boolean;
+  /** Last day of the period, YYYY-MM-DD. */
+  asOfDate: string;
   generatedAt: string;
   dateLabel: string;
   firm: string;
@@ -449,7 +451,7 @@ export async function opsSummary(ctx: AppContext, period: PeriodKey): Promise<Op
 
   const clientsOpen = new Set(items.filter((i) => openAt(i, asOf) && i.clientId).map((i) => i.client)).size;
   return {
-    period, periodLabel: PERIODS[period], compareLabel: compare, singleDay: single,
+    period, periodLabel: PERIODS[period], compareLabel: compare, singleDay: single, asOfDate: cur.to,
     rangeLabel: single ? longDate(cur.from) : `${shortDate(cur.from)} – ${shortDate(cur.to)} ${cur.to.slice(0, 4)}`,
     dateLabel: longDate(cur.to), generatedAt: now.toISOString(), firm: ctx.organization.tradeName,
     counts: { clients: clientsOpen, members: employees.length, items: count((i) => openAt(i, asOf)) },
