@@ -34,6 +34,8 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Cache Components is not used: every internal page is private, per-user data.
   poweredByHeader: false,
+  // Headless Chromium prints the AI report to PDF on the server (not bundled).
+  serverExternalPackages: ["playwright-core"],
   experimental: {
     serverActions: {
       // Uploads (certificates, documents, attendance photos) go through server actions.

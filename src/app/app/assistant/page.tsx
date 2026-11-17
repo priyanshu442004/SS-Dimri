@@ -48,7 +48,6 @@ export default async function AssistantPage({ searchParams }: PageProps<"/app/as
       userFirstName="Admin"
       initialQuote={typeof sp.q === "string" ? sp.q.slice(0, 2000) : null}
       firmName={ctx.organization.tradeName}
-      modelName={aiConfig().model}
       configured={!!aiConfig().apiKey}
     />
   );

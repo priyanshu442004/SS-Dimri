@@ -209,5 +209,7 @@ export async function sweepAllFirms() {
     // Team allocation: end lapsed allocations and remind people of tomorrow's visits.
     visitReminders += (await sweepAllocations(o.id, o.timezone).catch(() => ({ reminders: 0 }))).reminders;
   }
+  // Safety net for the 18:00 IST AI report: if the evening call was missed, the next sweep makes and mails it.
+  void import("./ai-report").then((m) => m.runEveningReports()).catch((e) => console.error("evening AI report check failed", e instanceof Error ? e.message : e));
   return { firms: orgs.length, mails, visitReminders, absent, flags };
 }

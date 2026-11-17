@@ -100,14 +100,13 @@ function groupConversations(list: ConversationSummary[]) {
 
 // ============================================================================ app
 
-export function AssistantApp({ initialConversations, initialConversation, suggestions, userFirstName, firmName, modelName, configured, initialQuote = null }: {
+export function AssistantApp({ initialConversations, initialConversation, suggestions, userFirstName, firmName, configured, initialQuote = null }: {
   initialQuote?: string | null;
   initialConversations: ConversationSummary[];
   initialConversation: { id: string; title: string; messages: ChatMessageView[] } | null;
   suggestions: Suggestion[];
   userFirstName: string;
   firmName: string;
-  modelName: string;
   configured: boolean;
 }) {
   const [conversations, setConversations] = useState(initialConversations);
@@ -426,9 +425,6 @@ export function AssistantApp({ initialConversations, initialConversation, sugges
             <button type="button" onClick={() => setSidebarOpen(true)} className="hidden rounded-md p-1.5 text-muted hover:bg-subtle hover:text-ink md:block" aria-label="Show chat history" title="Show chat history"><PanelLeftOpen className="size-4.5" /></button>
           )}
           <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{activeId ? title : "Aanya · AI analyst"}</h1>
-          <span className="hidden items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-[11px] text-muted sm:inline-flex" title="Model">
-            <span className="size-1.5 rounded-full bg-ok" aria-hidden /> {modelName}
-          </span>
           <button type="button" onClick={newChat} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted transition-colors hover:bg-subtle hover:text-ink" title={`New chat (${isMac() ? "⌘" : "Ctrl"}+Shift+O)`}>
             <MessageSquarePlus className="size-4" aria-hidden /><span className="hidden sm:inline">New chat</span>
           </button>

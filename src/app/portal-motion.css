@@ -75,8 +75,20 @@
   .ai-orb { background: conic-gradient(from 0deg, var(--color-marigold), var(--color-stamp-bright), var(--color-brand-600), var(--color-marigold)); animation: ai-spin 3.2s linear infinite; }
   @keyframes ai-spin { to { transform: rotate(360deg); } }
 
+  /* Operations dashboard / AI report: sparklines draw in, sections rise in turn, a bar runs while loading */
+  .ops-spark { stroke-dasharray: 220; stroke-dashoffset: 220; animation: ops-draw 900ms var(--ease-out-expo) 120ms forwards; }
+  @keyframes ops-draw { to { stroke-dashoffset: 0; } }
+  .ops-rise { animation: ai-in 420ms var(--ease-out-expo) both; animation-delay: var(--d, 0ms); }
+  .ops-loading-bar { position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: 9999px; background: var(--color-stamp); animation: ops-load 1.1s ease-in-out infinite; }
+  @keyframes ops-load { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
+  .ops-skel { position: relative; overflow: hidden; background: var(--color-subtle); border-radius: 6px; color: transparent !important; }
+  .ops-skel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgb(255 255 255 / .55), transparent); animation: ai-shimmer-x 1.2s linear infinite; }
+  @keyframes ai-shimmer-x { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
   @media (prefers-reduced-motion: reduce) {
-    .ai-in, .ai-pop, .ai-orb, .ai-shimmer { animation: none; }
+    .ai-in, .ai-pop, .ai-orb, .ai-shimmer, .ops-rise, .ops-loading-bar { animation: none; }
+    .ops-spark { stroke-dashoffset: 0; animation: none; }
+    .ops-skel::after { animation: none; }
     .ai-shimmer { color: var(--color-muted); }
     .ai-caret::after { animation: none; }
     .chart-line { stroke-dashoffset: 0; animation: none; }

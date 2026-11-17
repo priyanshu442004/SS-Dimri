@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useId, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { clsx } from "clsx";
 import { Table2 } from "lucide-react";
-import { fmt, type Format } from "@/lib/chart-format";
+import { fmt, fmtCompact, type Format } from "@/lib/chart-format";
 import { EmptyArt } from "@/components/empty-art";
 
 // Dependency-free SVG charts. Colors come from the validated categorical order
@@ -29,6 +29,10 @@ function stepKeys(e: KeyboardEvent, count: number, hover: number | null, set: (i
   else return;
   e.preventDefault();
 }
+
+/** Font size (SVG units) so `text` fits in `width` units: about 0.58 em per character. */
+const centreSize = (text: string, max: number, width: number) => Math.min(max, width / Math.max(1, text.length * 0.58));
+const clip = (s: string, n = 18) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 /** Card with title, optional subtitle and a "show as table" view. */
 export function ChartCard({ title, subtitle, table, children, action }: {
@@ -160,8 +164,9 @@ export function Donut({ slices, format = "count", centerLabel }: {
           );
         })}
         <g className="rotate-90" style={{ transformOrigin: "50px 50px" }}>
-          <text x="50" y="50" textAnchor="middle" className="fill-ink font-editorial text-[19px]">{fmt(hover === null ? total : slices[hover].value, format)}</text>
-          <text x="50" y="62" textAnchor="middle" className="fill-muted text-[7px]">{hover === null ? centerLabel ?? "Total" : slices[hover].label}</text>
+          {/* The hole is ~70 units wide: short number form, and the text shrinks to stay inside the ring. */}
+          <text x="50" y="50" textAnchor="middle" className="fill-ink font-editorial" style={{ fontSize: centreSize(fmtCompact(hover === null ? total : slices[hover].value, format), 19, 58) }}>{fmtCompact(hover === null ? total : slices[hover].value, format)}</text>
+          <text x="50" y="62" textAnchor="middle" className="fill-muted" style={{ fontSize: centreSize(clip(hover === null ? centerLabel ?? "Total" : slices[hover].label), 7, 54) }}>{clip(hover === null ? centerLabel ?? "Total" : slices[hover].label)}</text>
         </g>
       </svg>
       <ul className="min-w-0 flex-1 space-y-0.5 text-xs">

@@ -718,6 +718,7 @@ model Organization {
   aiConversations        AiConversation[]
   messaging              OrganizationMessaging?
   messageLogs            MessageLog[]
+  aiReports              AiReport[]
   notifications          Notification[]
   followUps              FollowUp[]
   pendingDaysBasis       PendingDaysBasis                @default(CALENDAR) @map("pending_days_basis")
@@ -3006,4 +3007,35 @@ model MessageLog {
 
   @@index([organizationId, createdAt])
   @@map("message_logs")
+}
+
+/// AI Reporting: one generated "Daily AI Summary Report" — the figures as they were (snapshot) plus the
+/// AI-written summary. Made every evening at 18:00 IST (scheduledFor = that day, once) and on Refresh.
+model AiReport {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  /// Set for the evening run only: one per firm per day (Refresh rows leave it empty).
+  scheduledFor   DateTime? @map("scheduled_for") @db.Date
+  /// SCHEDULED or MANUAL.
+  trigger        String    @default("MANUAL") @db.VarChar(12)
+  requestedById  String?   @map("requested_by_id") @db.Uuid
+  /// RUNNING, DONE or FAILED.
+  status         String    @default("RUNNING") @db.VarChar(12)
+  /// The figures (OpsSummary) when the report was made.
+  data           Json?
+  /// { summary: [{ label, text }], priorities: [string], ai: boolean }
+  narrative      Json?
+  error          String?   @db.Text
+  mailStatus     String?   @map("mail_status") @db.VarChar(12)
+  mailTo         String?   @map("mail_to") @db.Text
+  mailError      String?   @map("mail_error") @db.Text
+  mailedAt       DateTime? @map("mailed_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, scheduledFor])
+  @@index([organizationId, createdAt])
+  @@map("ai_reports")
 }
