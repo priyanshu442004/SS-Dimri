@@ -6,7 +6,7 @@ import { useCallback, useState, useSyncExternalStore, ViewTransition, type React
 import { clsx } from "clsx";
 import {
   Bell, BookOpen, Briefcase, Building2, CalendarDays, ChartColumn, ChevronRight, ChevronsLeft, ChevronsRight, Clock, FileText, Flag, Home, IdCard, LayoutGrid, ListChecks,
-  LogOut, MessageSquareWarning, Search, Settings, Users, Wallet, X,
+  LogOut, MessageSquareWarning, Search, Settings, Sparkles, Users, Wallet, X,
 } from "lucide-react";
 import { CommandPalette, usePaletteShortcut } from "@/components/command-palette";
 import { MotionDirector } from "@/components/motion-director";
@@ -15,7 +15,7 @@ import type { NavItem } from "./nav";
 
 const ICONS = {
   home: Home, bell: Bell, building: Building2, chart: ChartColumn, users: Users, list: ListChecks, clock: Clock,
-  file: FileText, flag: Flag, calendar: CalendarDays, id: IdCard, briefcase: Briefcase, book: BookOpen, settings: Settings, message: MessageSquareWarning, wallet: Wallet,
+  file: FileText, flag: Flag, calendar: CalendarDays, id: IdCard, briefcase: Briefcase, book: BookOpen, settings: Settings, message: MessageSquareWarning, wallet: Wallet, sparkles: Sparkles,
 } as const;
 const iconFor = (n: NavItem) => ICONS[n.icon as keyof typeof ICONS] ?? Home;
 
@@ -25,7 +25,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   clients: "Clients", approvals: "Approvals", new: "New", employees: "Employees", allocations: "Team allocation", tasks: "Tasks",
   attendance: "Attendance", timesheet: "Timesheet", "day-reports": "Day reports", pending: "Pending tracker", reports: "Reports",
   services: "Services & departments", compliances: "Compliance", payroll: "Payroll", import: "Import from Excel", settings: "Settings", notifications: "Notifications",
-  onboarding: "My employee record", profile: "My profile", observations: "Client observations", dues: "Fees & dues", search: "Search", "no-access": "No access",
+  onboarding: "My employee record", profile: "My profile", observations: "Client observations", dues: "Fees & dues", search: "Search", "no-access": "No access", assistant: "AI assistant",
 };
 
 // Most-used destinations for the phone tab bar (only those the user can reach are shown).

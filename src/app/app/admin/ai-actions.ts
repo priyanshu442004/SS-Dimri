@@ -1,11 +1,10 @@
 "use server";
 
-import { z } from "zod";
 import { actionContext, AuthorizationError } from "@/lib/session";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { extractReply } from "@/lib/ai-reply";
 
-// n8n webhooks for the admin dashboard's AI Summary and AI Chat. The workflow
+// n8n webhook for the admin dashboard's AI Summary (the chat is the AI assistant, /app/assistant). The workflow
 // logic lives in n8n; these only forward the request and clean up the reply.
 // The URLs act as secrets (anyone holding them can trigger the workflows), so
 // they live only in the server environment, never in the repository.
@@ -52,17 +51,4 @@ export async function aiSummaryAction(): Promise<AiResult> {
   const blocked = await guard("ai-summary", 6);
   if (blocked) return blocked;
   return callWebhook(process.env.N8N_SUMMARY_WEBHOOK_URL, { text: "Generate Report" }, 180_000);
-}
-
-const chatSchema = z.object({
-  sessionId: z.string().regex(/^[A-Za-z0-9-]{8,64}$/),
-  userText: z.string().trim().min(1).max(4000),
-});
-
-export async function aiChatAction(sessionId: string, userText: string): Promise<AiResult> {
-  const parsed = chatSchema.safeParse({ sessionId, userText });
-  if (!parsed.success) return { ok: false, message: "Please type a question (up to 4000 characters)." };
-  const blocked = await guard("ai-chat", 30);
-  if (blocked) return blocked;
-  return callWebhook(process.env.N8N_CHAT_WEBHOOK_URL, { sessionID: parsed.data.sessionId, userText: parsed.data.userText }, 120_000);
 }

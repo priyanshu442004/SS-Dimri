@@ -89,6 +89,11 @@ export const CAPABILITIES = {
   "compliance.manage": LEADS,
   /** Delete other entries: allocations, timesheet and attendance entries, pending items, dues, observations, compliance rows. */
   "records.delete": ADMINS,
+  /**
+   * AI assistant: ask questions about the firm's data in plain language. What it can read is
+   * still limited by the person's other rights (salaries only with payroll rights, and so on).
+   */
+  "assistant.use": LEADS,
   /** Client portal: own business profile, requests, permitted work updates, dues. */
   "portal.use": CLIENTS,
 } as const satisfies Record<string, readonly Role[]>;
@@ -170,6 +175,7 @@ export const GRANTABLE_RIGHTS: { capability: Capability; label: string; group: s
   { capability: "timesheet.review", label: "Review timesheets", group: "Timesheet" },
   { capability: "compliance.manage", label: "Manage the compliance tracker", group: "Compliance" },
   { capability: "records.delete", label: "Delete other entries", group: "Other" },
+  { capability: "assistant.use", label: "Use the AI assistant (sees only what their other rights allow)", group: "Other" },
 ];
 
 const GRANTABLE = new Set<string>(GRANTABLE_RIGHTS.map((r) => r.capability));

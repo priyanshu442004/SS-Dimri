@@ -533,6 +533,7 @@ model User {
   generatedClientReport     ClientReport[]
   createdSalaryRecords      EmployeeSalaryRecord[]
   createdDues               ClientDue[]
+  aiConversations           AiConversation[]
   notifications             Notification[]
   attendanceCorrections     AttendanceCorrection[]
   followUps                 FollowUp[]
@@ -714,6 +715,7 @@ model Organization {
   clientDues             ClientDue[]
   attendancePolicy       AttendancePolicy?
   workTypes              WorkType[]
+  aiConversations        AiConversation[]
   notifications          Notification[]
   followUps              FollowUp[]
   pendingDaysBasis       PendingDaysBasis                @default(CALENDAR) @map("pending_days_basis")
@@ -2890,4 +2892,57 @@ model DailyPlanItem {
   @@index([clientId])
   @@index([carriedFromId])
   @@map("daily_plan_items")
+}
+
+// =============================================================================
+// AI ASSISTANT — chat with the firm's data (DeepSeek). History per person.
+// =============================================================================
+
+/// One chat thread. Private to the person who started it, inside their firm.
+model AiConversation {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  title          String   @default("New chat") @db.VarChar(120)
+  pinned         Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     AiMessage[]
+
+  @@index([organizationId, userId, updatedAt])
+  @@map("ai_conversations")
+}
+
+/// A question or an answer. Answers keep their KPI cards / charts / tables (`blocks`), the
+/// suggested follow-up question and a compact note of the data used, so later questions
+/// ("why were they late?") know what "they" refers to.
+model AiMessage {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  /// "user" or "assistant".
+  role           String   @db.VarChar(16)
+  content        String   @db.Text
+  /// The part of an earlier answer the person selected and asked about.
+  quote          String?  @db.Text
+  blocks         Json?
+  followUp       String?  @map("follow_up") @db.Text
+  /// Data the answer was built from (tool calls and trimmed results), for follow-up questions.
+  context        String?  @db.Text
+  /// The model's reasoning, which DeepSeek's thinking mode needs back on later turns.
+  reasoning      String?  @db.Text
+  /// "done", "stopped" or "error".
+  status         String   @default("done") @db.VarChar(16)
+  /// 1 = helpful, -1 = not helpful.
+  feedback       Int?
+  model          String?  @db.VarChar(64)
+  durationMs     Int?     @map("duration_ms")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("ai_messages")
 }

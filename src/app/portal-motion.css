@@ -64,7 +64,21 @@
   .app-bump { animation: app-bump 600ms var(--ease-spring) both; }
   @keyframes app-bump { 0% { transform: scale(0.4); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
 
+  /* AI assistant: messages rise in, the caret blinks while streaming, tool steps shimmer */
+  .ai-in { animation: ai-in 360ms var(--ease-out-expo) both; animation-delay: var(--d, 0ms); }
+  @keyframes ai-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .ai-pop { animation: app-pop 200ms var(--ease-spring) both; }
+  .ai-caret::after { content: ""; display: inline-block; width: 0.5em; height: 1em; margin-left: 2px; vertical-align: -0.15em; border-radius: 2px; background: currentColor; opacity: 0.55; animation: ai-blink 1s steps(2, start) infinite; }
+  @keyframes ai-blink { to { visibility: hidden; } }
+  .ai-shimmer { background: linear-gradient(90deg, var(--color-muted) 0%, var(--color-ink) 45%, var(--color-muted) 90%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: ai-shimmer 1.6s linear infinite; }
+  @keyframes ai-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+  .ai-orb { background: conic-gradient(from 0deg, var(--color-marigold), var(--color-stamp-bright), var(--color-brand-600), var(--color-marigold)); animation: ai-spin 3.2s linear infinite; }
+  @keyframes ai-spin { to { transform: rotate(360deg); } }
+
   @media (prefers-reduced-motion: reduce) {
+    .ai-in, .ai-pop, .ai-orb, .ai-shimmer { animation: none; }
+    .ai-shimmer { color: var(--color-muted); }
+    .ai-caret::after { animation: none; }
     .chart-line { stroke-dashoffset: 0; animation: none; }
     .chart-col, .chart-hbar, .chart-arc, .chart-area, .app-rise, .app-palette, .app-drawer, .app-bump { animation: none; }
     .app-skeleton::after { animation: none; }
