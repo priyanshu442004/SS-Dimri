@@ -156,7 +156,10 @@ export const GRANTABLE_RIGHTS: { capability: Capability; label: string; group: s
   { capability: "employees.invite", label: "Add & invite employees", group: "Employees" },
   { capability: "employees.approve", label: "Approve employees", group: "Employees" },
   { capability: "employees.delete", label: "Delete employees", group: "Employees" },
+  { capability: "employees.manage", label: "Edit employee records", group: "Employees" },
+  { capability: "clients.view_all", label: "See all clients", group: "Clients" },
   { capability: "clients.register", label: "Register clients", group: "Clients" },
+  { capability: "clients.edit", label: "Edit client details", group: "Clients" },
   { capability: "clients.import", label: "Import clients from Excel", group: "Clients" },
   { capability: "clients.approve", label: "Approve clients", group: "Clients" },
   { capability: "clients.delete", label: "Delete clients", group: "Clients" },
@@ -164,8 +167,10 @@ export const GRANTABLE_RIGHTS: { capability: Capability; label: string; group: s
   { capability: "allocations.manage", label: "Allocate team members & import allocations", group: "Team allocation" },
   { capability: "tasks.view_all", label: "See all tasks", group: "Tasks" },
   { capability: "tasks.review", label: "Review any task", group: "Tasks" },
+  { capability: "tasks.cancel", label: "Cancel tasks", group: "Tasks" },
   { capability: "tasks.delete", label: "Delete tasks", group: "Tasks" },
   { capability: "attendance.view_all", label: "See team attendance & export it", group: "Attendance & payroll" },
+  { capability: "leave.decide", label: "Approve leave & attendance requests of their team", group: "Attendance & payroll" },
   { capability: "attendance.mark_others", label: "Mark attendance for others with a photo", group: "Attendance & payroll" },
   { capability: "attendance.review_photos", label: "Check everyone's photo attendance", group: "Attendance & payroll" },
   { capability: "attendance.workers", label: "Manage daily workers & their pay", group: "Attendance & payroll" },
@@ -174,11 +179,31 @@ export const GRANTABLE_RIGHTS: { capability: Capability; label: string; group: s
   { capability: "timesheet.view_all", label: "See the team's timesheets", group: "Timesheet" },
   { capability: "timesheet.review", label: "Review timesheets", group: "Timesheet" },
   { capability: "compliance.manage", label: "Manage the compliance tracker", group: "Compliance" },
+  { capability: "services.manage", label: "Manage services & departments", group: "Other" },
+  { capability: "reports.client", label: "Client reports", group: "Other" },
+  { capability: "dues.manage", label: "Fees & dues", group: "Other" },
+  { capability: "observations.manage", label: "Manage client observations", group: "Other" },
+  { capability: "pending.view_all", label: "See everyone's pending items", group: "Other" },
+  { capability: "dayreport.view_all", label: "See everyone's day reports", group: "Other" },
   { capability: "records.delete", label: "Delete other entries", group: "Other" },
   { capability: "assistant.use", label: "Use AI reporting (sees only what their other rights allow)", group: "Other" },
 ];
 
 const GRANTABLE = new Set<string>(GRANTABLE_RIGHTS.map((r) => r.capability));
+
+/** Temporary rights: { capability: "YYYY-MM-DD" }, the last day the right is given. */
+export type GrantExpiries = Record<string, string>;
+
+export function parseExpiries(raw: unknown): GrantExpiries {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return Object.fromEntries(Object.entries(raw as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e[1])));
+}
+
+/** The rights still in force on `todayIso` (a temporary right lapses after its last day). */
+export function liveGrants(granted: readonly string[], expiries: unknown, todayIso: string): string[] {
+  const until = parseExpiries(expiries);
+  return granted.filter((c) => !until[c] || until[c] >= todayIso);
+}
 export const isGrantable = (c: string): c is Capability => GRANTABLE.has(c);
 
 /** Who is asking: a role alone (the matrix), or a member with their own rights and restrictions. */

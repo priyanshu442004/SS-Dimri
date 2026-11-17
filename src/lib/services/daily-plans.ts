@@ -56,7 +56,8 @@ async function carryCandidates(employeeId: string, day: Date) {
     include: { items: { orderBy: { sortOrder: "asc" } } },
   });
   if (!last) return [];
-  return last.items.filter((i) => i.status === null || carriesOver(i.status)).map((i) => ({
+  // Task lines are not carried: the open task is added to the new day's plan by itself (plan-timer.ts).
+  return last.items.filter((i) => !i.taskId && (i.status === null || carriesOver(i.status))).map((i) => ({
     clientId: i.clientId, clientName: i.clientName, task: i.task, expectedBy: i.expectedBy ? toIsoDate(i.expectedBy) : null,
     origin: "CARRIED" as const, carriedFromId: i.id, from: toIsoDate(last.planDate), lastStatus: i.status, lastReason: i.reason,
   }));
@@ -93,9 +94,10 @@ export async function dayView(ctx: AppContext, employeeId: string, iso: string) 
 // ---------------------------------------------------------------- writing
 
 async function writeLines(tx: Prisma.TransactionClient, planId: string, lines: PlanLine[], clients: Map<string, string>, mode: "plan" | "eod") {
-  const existing = await tx.dailyPlanItem.findMany({ where: { planId }, select: { id: true } });
+  const existing = await tx.dailyPlanItem.findMany({ where: { planId }, select: { id: true, taskId: true, startedAt: true, workedMinutes: true } });
   const keep = new Set(lines.map((l) => l.id).filter(Boolean));
-  const gone = existing.filter((e) => !keep.has(e.id)).map((e) => e.id);
+  // Lines of assigned tasks, and lines already timed, stay even if a form left them out.
+  const gone = existing.filter((e) => !keep.has(e.id) && !e.taskId && !e.startedAt && !e.workedMinutes).map((e) => e.id);
   if (gone.length) await tx.dailyPlanItem.deleteMany({ where: { id: { in: gone }, planId } });
   for (const [i, l] of lines.entries()) {
     const clientName = l.clientId ? (clients.get(l.clientId) ?? l.clientName ?? null) : l.clientName?.trim() || null;

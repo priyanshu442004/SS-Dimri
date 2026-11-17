@@ -12,7 +12,7 @@ import { t } from "@/lib/i18n";
 // Forms post to server actions. Validation runs on the server (Zod); this
 // layer only displays the returned field errors and status message.
 
-export type FormState = { ok?: boolean; message?: string; fieldErrors?: Record<string, string[] | undefined> };
+export type FormState = { ok?: boolean; message?: string; fieldErrors?: Record<string, string[] | undefined>; confirm?: string };
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
 export const ErrorsContext = createContext<FormState["fieldErrors"]>(undefined);
@@ -51,7 +51,13 @@ export function ActionForm({
   // error message on the form instead of the full-page error screen; typed values stay.
   const [state, formAction, pending] = useActionState(async (prev: FormState, fd: FormData): Promise<FormState> => {
     try {
-      const result = await action(prev, fd);
+      let result = await action(prev, fd);
+      // The server asks for a yes first (e.g. "already allocated to … — continue?"): ask, then send again.
+      if (result.confirm) {
+        if (!window.confirm(result.confirm)) return { ok: false, message: "Not saved." };
+        fd.set("confirmed", "on");
+        result = await action(prev, fd);
+      }
       // Announce now as well: a successful save often re-renders the page without this form
       // (e.g. a plan becomes "sent"), and the effect below would then never run. Toasts with the
       // same text are merged, so a form that stays on the page does not show it twice.

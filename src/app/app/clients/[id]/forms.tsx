@@ -1,5 +1,6 @@
 "use client";
 
+import { IdValidate } from "@/components/id-validate";
 import { useId } from "react";
 import { ActionForm, Checkbox, SelectField, SubmitButton, TextArea, TextField, type FormState } from "@/components/form";
 import { CompliancePicker, type ComplianceOption } from "@/components/compliance-picker";
@@ -45,8 +46,8 @@ export function DetailsForm({
         <TextField label="Legal name" name="legalName" defaultValue={d.legalName} />
         <SelectField label="Constitution" name="constitutionId" defaultValue={d.constitutionId} options={constitutions} />
         <SelectField label="Nature of client" name="natureOfClient" defaultValue={d.natureOfClient} options={[{ value: "ONE_TIME", label: "One time" }, { value: "RETAINER", label: "Retainer" }]} />
-        <TextField label="PAN" name="pan" maxLength={10} defaultValue={d.pan} />
-        <TextField label="TAN" name="tan" maxLength={10} defaultValue={d.tan} />
+        <div><TextField label="PAN" name="pan" maxLength={10} defaultValue={d.pan} /><IdValidate kind="PAN" field="pan" /></div>
+        <div><TextField label="TAN" name="tan" maxLength={10} defaultValue={d.tan} /><IdValidate kind="TAN" field="tan" /></div>
         <TextArea label="Address" name="address" rows={2} defaultValue={d.address} className="sm:col-span-2" />
         <SelectField label="Nature of business (primary)" name="primaryBusinessNatureId" defaultValue={d.primaryBusinessNatureId} options={natures} />
         <SelectField label="Nature of business (secondary)" name="secondaryBusinessNatureId" defaultValue={d.secondaryBusinessNatureId} options={natures} />
@@ -120,13 +121,14 @@ export function TransitionForm({ action, actions }: { action: Act; actions: { ac
   );
 }
 
-export function GstinForm({ action }: { action: Act }) {
+export function GstinForm({ action, pan }: { action: Act; pan?: string | null }) {
   return (
     <ActionForm action={action} resetOnSuccess>
       <div className="flex items-end gap-2">
         <TextField label="Add GSTIN" name="gstin" maxLength={15} autoCapitalize="characters" className="flex-1" />
         <SubmitButton>Add</SubmitButton>
       </div>
+      <IdValidate kind="GSTIN" field="gstin" pan={pan} />
     </ActionForm>
   );
 }
@@ -158,7 +160,7 @@ export function RepresentativeForm({ action, defaultRole }: { action: Act; defau
         <TextField label="Full name" name="fullName" required />
         <TextField label="Mobile" name="mobile" type="tel" />
         <TextField label="Email" name="email" type="email" />
-        <TextField label="PAN" name="pan" maxLength={10} />
+        <div><TextField label="PAN" name="pan" maxLength={10} /><IdValidate kind="PAN" field="pan" /></div>
         <TextField label="Aadhaar" name="aadhaar" inputMode="numeric" autoComplete="off" hint="Stored encrypted" />
         <TextArea label="Address" name="address" rows={2} className="sm:col-span-2" />
         <FileInput label="Photograph" name="profilePicture" accept="image/*" />

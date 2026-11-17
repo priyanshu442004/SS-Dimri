@@ -9,20 +9,24 @@ import { ActionButton } from "@/components/action-button";
 import { addHolidayAction, uploadHolidaysAction, addListItemAction, removeHolidayAction, saveCertificateAction, saveOrganizationAction, savePolicyAction, savePreferencesAction, toggleListItemAction, uploadLeavePolicyAction } from "./actions";
 import { CertificateForm, HolidayForm, HolidayUploadForm, LeavePolicyDocForm, ListItemForm, OrganizationForm, PolicyForm, PreferencesForm } from "./forms";
 import { Settings } from "lucide-react";
+import { DEFAULT_PARAMS, MESSAGE_EVENTS, parseTriggers } from "@/lib/services/messaging";
+import { saveMessagingAction, testMessageAction } from "./messaging-actions";
+import { MessagingForm, TestMessageForm } from "./messaging-forms";
 
 export default async function SettingsPage({ searchParams }: PageProps<"/app/settings">) {
   const ctx = await requireCapability("org.manage");
   const sp = await searchParams;
-  const tab = (["policy", "audit", "roles", "lists"] as const).find((t) => t === sp.tab) ?? "organization";
+  const tab = (["policy", "audit", "roles", "lists", "messaging"] as const).find((t) => t === sp.tab) ?? "organization";
   return (
     <>
-      <PageHeader icon={<Settings />} title="Settings" description="Organization registration, certificate, leave & timing policy and audit log." />
+      <PageHeader icon={<Settings />} title="Settings" description="Organization registration, certificate, leave & timing policy, email & WhatsApp, and audit log." />
       <TabNav
         current={tab}
         tabs={[
           { key: "organization", label: "Organization", href: "/app/settings" },
           { key: "policy", label: "Leave & timing policy", href: "/app/settings?tab=policy" },
           { key: "lists", label: "Lists & preferences", href: "/app/settings?tab=lists" },
+          { key: "messaging", label: "Email & WhatsApp", href: "/app/settings?tab=messaging" },
           { key: "roles", label: "Roles & permissions", href: "/app/settings?tab=roles" },
           { key: "audit", label: "Audit log", href: "/app/settings?tab=audit" },
         ]}
@@ -32,8 +36,60 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/set
       {tab === "audit" && <AuditTab />}
       {tab === "roles" && <RolesTab />}
       {tab === "lists" && <ListsTab />}
+      {tab === "messaging" && <MessagingTab />}
     </>
   );
+
+  async function MessagingTab() {
+    const [m, logs] = await Promise.all([
+      prisma.organizationMessaging.findUnique({ where: { organizationId: ctx.organization.id } }),
+      prisma.messageLog.findMany({ where: { organizationId: ctx.organization.id }, orderBy: { createdAt: "desc" }, take: 15 }),
+    ]);
+    const triggers = parseTriggers(m?.triggers);
+    const active = Object.values(triggers).filter((t) => t.email || t.whatsapp).length;
+    return (
+      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
+        <Card title="Email & WhatsApp messages">
+          <p className="mb-4 text-sm text-muted">
+            Connect the firm&apos;s email and WhatsApp Business accounts, then choose which ERP events send a message. Messages then go out automatically, to the same people who get the notice in the ERP.
+            {active ? <> <strong className="text-ink">{active}</strong> event{active === 1 ? "" : "s"} set up.</> : " No events set up yet."}
+          </p>
+          <MessagingForm
+            action={saveMessagingAction}
+            events={MESSAGE_EVENTS}
+            defaultParams={DEFAULT_PARAMS}
+            d={{
+              emailEnabled: !!m?.emailEnabled, smtpHost: m?.smtpHost ?? "", smtpPort: m?.smtpPort ? String(m.smtpPort) : "", smtpUser: m?.smtpUser ?? "",
+              hasSmtpPass: !!m?.smtpPassEnc, fromEmail: m?.fromEmail ?? "", fromName: m?.fromName ?? "",
+              whatsappEnabled: !!m?.whatsappEnabled, waPhoneNumberId: m?.waPhoneNumberId ?? "", waBusinessAccountId: m?.waBusinessAccountId ?? "",
+              hasWaToken: !!m?.waTokenEnc, waApiVersion: m?.waApiVersion ?? "v21.0", triggers,
+            }}
+          />
+        </Card>
+        <div className="space-y-6">
+          <Card title="Test">
+            <div className="space-y-4">
+              <TestMessageForm action={testMessageAction.bind(null, "EMAIL")} channel="EMAIL" />
+              <TestMessageForm action={testMessageAction.bind(null, "WHATSAPP")} channel="WHATSAPP" />
+              <p className="text-xs text-muted">Save first. A WhatsApp test without a template name uses Meta&apos;s ready-made &ldquo;hello_world&rdquo; template.</p>
+            </div>
+          </Card>
+          <Card title="Recent WhatsApp messages" padded={false}>
+            {logs.length === 0 ? <p className="p-4 text-sm text-muted">None sent yet.</p> : (
+              <ul className="divide-y divide-line text-sm">
+                {logs.map((l) => (
+                  <li key={l.id} className="px-4 py-2">
+                    <span className="flex justify-between gap-2"><span className="font-mono text-xs">{l.recipient}</span><span className={l.status === "SENT" ? "text-ok" : "text-danger"}>{l.status === "SENT" ? "Sent" : "Failed"}</span></span>
+                    <span className="block text-xs text-muted">{l.event} · {formatDateTime(l.createdAt, ctx.organization.timezone)}{l.error ? ` · ${l.error}` : ""}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   async function OrgTab() {
     const [org, cert, docs, users, people] = await Promise.all([

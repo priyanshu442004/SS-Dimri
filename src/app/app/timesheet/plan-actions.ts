@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { BusinessRuleError, safeAction, type ActionState } from "@/lib/actions";
 import { actionContext } from "@/lib/session";
 import { escalateEod, leadReviewPlan, parseLines, saveMyEod, saveMyPlan } from "@/lib/services/daily-plans";
+import { startTodo, stopTodo } from "@/lib/services/plan-timer";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const checkDate = (d: string) => {
@@ -64,5 +65,27 @@ export async function approvePlanAction(planId: string): Promise<ActionState> {
     const name = await leadReviewPlan(ctx, planId, null, true);
     revalidatePath("/app/timesheet");
     return { ok: true, message: `${name}'s plan approved.` };
+  });
+}
+
+/** To-do list: start the timer on a line (any other running line pauses first). */
+export async function startTodoAction(itemId: string): Promise<ActionState> {
+  return safeAction(async () => {
+    const ctx = await actionContext("timesheet.fill_own");
+    const message = await startTodo(ctx, itemId);
+    revalidatePath("/app/timesheet");
+    revalidatePath("/app/tasks");
+    return { ok: true, message };
+  });
+}
+
+/** To-do list: stop the timer (the time goes to the timesheet); `done` also marks the line Done. */
+export async function stopTodoAction(itemId: string, done: boolean): Promise<ActionState> {
+  return safeAction(async () => {
+    const ctx = await actionContext("timesheet.fill_own");
+    const message = await stopTodo(ctx, itemId, done);
+    revalidatePath("/app/timesheet");
+    revalidatePath("/app/tasks");
+    return { ok: true, message };
   });
 }

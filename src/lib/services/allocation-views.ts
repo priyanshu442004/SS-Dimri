@@ -41,7 +41,10 @@ export function parseAllocationFilters(sp: Record<string, string | string[] | un
 export function allocationWhere(organizationId: string, f: AllocationFilters, onlyEmployeeId?: string): Prisma.TeamAllocationWhereInput {
   return {
     organizationId,
-    ...(onlyEmployeeId ? { employeeId: onlyEmployeeId } : f.person ? { employeeId: f.person } : {}),
+    // A person sees allocations where they are the team member, the reviewer (Reports to) or the Team Leader.
+    ...(onlyEmployeeId
+      ? { AND: [{ OR: [{ employeeId: onlyEmployeeId }, { reportsToEmployeeId: onlyEmployeeId }, { teamLeaderEmployeeId: onlyEmployeeId }] }, f.person ? { employeeId: f.person } : {}] }
+      : f.person ? { employeeId: f.person } : {}),
     ...(f.client ? { clientId: f.client } : {}),
     ...(f.type ? { resourceType: f.type } : {}),
     ...(f.frequency ? { frequency: f.frequency } : {}),

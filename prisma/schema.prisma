@@ -716,6 +716,8 @@ model Organization {
   attendancePolicy       AttendancePolicy?
   workTypes              WorkType[]
   aiConversations        AiConversation[]
+  messaging              OrganizationMessaging?
+  messageLogs            MessageLog[]
   notifications          Notification[]
   followUps              FollowUp[]
   pendingDaysBasis       PendingDaysBasis                @default(CALENDAR) @map("pending_days_basis")
@@ -779,6 +781,8 @@ model OrganizationMembership {
   /// true = only `allowedModules` are usable (e.g. peon, driver: attendance and payroll).
   moduleRestricted      Boolean          @default(false) @map("module_restricted")
   allowedModules        String[]         @default([]) @map("allowed_modules")
+  /// Temporary rights: { capability: "YYYY-MM-DD" } = the right lapses after that day (firm's timezone).
+  grantExpiries         Json             @default("{}") @map("grant_expiries")
   createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -1741,6 +1745,7 @@ model Task {
   /// Set when the overdue notification has been sent (avoids repeats).
   overdueNotifiedAt DateTime?           @map("overdue_notified_at") @db.Timestamptz(3)
   observations      ClientObservation[]
+  planItems         DailyPlanItem[]
 
   @@index([organizationId, status, dueAt])
   @@index([clientId, status])
@@ -2882,13 +2887,21 @@ model DailyPlanItem {
   /// Required for Pending and Carried Forward.
   reason        String?         @db.Text
   sortOrder     Int             @default(0) @map("sort_order")
+  /// The assigned task this to-do line is for (added to the plan automatically).
+  taskId        String?         @map("task_id") @db.Uuid
+  /// Timer running since (Start on the to-do list); Stop writes the time to the timesheet.
+  startedAt     DateTime?       @map("started_at") @db.Timestamptz(3)
+  /// Minutes already timed on this line (and written to the timesheet).
+  workedMinutes Int             @default(0) @map("worked_minutes")
   createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  plan   DailyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
-  client Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  plan       DailyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  client     Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  linkedTask Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([planId])
+  @@index([taskId])
   @@index([clientId])
   @@index([carriedFromId])
   @@map("daily_plan_items")
@@ -2945,4 +2958,52 @@ model AiMessage {
 
   @@index([conversationId, createdAt])
   @@map("ai_messages")
+}
+
+// =============================================================================
+// EMAIL & WHATSAPP — the firm's own sending accounts and which ERP events send a message.
+// =============================================================================
+
+/// One row per firm. Secrets are stored encrypted (lib/security/encryption.ts).
+model OrganizationMessaging {
+  organizationId      String   @id @map("organization_id") @db.Uuid
+  /// Send email through the firm's own SMTP account (else the server's).
+  emailEnabled        Boolean  @default(false) @map("email_enabled")
+  smtpHost            String?  @map("smtp_host")
+  smtpPort            Int?     @map("smtp_port")
+  smtpUser            String?  @map("smtp_user")
+  smtpPassEnc         String?  @map("smtp_pass_enc") @db.Text
+  fromEmail           String?  @map("from_email")
+  fromName            String?  @map("from_name")
+  /// WhatsApp Business Cloud API (Meta).
+  whatsappEnabled     Boolean  @default(false) @map("whatsapp_enabled")
+  waPhoneNumberId     String?  @map("wa_phone_number_id")
+  waBusinessAccountId String?  @map("wa_business_account_id")
+  waTokenEnc          String?  @map("wa_token_enc") @db.Text
+  waApiVersion        String   @default("v21.0") @map("wa_api_version")
+  /// { eventKey: { email: bool, whatsapp: bool, template: string, language: string, params: string } }
+  triggers            Json     @default("{}")
+  updatedById         String?  @map("updated_by_id") @db.Uuid
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_messaging")
+}
+
+/// Every WhatsApp / email message sent for an ERP event (never the token; the text only in short).
+model MessageLog {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  channel        String   @db.VarChar(12)
+  event          String   @db.VarChar(60)
+  recipient      String   @db.VarChar(200)
+  status         String   @db.VarChar(12)
+  error          String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("message_logs")
 }

@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { BusinessRuleError, zCheckbox, zIsoDate, zOptionalText } from "@/lib/actions";
+import { BusinessRuleError, ConfirmRequired, zCheckbox, zIsoDate, zOptionalText } from "@/lib/actions";
 import { addDays, dateOnly, formatDate, isoDateInTz, toIsoDate } from "@/lib/dates";
 import { capacityFromPolicy, findConflicts, formatHours, type AllocationSpan } from "@/lib/domain/allocation";
 import { ALLOCATION_RESOURCE_TYPES, ALLOCATION_ROLES, LEGACY_RESOURCE_TYPES, type AllocationRole } from "@/lib/domain/allocation-import";
@@ -33,6 +33,8 @@ export const allocationSchema = z.object({
   frequency: z.enum(FREQUENCY_KEYS as [Frequency, ...Frequency[]]).optional(),
   visitDays: zOptionalText(80),
   remark: zOptionalText(1000),
+  /** Yes to "this client is already allocated to … — continue?" */
+  confirmed: zCheckbox.optional(),
 });
 type AllocationInput = z.input<typeof allocationSchema>;
 
@@ -121,6 +123,20 @@ async function prepareAllocation(ctx: AppContext, input: AllocationInput, exclud
     throw new BusinessRuleError(`${employee.firstName} is already allocated to ${client.tradeName} from ${formatDate(twice.startDate)}${twice.endDate ? ` to ${formatDate(twice.endDate)}` : " (ongoing)"}. Change or end that allocation instead.`);
   }
 
+  // The client already has someone else on it: ask before adding another person (tracker, 17 Nov 2026).
+  if (!excludeId && !v.confirmed) {
+    const others = await prisma.teamAllocation.findMany({
+      where: {
+        organizationId: ctx.organization.id, clientId: client.id, employeeId: { not: employee.id }, status: { in: ["ACTIVE", "PLANNED"] },
+        ...(end ? { startDate: { lte: end } } : {}),
+        OR: [{ endDate: null }, { endDate: { gte: start } }],
+      },
+      select: { employee: { select: { firstName: true, lastName: true } } },
+    });
+    const names = [...new Set(others.map((o) => `${o.employee.firstName} ${o.employee.lastName ?? ""}`.trim()))];
+    if (names.length) throw new ConfirmRequired(`${client.tradeName} is already allocated to ${names.join(", ")}. Do you want to continue and allocate ${employee.firstName} as well?`);
+  }
+
   const candidate: AllocationSpan = { startDate: start, endDate: end, firstHalfHours: first, secondHalfHours: second, weekDays, frequency: v.frequency ?? null, visitDays };
   // History (already ended) and "allow overlap" allocations are not checked for clashes.
   const conflicts = end && end < today
@@ -164,6 +180,15 @@ async function insertAllocation(tx: Prisma.TransactionClient, ctx: AppContext, p
     title: `You are allocated to ${p.client.tradeName}`,
     link: "/app/allocations",
   });
+  // The reviewer (Reports to) and the Team Leader see the client too, so tell them.
+  const leads = [p.data.reportsToEmployeeId, p.data.teamLeaderEmployeeId].filter((x): x is string => !!x && x !== p.employee.id);
+  if (leads.length) {
+    await notifyEmployees(tx, ctx.organization.id, [...new Set(leads)], {
+      type: "allocation.created",
+      title: `${p.employee.firstName} is allocated to ${p.client.tradeName}; you are on this allocation`,
+      link: "/app/allocations",
+    });
+  }
   return a;
 }
 

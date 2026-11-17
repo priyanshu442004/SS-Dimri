@@ -11,7 +11,7 @@ import { hasFile, storeUpload } from "./files";
 import { notifyClientUsers, notifyEmployees, notifyUsers } from "./notifications";
 import { deliverComplianceNotices } from "./compliance";
 import { getPolicy } from "./office-rules";
-import { taskWorkSegments } from "@/lib/domain/task-time";
+import { TIMER_WORK, taskWorkSegments } from "@/lib/domain/task-time";
 import { dateOnly } from "@/lib/dates";
 
 /** Tasks the caller may see. Team members see tasks they created, or where they are assignee, maker or checker. */
@@ -20,8 +20,16 @@ export function taskScope(ctx: AppContext): Prisma.TaskWhereInput {
   const me = ctx.employee?.id ?? "00000000-0000-0000-0000-000000000000";
   return {
     organizationId: ctx.organization.id,
-    OR: [{ assignments: { some: { employeeId: me, removedAt: null } } }, { makerEmployeeId: me }, { checkerEmployeeId: me }, { createdById: ctx.user.id }],
+    OR: [
+      { assignments: { some: { employeeId: me, removedAt: null } } }, { makerEmployeeId: me }, { checkerEmployeeId: me }, { createdById: ctx.user.id },
+      { assignments: { some: { assignedById: ctx.user.id } } },
+    ],
   };
+}
+
+/** Tasks the person gave to others: created by them, or where they deputed someone (tracker, 17 Nov 2026). */
+export function assignedByMe(ctx: AppContext): Prisma.TaskWhereInput {
+  return { OR: [{ createdById: ctx.user.id }, { assignments: { some: { assignedById: ctx.user.id } } }] };
 }
 
 export const MAX_REMINDERS = 10;
@@ -125,8 +133,10 @@ export async function createTask(ctx: AppContext, v: z.infer<typeof taskSchema>,
  * administrator) can correct it until the work is started. After that the details stay as the team
  * member saw them; remarks and the history carry any later change.
  */
-export function mayEditTask(ctx: AppContext, task: { createdById: string | null; status: string; makerStatus: string }) {
-  return (task.createdById === ctx.user.id || can(ctx, "org.manage")) && (task.status === "PENDING" || task.status === "ASSIGNED") && task.makerStatus === "NOT_STARTED";
+export function mayEditTask(ctx: AppContext, task: { createdById: string | null; status: string; makerStatus: string; assignments?: { assignedById?: string | null }[] }) {
+  // Whoever assigned the task (its creator, or the person who deputed someone on it) and administrators.
+  const assigner = task.createdById === ctx.user.id || !!task.assignments?.some((a) => a.assignedById === ctx.user.id);
+  return (assigner || can(ctx, "org.manage")) && (task.status === "PENDING" || task.status === "ASSIGNED") && task.makerStatus === "NOT_STARTED";
 }
 
 export const taskEditSchema = taskSchema.pick({ title: true, description: true, clientId: true, priority: true, isAsap: true, startAt: true, dueAt: true, writingForRemark: true, writingFromRemark: true });
@@ -171,7 +181,7 @@ export async function editTask(ctx: AppContext, taskId: string, v: z.infer<typeo
 export async function loadTaskForCtx(ctx: AppContext, taskId: string) {
   return prisma.task.findFirst({
     where: { AND: [taskScope(ctx), { id: taskId }] },
-    include: { assignments: { where: { removedAt: null }, select: { employeeId: true } } },
+    include: { assignments: { where: { removedAt: null }, select: { employeeId: true, assignedById: true } } },
   });
 }
 
@@ -215,7 +225,9 @@ export async function performTaskAction(ctx: AppContext, taskId: string, action:
         data: { taskId: task.id, reviewerEmployeeId: ctx.employee.id, decision: action === "approve" ? "APPROVED" : "CHANGES_REQUESTED", comment },
       });
     }
-    if (action === "submit" && ctx.employee && office) {
+    // Time already written by the to-do timer is not written a second time (no double entry).
+    const timed = action === "submit" && ctx.employee ? await tx.timesheetEntry.count({ where: { taskId: task.id, employeeId: ctx.employee.id, typeOfWork: TIMER_WORK } }) : 0;
+    if (action === "submit" && ctx.employee && office && !timed) {
       // The time worked goes to the timesheet by itself: no need to fill it again (tracker, 14 Nov 2026).
       // Times all come from the database clock: this submission's own row ends the last session.
       const changes = await tx.taskActivity.findMany({ where: { taskId: task.id, type: "STATUS_CHANGED", id: { not: change.id } }, select: { toValue: true, actorUserId: true, createdAt: true } });

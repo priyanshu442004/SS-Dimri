@@ -85,7 +85,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
               ))}
               {c.gstRegistrations.length === 0 && <li className="py-2 text-muted">No GSTIN recorded.</li>}
             </ul>
-            {edit && <GstinForm action={addGstinAction.bind(null, c.id)} />}
+            {edit && <GstinForm action={addGstinAction.bind(null, c.id)} pan={c.pan} />}
           </Card>
 
           <Card title="Points of contact">

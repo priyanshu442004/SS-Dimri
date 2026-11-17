@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { can, ROLE_LABELS, type Role } from "@/lib/permissions";
+import { can, parseExpiries, ROLE_LABELS, type Role } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import Link from "next/link";
 import { dateOnly, formatDate, formatDateTime, isoDateInTz, minutesToHhmm, monthRange } from "@/lib/dates";
@@ -187,6 +187,8 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
                     action={updateRightsAction.bind(null, e.id)}
                     role={e.membership.role as Role}
                     rights={e.membership.grantedCapabilities}
+                    until={parseExpiries(e.membership.grantExpiries)}
+                    today={isoDateInTz(new Date(), ctx.organization.timezone)}
                     restricted={e.membership.moduleRestricted}
                     modules={e.membership.allowedModules}
                   />

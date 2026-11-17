@@ -9,9 +9,11 @@ import { getPolicy, leadsOf, plansApplyTo, reporteeIds } from "@/lib/services/of
 import type { EodState } from "@/lib/domain/daily-plan";
 import { ActionButton } from "@/components/action-button";
 import { Badge, Card, EmptyState, Notice, Stat, Table, Td, Th } from "@/components/ui";
-import { approvePlanAction, escalateAction, leadPlanAction, saveEodAction, savePlanAction } from "./plan-actions";
+import { approvePlanAction, escalateAction, leadPlanAction, saveEodAction, savePlanAction, startTodoAction, stopTodoAction } from "./plan-actions";
+import { syncAssignedTasks } from "@/lib/services/plan-timer";
+import { Elapsed } from "./todo-timer";
 import { PlanEditor, type EditorLine } from "./plan-editor";
-import { AlarmClock, ClipboardCheck, FileWarning, IndianRupee, Send } from "lucide-react";
+import { AlarmClock, ClipboardCheck, FileWarning, IndianRupee, ListTodo, Play, Send, Square, Check } from "lucide-react";
 
 type SP = Record<string, string | string[] | undefined>;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -60,6 +62,8 @@ export async function MyPlanTab({ ctx, sp }: { ctx: AppContext; sp: SP }) {
   const today = isoDateInTz(new Date(), tz);
   const iso = typeof sp.date === "string" && ISO.test(sp.date) ? sp.date : today;
   const me = ctx.employee.id;
+  // Open tasks given to the person join today's plan by themselves (to-do list with Start / Stop).
+  if (iso === today) await syncAssignedTasks(ctx);
   const [v, clients, leads, logged] = await Promise.all([
     dayView(ctx, me, iso),
     ownWorkClientOptions(ctx, dateOnly(iso)),
@@ -93,6 +97,44 @@ export async function MyPlanTab({ ctx, sp }: { ctx: AppContext; sp: SP }) {
       {v.fined && <Notice tone="danger">The EOD report for this day was not filed by {formatDateTime(v.deadlines.fileBy, tz)}: a fine of ₹{v.penalty} applies (office rule 2).{!eodFiled && " File it anyway so your Team Lead has the record."}</Notice>}
       {plan?.escalatedAt && <Notice tone="warn">Your Team Lead escalated this missing EOD on {formatDateTime(plan.escalatedAt, tz)}.</Notice>}
       {plan?.leadEditedAt && !eodFiled && <Notice tone="info">Your Team Lead edited this plan on {formatDateTime(plan.leadEditedAt, tz)}. The list below shows their version.</Notice>}
+
+      {iso === today && !eodFiled && plan && plan.items.length > 0 && (
+        <Card title="To-do list" icon={<ListTodo />} padded={false}>
+          <p className="border-b border-line px-4 py-3 text-sm text-muted">
+            Press <strong className="text-ink">Start</strong> when you begin a task and <strong className="text-ink">Stop</strong> when you finish or take a break: the time goes to your timesheet by itself, with the client and task — no need to enter it again. Tasks given to you are added here automatically. <strong className="text-ink">Done</strong> stops the timer, marks the line done and sends a task for review.
+          </p>
+          <ul className="divide-y divide-line">
+            {plan.items.map((i) => (
+              <li key={i.id} className={`flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 ${i.startedAt ? "bg-ok-bg/60" : ""}`}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">
+                    {i.taskId ? <Link href={`/app/tasks/${i.taskId}`} className="hover:underline">{i.task}</Link> : i.task}
+                    {i.taskId && <span className="ml-1.5 align-middle"><Badge tone="brand">Task</Badge></span>}
+                    {i.status === "DONE" && <span className="ml-1.5 align-middle"><Badge tone="ok">Done</Badge></span>}
+                  </p>
+                  <p className="text-xs text-muted">{i.clientName ?? "Office / Other"}{i.expectedBy ? ` · expected ${formatDate(i.expectedBy)}` : ""}</p>
+                </div>
+                <span className={`text-sm ${i.startedAt ? "font-semibold text-ok" : "text-muted"}`}>
+                  {i.startedAt ? "● " : ""}<Elapsed since={i.startedAt ? i.startedAt.toISOString() : null} base={i.workedMinutes} />
+                </span>
+                <span className="flex gap-1.5">
+                  {i.startedAt ? (
+                    <>
+                      <ActionButton action={stopTodoAction.bind(null, i.id, false)}><Square className="size-3.5" aria-hidden /> Stop</ActionButton>
+                      <ActionButton variant="primary" action={stopTodoAction.bind(null, i.id, true)}><Check className="size-3.5" aria-hidden /> Done</ActionButton>
+                    </>
+                  ) : i.status !== "DONE" ? (
+                    <>
+                      <ActionButton variant="primary" action={startTodoAction.bind(null, i.id)}><Play className="size-3.5" aria-hidden /> Start</ActionButton>
+                      {i.workedMinutes > 0 && <ActionButton action={stopTodoAction.bind(null, i.id, true)}><Check className="size-3.5" aria-hidden /> Done</ActionButton>}
+                    </>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {!eodFiled && (iso >= today || !submitted) && (
         <details open={!submitted} className="rounded-xl border border-line bg-surface">

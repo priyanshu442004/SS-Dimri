@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { BusinessRuleError, parseForm, safeAction, type ActionState } from "@/lib/actions";
 import { actionContext } from "@/lib/session";
+import { isoDateInTz } from "@/lib/dates";
 import { audit } from "@/lib/services/audit";
 import {
   createEmployeeLogin,
@@ -162,21 +163,32 @@ export async function updateRightsAction(employeeId: string, _p: ActionState, fd
     const ctx = await actionContext("access.manage");
     const m = await prisma.organizationMembership.findFirst({ where: { employeeId, organizationId: ctx.organization.id }, select: { id: true, role: true, userId: true } });
     if (!m) throw new BusinessRuleError("This person has no login yet.");
+    const today = isoDateInTz(new Date(), ctx.organization.timezone);
     if (m.role === "OWNER") throw new BusinessRuleError("The owner always has full access.");
     if (m.userId === ctx.user.id) throw new BusinessRuleError("You cannot change your own rights. Ask another administrator.");
     const rights = [...new Set(v["rights[]"])].filter(isGrantable);
+    // Temporary rights: "Until" date per right (blank = permanent). Removed automatically after that day.
+    const until: Record<string, string> = {};
+    for (const c of rights) {
+      const d = fd.get(`until.${c}`);
+      if (typeof d !== "string" || !d) continue;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new BusinessRuleError("Enter the end date as a date.");
+      if (d < today) throw new BusinessRuleError("An end date for a temporary right cannot be in the past.");
+      until[c] = d;
+    }
     const modules = [...new Set(v["modules[]"])].filter((k): k is ModuleKey => k in MODULES);
     const restricted = v.moduleAccess === "CUSTOM";
     if (restricted && modules.length === 0) throw new BusinessRuleError("Tick at least one module, or choose “Everything their role allows”.");
     await prisma.$transaction(async (tx) => {
       await tx.organizationMembership.update({
         where: { id: m.id },
-        data: { grantedCapabilities: rights, moduleRestricted: restricted, allowedModules: restricted ? modules : [] },
+        data: { grantedCapabilities: rights, grantExpiries: until, moduleRestricted: restricted, allowedModules: restricted ? modules : [] },
       });
-      await audit(tx, ctx, "employee.rights_updated", "employee", employeeId, { rights, moduleRestricted: restricted, modules: restricted ? modules : [] });
+      await audit(tx, ctx, "employee.rights_updated", "employee", employeeId, { rights, until, moduleRestricted: restricted, modules: restricted ? modules : [] });
     });
     revalidatePath(`/app/employees/${employeeId}`);
-    return { ok: true, message: "Rights updated." };
+    const temp = Object.keys(until).length;
+    return { ok: true, message: temp ? `Rights updated. ${temp} temporary right${temp > 1 ? "s end" : " ends"} automatically after the date given.` : "Rights updated." };
   });
 }
 

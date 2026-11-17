@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import nodemailer, { type Transporter } from "nodemailer";
 import { prisma } from "@/lib/db";
+import { firmTransport } from "./messaging";
 
 // Outgoing email over SMTP (SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / MAIL_FROM).
 // sendMail never throws: a failed email must not undo the business change that
@@ -66,12 +67,14 @@ export async function sendMail(m: {
       await writeFile(file, JSON.stringify({ to: m.to, subject: m.subject, text: m.text, attachments: m.attachments?.map((a) => a.filename) })).catch(() => undefined);
     }
   } else {
-    const t = smtp();
+    // The firm's own email account (Settings → Email & WhatsApp) when set up, else the server's.
+    const own = m.organizationId ? await firmTransport(m.organizationId).catch(() => null) : null;
+    const t = own?.t ?? smtp();
     if (!t) {
       result = { status: "FAILED", error: "Email is not configured on the server (SMTP settings missing)." };
     } else {
       try {
-        const { from, replyTo } = await senderFor(m.organizationId);
+        const { from, replyTo } = own ? { from: own.from, replyTo: undefined } : await senderFor(m.organizationId);
         await t.sendMail({
           from, replyTo, to: m.to, subject: m.subject, text: m.text, html: m.html,
           attachments: m.attachments?.map((a) => ({ filename: a.filename, content: Buffer.from(a.content), contentType: a.contentType })),
@@ -145,5 +148,13 @@ ${v.firm} has issued you a ${v.title.toLowerCase()}. It is attached to this emai
 You can also read it in the portal and ${v.action}: ${v.url}`;
   const html = layout(v.firm, `<p>Hello ${esc(v.name)},</p><p>${esc(v.firm)} has issued you a <strong>${esc(v.title.toLowerCase())}</strong>. It is attached to this email.</p>
 <p>You can also read it in the portal and ${esc(v.action)}.</p>${button(v.url, `Open ${v.title.toLowerCase()}`)}`);
+  return { subject, text, html };
+}
+
+/** An ERP notice (task assigned, leave decided, …) sent by email for the events the firm chose. */
+export function notificationEmail(v: { name: string; firm: string; title: string; body: string | null; url: string | null }) {
+  const subject = v.title;
+  const text = [`Hello ${v.name},`, v.title, v.body, v.url ? `Open: ${v.url}` : null].filter(Boolean).join("\n\n");
+  const html = layout(v.firm, `<p>Hello ${esc(v.name)},</p><p><strong>${esc(v.title)}</strong></p>${v.body ? `<p>${esc(v.body)}</p>` : ""}${v.url ? button(v.url, "Open in the portal") : ""}`);
   return { subject, text, html };
 }

@@ -2,6 +2,7 @@
 
 import { ActionForm, FormError, PhoneField, SelectField, SubmitButton, TextArea, TextField, upperCaseInput } from "@/components/form";
 import { quickRegisterAction } from "../../actions";
+import { IdValidate } from "@/components/id-validate";
 import { CompliancePicker, type ComplianceOption } from "@/components/compliance-picker";
 import { checkFileInput, uploadsTooLarge } from "@/components/upload-guard";
 
@@ -19,8 +20,8 @@ export function QuickRegistrationForm({ constitutions, services, compliances }: 
         <TextField label="Trade name" name="tradeName" required className="sm:col-span-2" />
         <TextField label="Legal name" name="legalName" hint="As per PAN / GST" className="sm:col-span-2" />
         <SelectField label="Constitution" name="constitutionId" options={constitutions} />
-        <TextField label="PAN" name="pan" maxLength={10} autoCapitalize="characters" spellCheck={false} onInput={upperCaseInput} />
-        <TextArea label="GSTIN(s)" name="gstins" rows={2} hint="One client can have several GSTINs — one per line" className="sm:col-span-2 [&_textarea]:uppercase" spellCheck={false} />
+        <div><TextField label="PAN" name="pan" maxLength={10} autoCapitalize="characters" spellCheck={false} onInput={upperCaseInput} /><IdValidate kind="PAN" field="pan" /></div>
+        <div className="sm:col-span-2"><TextArea label="GSTIN(s)" name="gstins" rows={2} hint="One client can have several GSTINs — one per line" className="[&_textarea]:uppercase" spellCheck={false} /><IdValidate kind="GSTIN" field="gstins" /></div>
         <SelectField label="Nature of client" name="natureOfClient" hint="Scope still to be confirmed by the firm" options={[
           { value: "ONE_TIME", label: "One time" }, { value: "RETAINER", label: "Retainer" },
         ]} />

@@ -44,13 +44,17 @@ export async function activeClientOptions(organizationId: string) {
 export const OFFICE_OTHER = "Office / Other";
 
 /**
- * Clients a person works on, on one day: active allocations that day, plus clients of open tasks
+ * Clients a person works on, on one day: active allocations that day (as team member, reviewer or
+ * Team Leader), plus clients of open tasks
  * and of open tracker work given to them (so assigned work can always be logged).
  */
 export async function ownWorkClientIds(organizationId: string, employeeId: string, day: Date): Promise<Set<string>> {
   const [allocations, tasks, lines] = await Promise.all([
     prisma.teamAllocation.findMany({
-      where: { organizationId, employeeId, status: { in: ["ACTIVE", "PLANNED", "ENDED"] }, startDate: { lte: day }, OR: [{ endDate: null }, { endDate: { gte: day } }] },
+      where: {
+        organizationId, status: { in: ["ACTIVE", "PLANNED", "ENDED"] }, startDate: { lte: day },
+        AND: [{ OR: [{ endDate: null }, { endDate: { gte: day } }] }, { OR: [{ employeeId }, { reportsToEmployeeId: employeeId }, { teamLeaderEmployeeId: employeeId }] }],
+      },
       select: { clientId: true },
     }),
     prisma.task.findMany({

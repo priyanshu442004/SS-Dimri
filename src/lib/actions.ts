@@ -8,9 +8,14 @@ export type ActionState = {
   ok?: boolean;
   message?: string;
   fieldErrors?: Record<string, string[] | undefined>;
+  /** The action needs a yes first: the form asks this question and, on yes, sends again with confirmed=on. */
+  confirm?: string;
 };
 
 export class BusinessRuleError extends Error {}
+
+/** Thrown when the user must confirm before the action goes ahead (the form asks, then resends). */
+export class ConfirmRequired extends BusinessRuleError {}
 
 /** FormData → plain object. Repeated keys become arrays; empty strings become undefined. */
 export function formToObject(fd: FormData): Record<string, unknown> {
@@ -45,6 +50,7 @@ export async function safeAction(fn: () => Promise<ActionState | void>): Promise
     return (await fn()) ?? { ok: true };
   } catch (e) {
     unstable_rethrow(e); // let redirect()/notFound() propagate
+    if (e instanceof ConfirmRequired) return { ok: false, confirm: e.message };
     if (e instanceof AuthorizationError || e instanceof BusinessRuleError) return { ok: false, message: e.message };
     if (e instanceof Prisma.PrismaClientKnownRequestError) {
       if (e.code === "P2002") return { ok: false, message: "A record with these details already exists." };

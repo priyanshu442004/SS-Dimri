@@ -28,8 +28,9 @@ export function clientScope(ctx: AppContext): Prisma.ClientWhereInput {
     organizationId: ctx.organization.id,
     status: { in: ["ACTIVE", "ON_HOLD"] },
     OR: [
-      { teamAllocations: { some: { employeeId: me, status: { in: ["ACTIVE", "PLANNED"] } } } },
-      { tasks: { some: { assignments: { some: { employeeId: me, removedAt: null } } } } },
+      // Everyone on the allocation: the team member (maker), the reviewer (Reports to) and the Team Leader.
+      { teamAllocations: { some: { status: { in: ["ACTIVE", "PLANNED"] }, OR: [{ employeeId: me }, { reportsToEmployeeId: me }, { teamLeaderEmployeeId: me }] } } },
+      { tasks: { some: { OR: [{ assignments: { some: { employeeId: me, removedAt: null } } }, { makerEmployeeId: me }, { checkerEmployeeId: me }] } } },
     ],
   };
 }

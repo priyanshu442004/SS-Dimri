@@ -5,6 +5,7 @@ import { serverEnv } from "@/lib/env";
 import { addDays, formatDate, formatTime, minutesOfDayInTz, toIsoDate, todayDateOnly } from "@/lib/dates";
 import { markOutReminderDue } from "@/lib/domain/attendance-extras";
 import { getPolicy, sweepAutoAbsent } from "./attendance";
+import { expireTemporaryRights } from "./access-rights";
 import { sweepPlanFlags } from "./daily-plans";
 import { leadsOf, scheduleOf } from "./office-rules";
 import { hhmm } from "@/lib/domain/attendance-policy";
@@ -203,6 +204,8 @@ export async function sweepAllFirms() {
     const m = await sweepAttendanceReminders(o.id, { force: true }).catch(() => [] as Mail[]);
     await sendReminderMails(m);
     mails += m.length;
+    // Temporary rights whose last day has passed are removed (the person and the administrators are told).
+    await expireTemporaryRights(o.id, o.timezone).catch((e) => console.error("rights expiry failed", e instanceof Error ? e.message : e));
     // Team allocation: end lapsed allocations and remind people of tomorrow's visits.
     visitReminders += (await sweepAllocations(o.id, o.timezone).catch(() => ({ reminders: 0 }))).reminders;
   }

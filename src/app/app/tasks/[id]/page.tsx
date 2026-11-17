@@ -17,9 +17,10 @@ import { canDelete } from "@/lib/services/deletions";
 import { FileText, Image as ImageIcon, Mic } from "lucide-react";
 import { AssignForm, EditTaskForm, ReminderForm, RemarkForm, SharingForm, TransitionForm } from "./forms";
 
-export default async function TaskDetailPage({ params }: PageProps<"/app/tasks/[id]">) {
+export default async function TaskDetailPage({ params, searchParams }: PageProps<"/app/tasks/[id]">) {
   const ctx = await requireCapability("tasks.use");
   const { id } = await params;
+  const openEdit = (await searchParams).edit === "1";
   const scoped = await loadTaskForCtx(ctx, id);
   if (!scoped) notFound();
 
@@ -56,7 +57,12 @@ export default async function TaskDetailPage({ params }: PageProps<"/app/tasks/[
       <PageHeader
         title={t.title}
         back={{ href: "/app/tasks", label: "Tasks" }}
-        actions={canDelete(ctx, "task") && <DeleteButton entity="task" id={t.id} redirectTo="/app/tasks" />}
+        actions={
+          <span className="flex flex-wrap gap-2">
+            {editable && <Link href={`/app/tasks/${t.id}?edit=1#edit`} className="inline-flex h-9 items-center rounded-md border border-line bg-surface px-3 text-sm font-medium hover:bg-subtle">Edit task</Link>}
+            {canDelete(ctx, "task") && <DeleteButton entity="task" id={t.id} redirectTo="/app/tasks" />}
+          </span>
+        }
         description={
           <span className="flex flex-wrap items-center gap-2">
             <StatusBadge status={t.status} />
@@ -139,20 +145,11 @@ export default async function TaskDetailPage({ params }: PageProps<"/app/tasks/[
         </div>
 
         <div className="space-y-6">
-          <Card title="Update status">
-            {actions.length === 0 ? (
-              <p className="text-sm text-muted">No status changes available to you right now.</p>
-            ) : (
-              <>
-                <TransitionForm action={taskTransitionAction.bind(null, t.id)} actions={actions.map((a) => ({ action: a, label: TASK_ACTION_LABELS[a] }))} />
-                {actions.includes("submit") && ctx.employee && <p className="mt-3 text-xs text-muted">When you submit for review, the time you worked on this task (from “Start / resume work”) is added to your timesheet.</p>}
-              </>
-            )}
-          </Card>
           {editable && (
-            <Card title="Correct the task">
-              <details>
-                <summary className="cursor-pointer text-sm text-muted">Entered something wrong? You can edit the details until the work is started.</summary>
+            <div id="edit" className="scroll-mt-20">
+            <Card title="Edit task">
+              <details open={openEdit}>
+                <summary className="cursor-pointer text-sm text-muted">Entered something wrong? You (who assigned it) can edit the details until the work is started.</summary>
                 <div className="mt-3">
                   <EditTaskForm
                     action={editTaskAction.bind(null, t.id)}
@@ -165,7 +162,18 @@ export default async function TaskDetailPage({ params }: PageProps<"/app/tasks/[
                 </div>
               </details>
             </Card>
+            </div>
           )}
+          <Card title="Update status">
+            {actions.length === 0 ? (
+              <p className="text-sm text-muted">No status changes available to you right now.</p>
+            ) : (
+              <>
+                <TransitionForm action={taskTransitionAction.bind(null, t.id)} actions={actions.map((a) => ({ action: a, label: TASK_ACTION_LABELS[a] }))} />
+                {actions.includes("submit") && ctx.employee && <p className="mt-3 text-xs text-muted">When you submit for review, the time you worked on this task (from “Start / resume work”) is added to your timesheet.</p>}
+              </>
+            )}
+          </Card>
           {t.reviews.length > 0 && (
             <Card title="Checker reviews">
               <ul className="space-y-2 text-sm">

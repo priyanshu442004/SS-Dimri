@@ -59,9 +59,10 @@ export async function raiseRequest(ctx: AppContext, v: z.infer<typeof requestSch
   if (v.kind === "LATE_ARRIVAL") {
     if (!v.atTime) throw new BusinessRuleError("Enter the time you expect to arrive.");
     if (record?.timeIn) throw new BusinessRuleError("You have already marked in today.");
-    if (record?.autoAbsentAt) throw new BusinessRuleError("Today is already marked Absent by the ERP.");
+    // Raised (or sent again) even after the ERP marked the day Absent: once the Team Lead approves,
+    // the absent mark is removed and the person marks the actual in-time (tracker, 17 Nov 2026).
     if (hhmmToMinutes(v.atTime) <= s.start) throw new BusinessRuleError(`Your reporting time is ${hhmm(s.start)}; enter a later arrival time.`);
-    if (hhmmToMinutes(v.atTime) >= s.absentAt) throw new BusinessRuleError(`Arriving after ${hhmm(s.absentAt)} means the day is marked Absent. Use "I can't come today" or ask for a half-day leave.`);
+    if (hhmmToMinutes(v.atTime) >= s.end) throw new BusinessRuleError(`Your day ends at ${hhmm(s.end)}; enter an earlier arrival time, or use "I can't come today".`);
     inAdvance = !isToday || nowMin < s.start;
     data.atTime = v.atTime;
   } else if (v.kind === "EARLY_LEAVE") {
@@ -80,7 +81,9 @@ export async function raiseRequest(ctx: AppContext, v: z.infer<typeof requestSch
   }
 
   const existing = await prisma.attendanceRequest.findUnique({ where: { employeeId_requestDate_kind: { employeeId: ctx.employee.id, requestDate: day, kind: v.kind } } });
-  if (existing && existing.status !== "CANCELLED") throw new BusinessRuleError(`You already raised a ${KIND_LABEL[v.kind].toLowerCase()} form for ${formatDate(day)}${existing.status === "PENDING" ? "; it is waiting for your Team Lead" : ` and it was ${existing.status.toLowerCase()}`}.`);
+  // Waiting or not accepted: the person may send it again (updated reason / time, Team Lead told again).
+  if (existing?.status === "APPROVED") throw new BusinessRuleError(`Your ${KIND_LABEL[v.kind].toLowerCase()} form for ${formatDate(day)} is already approved.`);
+  const resent = !!existing && existing.status !== "CANCELLED";
   await prisma.$transaction(async (tx) => {
     const fields = { reason: v.reason, inAdvance, ...data, status: "PENDING" as const, decidedById: null, decidedAt: null, decisionNote: null };
     const r = existing
@@ -89,13 +92,14 @@ export async function raiseRequest(ctx: AppContext, v: z.infer<typeof requestSch
     await audit(tx, ctx, `attendance_request.${v.kind.toLowerCase()}`, "attendance_request", r.id);
     const who = ctx.employee!.firstName;
     const when = isToday ? "today" : formatDate(day);
-    const title =
+    const title = (resent ? "Sent again: " : "") + (
       v.kind === "LATE_ARRIVAL" ? `${who} will be late ${when} (arriving ${v.atTime})`
       : v.kind === "EARLY_LEAVE" ? `${who} asks to leave at ${v.atTime} ${when}`
-      : `${who} asks to stay late ${when}${v.atTime ? ` (till ${v.atTime})` : ""}`;
+      : `${who} asks to stay late ${when}${v.atTime ? ` (till ${v.atTime})` : ""}`);
     const body = v.kind === "OVERTIME" ? `Task: ${v.task} · Why it can't wait: ${v.whyNotTomorrow}` : v.reason;
     await notifyLeads(tx, ctx, { type: "attendance.request", title, body, link: "/app/attendance?tab=requests" });
   });
+  if (v.kind === "LATE_ARRIVAL" && record?.autoAbsentAt) return "Sent to your Team Lead. The ERP has marked today Absent; once your Team Lead approves, you can mark in with your actual time (late, or a half day).";
   if (v.kind === "LATE_ARRIVAL") return inAdvance ? "Your Team Lead is informed. One late arrival a month informed in advance is a warning only." : "Your Team Lead is informed. This was after your reporting time, so it does not count as informed in advance.";
   if (v.kind === "EARLY_LEAVE") return `Request sent to your Team Lead.${hhmmToMinutes(v.atTime!) < s.halfDayBefore ? ` Leaving before ${hhmm(s.halfDayBefore)} counts as a half day even with permission.` : ""}`;
   return "Overtime request sent to your Team Lead. Only approved overtime is counted.";
@@ -128,6 +132,14 @@ export async function decideRequest(ctx: AppContext, id: string, v: z.infer<type
   await prisma.$transaction(async (tx) => {
     await tx.attendanceRequest.update({ where: { id }, data: { status: approve ? "APPROVED" : "REJECTED", decidedById: ctx.user.id, decidedAt: new Date(), decisionNote: v.note } });
     await audit(tx, ctx, approve ? "attendance_request.approved" : "attendance_request.rejected", "attendance_request", id);
+    // Approved after the 12:00 sweep: the ERP's Absent mark goes, so the person can mark the actual in-time.
+    if (approve && r.kind === "LATE_ARRIVAL") {
+      const removed = await tx.attendanceRecord.deleteMany({ where: { employeeId: r.employeeId, attendanceDate: r.requestDate, autoAbsentAt: { not: null }, timeIn: null } });
+      if (removed.count) {
+        await audit(tx, ctx, "attendance.auto_absent_reversed", "attendance_request", id);
+        await notifyEmployees(tx, ctx.organization.id, [r.employeeId], { type: "attendance.request_decided", title: `Late arrival approved: the Absent mark for ${formatDate(r.requestDate)} is removed. Mark in when you reach.`, link: "/app/attendance" });
+      }
+    }
     const what = r.kind === "LATE_ARRIVAL" ? `Your late-arrival reason for ${formatDate(r.requestDate)} was ${approve ? "accepted" : "not accepted as genuine"}`
       : `Your ${KIND_LABEL[r.kind].toLowerCase()} request for ${formatDate(r.requestDate)} was ${approve ? "approved" : "rejected"}`;
     await notifyEmployees(tx, ctx.organization.id, [r.employeeId], { type: "attendance.request_decided", title: what, body: v.note, link: "/app/attendance?tab=requests" });

@@ -7,7 +7,7 @@ import { requireCapability } from "@/lib/session";
 import { formatDateTime, isoDateInTz } from "@/lib/dates";
 import { isTaskOverdue } from "@/lib/domain/derived";
 import { OPEN_STATUSES } from "@/lib/domain/task-workflow";
-import { taskScope } from "@/lib/services/tasks";
+import { assignedByMe, mayEditTask, taskScope } from "@/lib/services/tasks";
 import { MonthCalendar } from "@/components/month-calendar";
 import { Badge, EmptyState, LinkButton, PageHeader, Pagination, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
 import { ListChecks, Mic } from "lucide-react";
@@ -50,6 +50,7 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
     AND: [
       taskScope(ctx),
       scope === "mine" ? { OR: [{ assignments: { some: { employeeId: me, removedAt: null } } }, { makerEmployeeId: me }] } : {},
+      scope === "assigned" ? assignedByMe(ctx) : {},
       scope === "review" ? { status: "PENDING_REVIEW", OR: [{ checkerEmployeeId: me }, ...(can(ctx, "tasks.review") ? [{ checkerEmployeeId: null }] : [])] } : {},
       state === "open" ? { status: { in: OPEN_STATUSES } } : state === "overdue" ? { status: { in: OPEN_STATUSES }, dueAt: { lt: new Date() } } : state === "done" ? { status: { in: ["COMPLETED", "CANCELLED"] } } : {},
       clientId ? { clientId } : {},
@@ -65,10 +66,10 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
       skip: view === "list" ? (page - 1) * PAGE_SIZE : 0, // board and calendar show up to 500
       take: view === "list" ? PAGE_SIZE : 500,
       select: {
-        id: true, title: true, status: true, priority: true, isAsap: true, dueAt: true, makerStatus: true, checkerStatus: true,
+        id: true, title: true, status: true, priority: true, isAsap: true, dueAt: true, makerStatus: true, checkerStatus: true, createdById: true,
         _count: { select: { attachments: { where: { kind: "AUDIO" } } } },
         client: { select: { tradeName: true } },
-        assignments: { where: { removedAt: null }, select: { employee: { select: { firstName: true } } } },
+        assignments: { where: { removedAt: null }, select: { assignedById: true, employee: { select: { firstName: true } } } },
       },
     }),
     prisma.task.count({ where }),
@@ -91,6 +92,7 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
         current={scope}
         tabs={[
           { key: "mine", label: "My tasks", href: params({ scope: "mine", page: 1 }) },
+          { key: "assigned", label: "Assigned by me", href: params({ scope: "assigned", state: "all", page: 1 }) },
           ...(can(ctx, "tasks.review") || ctx.employee ? [{ key: "review", label: "Awaiting my review", href: params({ scope: "review", state: "all", page: 1 }) }] : []),
           ...(can(ctx, "tasks.view_all") ? [{ key: "all", label: "All tasks", href: params({ scope: "all", page: 1 }) }] : []),
         ]}
@@ -196,7 +198,10 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
                   <Td><span className="flex gap-1">{t.isAsap && <Badge tone="danger">ASAP</Badge>}<StatusBadge status={t.priority} /></span></Td>
                   <Td className="text-xs">{formatDateTime(t.dueAt)} {isTaskOverdue(t) && <div><StatusBadge status="OVERDUE" /></div>}</Td>
                   <Td><StatusBadge status={t.status} /></Td>
-                  <Td className="text-xs text-muted">{t.makerStatus.replaceAll("_", " ").toLowerCase()} / {t.checkerStatus.replaceAll("_", " ").toLowerCase()}</Td>
+                  <Td className="text-xs text-muted">
+                    {t.makerStatus.replaceAll("_", " ").toLowerCase()} / {t.checkerStatus.replaceAll("_", " ").toLowerCase()}
+                    {mayEditTask(ctx, t) && <Link href={`/app/tasks/${t.id}?edit=1#edit`} className="ml-2 font-medium text-brand-700 hover:underline">Edit</Link>}
+                  </Td>
                 </tr>
               ))}
             </tbody>

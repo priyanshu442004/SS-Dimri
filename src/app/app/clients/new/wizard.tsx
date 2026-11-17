@@ -1,5 +1,6 @@
 "use client";
 
+import { IdValidate } from "@/components/id-validate";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { z } from "zod";
@@ -262,8 +263,8 @@ export function BusinessWizard({ constitutions, natures, services, compliances }
           <Field label="Trade name" name="tradeName" required error={err("tradeName")}><input id="f-tradeName" name="tradeName" className={input} aria-invalid={!!err("tradeName")} /></Field>
           <Field label="Legal name" name="legalName" hint="As per PAN / GST"><input id="f-legalName" name="legalName" className={input} /></Field>
           <div className="sm:col-span-2"><Field label="Business address" name="address" error={err("address")}><textarea id="f-address" name="address" rows={2} className={input} /></Field></div>
-          <Field label="PAN" name="pan" hint="10 characters, e.g. ABCDE1234F" error={err("pan")}><input id="f-pan" name="pan" maxLength={10} autoCapitalize="characters" autoComplete="off" onInput={upperCaseInput} className={input} aria-invalid={!!err("pan")} /></Field>
-          <Field label="TAN" name="tan" hint="10 characters, e.g. DELA12345B" error={err("tan")}><input id="f-tan" name="tan" maxLength={10} autoCapitalize="characters" autoComplete="off" onInput={upperCaseInput} className={input} aria-invalid={!!err("tan")} /></Field>
+          <Field label="PAN" name="pan" hint="10 characters, e.g. ABCDE1234F" error={err("pan")}><input id="f-pan" name="pan" maxLength={10} autoCapitalize="characters" autoComplete="off" onInput={upperCaseInput} className={input} aria-invalid={!!err("pan")} /><IdValidate kind="PAN" field="pan" /></Field>
+          <Field label="TAN" name="tan" hint="10 characters, e.g. DELA12345B" error={err("tan")}><input id="f-tan" name="tan" maxLength={10} autoCapitalize="characters" autoComplete="off" onInput={upperCaseInput} className={input} aria-invalid={!!err("tan")} /><IdValidate kind="TAN" field="tan" /></Field>
           <Field label="Nature of business" name="primaryBusinessNatureId">
             <select id="f-primaryBusinessNatureId" name="primaryBusinessNatureId" className={input} defaultValue="">
               <option value="">Select…</option>
@@ -336,6 +337,7 @@ export function BusinessWizard({ constitutions, natures, services, compliances }
             <button type="button" onClick={addGstin} className={buttonClass("secondary")}>Add GSTIN</button>
           </div>
           {(gstError || err("gstins")) && <p role="alert" className="mt-1 text-xs text-danger">{gstError ?? err("gstins")}</p>}
+          <IdValidate kind="GSTIN" value={[gstDraft, ...gstins].filter(Boolean).join(" ")} />
           <ul className="mt-4 divide-y divide-line rounded-md border border-line">
             {gstins.map((g) => (
               <li key={g} className="flex items-center justify-between px-3 py-2 font-mono text-sm">

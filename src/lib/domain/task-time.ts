@@ -47,3 +47,6 @@ export function taskWorkSegments(changes: StatusChange[], userId: string, submit
   }
   return out;
 }
+
+/** Type of work on timesheet rows written by the to-do timer: a task timed there is not logged again on review. */
+export const TIMER_WORK = "To-do timer";

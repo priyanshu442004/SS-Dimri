@@ -4,7 +4,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { can, landingPath, moduleOf, type Capability, type Role } from "@/lib/permissions";
+import { can, landingPath, liveGrants, moduleOf, type Capability, type Role } from "@/lib/permissions";
+import { isoDateInTz } from "@/lib/dates";
 import { clientAccess, staffAccess, type AccessInfo } from "@/lib/domain/approval-access";
 
 export type AppContext = {
@@ -48,6 +49,7 @@ export const getContext = cache(async (): Promise<AppContext | null> => {
       id: true,
       role: true,
       grantedCapabilities: true,
+      grantExpiries: true,
       moduleRestricted: true,
       allowedModules: true,
       mustChangePassword: true,
@@ -73,7 +75,8 @@ export const getContext = cache(async (): Promise<AppContext | null> => {
   return {
     user: { id: u.id, name: u.name, email: u.email, username: u.username ?? null },
     role: membership.role as Role,
-    grantedCapabilities: membership.grantedCapabilities,
+    // Temporary rights stop on their own after their last day.
+    grantedCapabilities: liveGrants(membership.grantedCapabilities, membership.grantExpiries, isoDateInTz(new Date(), organization.timezone)),
     moduleRestricted: membership.moduleRestricted,
     allowedModules: membership.allowedModules,
     membershipId: membership.id,

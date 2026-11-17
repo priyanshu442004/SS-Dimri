@@ -86,9 +86,12 @@ export async function markAttendance(ctx: AppContext, kind: "in" | "out", v: z.i
   if (kind === "out" && existing?.timeOut) throw new BusinessRuleError("You have already marked out today.");
   const schedule = scheduleOf(policy, emp, existing);
   if (kind === "in" && ctx.role !== "OWNER" && minutesOfDayInTz(now, tz) >= schedule.absentAt) {
-    // Someone on leave for part of the day (a half day) may still come in.
-    const onLeave = await prisma.leaveRequest.count({ where: { employeeId: ctx.employee.id, status: { in: ["APPROVED", "PENDING"] }, fromDate: { lte: day }, toDate: { gte: day } } });
-    if (!onLeave) throw new BusinessRuleError(AUTO_ABSENT(hhmm(schedule.absentAt)));
+    // Someone on leave for part of the day (a half day), or who informed a late arrival, may still come in.
+    const [onLeave, lateForm] = await Promise.all([
+      prisma.leaveRequest.count({ where: { employeeId: ctx.employee.id, status: { in: ["APPROVED", "PENDING"] }, fromDate: { lte: day }, toDate: { gte: day } } }),
+      prisma.attendanceRequest.count({ where: { employeeId: ctx.employee.id, requestDate: day, kind: "LATE_ARRIVAL", status: { in: ["APPROVED", "PENDING"] } } }),
+    ]);
+    if (!onLeave && !lateForm) throw new BusinessRuleError(AUTO_ABSENT(hhmm(schedule.absentAt)));
   }
   const photo = fd.get("photo");
   const photoId = hasFile(photo) ? (await storeUpload(ctx, photo, { area: "attendance", ownerId: ctx.employee.id, imagesOnly: true })).id : undefined;
@@ -273,6 +276,9 @@ export async function decideLeave(ctx: AppContext, requestId: string, approve: b
     });
     if (res.count !== 1) throw new BusinessRuleError("This request was already decided by someone else. Refresh the page.");
     await audit(tx, ctx, approve ? "leave.approved" : "leave.rejected", "leave_request", r.id);
+    // Approved after the 12:00 sweep: the ERP's Absent mark gives way to the leave (or, for a half
+    // day, to the person's own mark-in for the other half).
+    if (approve) await tx.attendanceRecord.deleteMany({ where: { employeeId: r.employeeId, attendanceDate: { gte: r.fromDate, lte: r.toDate }, autoAbsentAt: { not: null }, timeIn: null } });
     await notifyEmployees(tx, ctx.organization.id, [r.employeeId], {
       type: "leave.decided",
       title: `Your leave request was ${approve ? "approved" : "rejected"}`,
@@ -443,15 +449,19 @@ export async function sweepAutoAbsent(organizationId: string, tz: string) {
   if (isOffDay(iso, holidays)) return { marked: 0 };
   const subjects = await ruleSubjects(organizationId);
   if (!subjects.size) return { marked: 0 };
-  const [employees, records, leaves] = await Promise.all([
+  const [employees, records, leaves, lateForms] = await Promise.all([
     prisma.employee.findMany({
       where: { id: { in: [...subjects.keys()] }, OR: [{ dateOfJoining: null }, { dateOfJoining: { lte: day } }] },
       select: { id: true, firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true },
     }),
     prisma.attendanceRecord.findMany({ where: { organizationId, attendanceDate: day }, select: { employeeId: true } }),
     prisma.leaveRequest.findMany({ where: { organizationId, status: { in: ["APPROVED", "PENDING"] }, fromDate: { lte: day }, toDate: { gte: day } }, select: { employeeId: true } }),
+    prisma.attendanceRequest.findMany({ where: { organizationId, requestDate: day, kind: "LATE_ARRIVAL", status: { in: ["APPROVED", "PENDING"] } }, select: { employeeId: true } }),
   ]);
   const has = new Set(records.map((r) => r.employeeId));
+  // A late / half-day intimation waiting or approved: no Absent at 12:00 (tracker, 17 Nov 2026). Only
+  // if the person still has not come by the end of the day is it marked.
+  const informedLate = new Set(lateForms.map((r) => r.employeeId));
   const onLeave = new Set(leaves.map((l) => l.employeeId));
   const minute = minutesOfDayInTz(now, tz);
   const marked: typeof employees = [];
@@ -459,6 +469,7 @@ export async function sweepAutoAbsent(organizationId: string, tz: string) {
     if (has.has(e.id) || onLeave.has(e.id)) continue;
     const s = scheduleOf(policy, e);
     if (minute < s.absentAt) continue;
+    if (informedLate.has(e.id) && minute < s.end) continue;
     try {
       await prisma.attendanceRecord.create({
         data: {

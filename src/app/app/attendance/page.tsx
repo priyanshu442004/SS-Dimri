@@ -136,6 +136,8 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
     const pastCutoff = nowMin >= schedule.absentAt && ctx.role !== "OWNER";
     const form = (k: string) => myForms.find((f) => f.kind === k);
     const ot = form("OVERTIME");
+    const lateForm = form("LATE_ARRIVAL");
+    const lateOk = lateForm?.status === "PENDING" || lateForm?.status === "APPROVED";
     const early = form("EARLY_LEAVE");
     const row = pay.rows[0];
     const s = row?.score;
@@ -164,8 +166,11 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
             </p>
             {todayRec?.autoAbsentAt || (todayRec?.status === "ABSENT" && !todayRec.timeIn) ? (
               <Notice tone="danger">
-                You were marked <strong>Absent</strong> by the ERP at {formatTime(todayRec.autoAbsentAt ?? todayRec.updatedAt, tz)}. Attendance cannot be changed to Present now.{" "}
-                {!leaveToday && <Link href="/app/attendance?tab=leave" className="font-medium underline">Raise a leave request</Link>}{!leaveToday && " so it is not counted as an absence without intimation."}
+                You were marked <strong>Absent</strong> by the ERP at {formatTime(todayRec.autoAbsentAt ?? todayRec.updatedAt, tz)}.{" "}
+                {lateOk
+                  ? <>Your late / half-day form is with your Team Lead. Once it is approved, the Absent mark is removed and you can mark in with your actual time.</>
+                  : <>Coming late or for a half day? <Link href="/app/attendance?tab=requests&kind=LATE_ARRIVAL" className="font-medium underline">{lateForm?.status === "REJECTED" ? "Send the late / half-day form again" : "Send a late / half-day form"}</Link>; when your Team Lead approves it (even after {hhmm(schedule.absentAt)}), you can mark in.{" "}
+                    {!leaveToday && <>Not coming? <Link href="/app/attendance?tab=leave" className="font-medium underline">Raise a leave request</Link>.</>}</>}
               </Notice>
             ) : todayRec?.status === "LEAVE" || (leaveToday && !todayRec?.timeIn && !leaveToday.isHalfDay) ? (
               <Notice tone="info">You are on leave today{leaveToday?.status === "PENDING" ? " (request waiting for your Team Lead)" : ""}.</Notice>
@@ -173,17 +178,17 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
               <Notice tone="info">Today is a Sunday or office holiday. If you are working, you can still mark in.</Notice>
             ) : null}
             {!todayRec?.timeIn ? (
-              !todayRec?.autoAbsentAt && todayRec?.status !== "LEAVE" && (!pastCutoff || leaveToday) ? (
+              !todayRec?.autoAbsentAt && todayRec?.status !== "LEAVE" && (!pastCutoff || leaveToday || lateOk) ? (
                 <>
                   {nowMin < schedule.start && !form("LATE_ARRIVAL") && (
                     <p className="mb-3 text-sm">Running late? <Link href="/app/attendance?tab=requests&kind=LATE_ARRIVAL" className="font-medium text-brand-700 hover:underline">Inform your Team Lead before {hhmm(schedule.start)}</Link>.</p>
                   )}
-                  {form("LATE_ARRIVAL") && <p className="mb-3 text-sm text-muted">You told your Team Lead you would arrive at {form("LATE_ARRIVAL")!.atTime}.</p>}
+                  {lateForm && <p className="mb-3 text-sm text-muted">You told your Team Lead you would arrive at {lateForm.atTime}{lateForm.status === "REJECTED" ? " (not accepted)" : ""}.</p>}
                   <MarkCard action={markAction.bind(null, "in")} kind="in" showLateReason={lateNow} labels={labels} clients={clientNames} defaultLocation={emp.attendanceProfile === "ONSITE" ? "CLIENT_OFFICE" : null} defaultPlace={emp.siteName}
                     warning={lateNow ? `It is past ${hhmm(schedule.graceUntil)}, so this counts as a late arrival${nowMin - schedule.start > policy.numbers.veryLateAfterMinutes ? " of more than an hour (a half day)" : ""}.` : null} />
                 </>
               ) : !todayRec && pastCutoff && !off ? (
-                <Notice tone="danger">It is past {hhmm(schedule.absentAt)} and you have not marked in, so today counts as <strong>Absent</strong>. <Link href="/app/attendance?tab=leave" className="font-medium underline">Raise a leave request</Link> if you are on leave.</Notice>
+                <Notice tone="danger">It is past {hhmm(schedule.absentAt)} and you have not marked in, so today counts as <strong>Absent</strong>. <Link href="/app/attendance?tab=leave" className="font-medium underline">Raise a leave request</Link> if you are on leave, or <Link href="/app/attendance?tab=requests&kind=LATE_ARRIVAL" className="font-medium underline">send a late / half-day form</Link> if you are coming.</Notice>
               ) : null
             ) : !todayRec.timeOut ? (
               <>
@@ -366,6 +371,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                     <span className="flex items-center gap-1">
                       <StatusBadge status={r.status} label={r.kind === "LATE_ARRIVAL" ? (r.status === "REJECTED" ? "Not accepted" : r.status === "APPROVED" ? "Accepted" : "Informed") : undefined} />
                       {r.status === "PENDING" && <ActionButton variant="ghost" action={cancelRequestAction.bind(null, r.id)} confirm="Withdraw this request?">Withdraw</ActionButton>}
+                      {(r.status === "PENDING" || r.status === "REJECTED") && toIsoDate(r.requestDate) >= today && <Link href={`/app/attendance?tab=requests&kind=${r.kind}`} className="text-xs font-medium text-brand-700 hover:underline">Send again</Link>}
                     </span>
                   </li>
                 ))}
@@ -400,7 +406,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                     <li key={r.id} className="rounded-md border border-line p-3 text-sm">
                       <p className="font-medium">{nameOf(r.employee)} · {when(r.requestDate)} · arriving {r.atTime} {!r.inAdvance && <Badge tone="warn">after the reporting time</Badge>}</p>
                       <p className="mt-1">{r.reason}</p>
-                      <p className="mt-1 text-xs text-muted">{r.status === "PENDING" ? "Accepted (no action needed)" : r.status === "APPROVED" ? `Accepted by ${r.decidedBy?.name}` : `Not accepted by ${r.decidedBy?.name}`}</p>
+                      <p className="mt-1 text-xs text-muted">{r.status === "PENDING" ? `Not decided yet: no Absent mark while it waits. Accept to confirm${toIsoDate(r.requestDate) === today ? "; if the ERP already marked today Absent, accepting removes it so they can mark in" : ""}.` : r.status === "APPROVED" ? `Accepted by ${r.decidedBy?.name}` : `Not accepted by ${r.decidedBy?.name}`}</p>
                       <div className="mt-2"><RequestDecisionForm action={decideRequestAction.bind(null, r.id)} late /></div>
                     </li>
                   ))}
