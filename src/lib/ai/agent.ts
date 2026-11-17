@@ -96,6 +96,7 @@ export async function runAgent(
     const step = await streamStep(messages, {
       tools: last ? undefined : tools,
       signal,
+      maxTokens: question.text.startsWith("REPORT REQUEST") ? 16000 : undefined, // the full AI Reporting report is long
       onText: (t) => { stepText += t; emit({ type: "text", text: t }); },
       onReasoning: (t) => emit({ type: "reasoning", text: t }),
     });

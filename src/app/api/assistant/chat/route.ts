@@ -21,6 +21,8 @@ const bodySchema = z.object({
   quote: z.string().trim().max(2000).nullish(),
   /** Edit / regenerate: this message and everything after it are replaced. */
   replaceFromMessageId: z.string().uuid().nullish(),
+  /** A new chat with a fixed name (the AI Reporting page). */
+  title: z.string().trim().max(80).nullish(),
 });
 
 const json = (status: number, message: string) => Response.json({ error: message }, { status });
@@ -46,7 +48,7 @@ export async function POST(request: Request) {
   if (!perMinute) return json(429, "You're asking very quickly. Please wait a few seconds and try again.");
   if (!perDay) return json(429, "Daily question limit reached. Please try again tomorrow.");
   if (body.conversationId && !existing) return json(404, "This chat no longer exists.");
-  const conversation = existing ?? (await prisma.aiConversation.create({ data: { ...owner, title: "New chat" }, select: { id: true, title: true } }));
+  const conversation = existing ?? (await prisma.aiConversation.create({ data: { ...owner, title: body.title || "New chat" }, select: { id: true, title: true } }));
   const conversationId = conversation.id;
 
   if (body.replaceFromMessageId) {

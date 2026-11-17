@@ -106,8 +106,14 @@ export function AiAssistant({ chat = false }: { chat?: boolean }) {
   return (
     <>
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={openSummary} className={buttonClass("primary", "md")}><Sparkles className="size-4" aria-hidden /> AI Summary</button>
-        {chat && <Link href="/app/assistant" className={buttonClass("secondary", "md")}><MessageSquareText className="size-4" aria-hidden /> AI reporting</Link>}
+        {chat ? (
+          <>
+            <Link href="/app/reporting" className={buttonClass("primary", "md")}><Sparkles className="size-4" aria-hidden /> AI Reporting</Link>
+            <Link href="/app/assistant" className={buttonClass("secondary", "md")}><MessageSquareText className="size-4" aria-hidden /> AI Assistant</Link>
+          </>
+        ) : (
+          <button type="button" onClick={openSummary} className={buttonClass("primary", "md")}><Sparkles className="size-4" aria-hidden /> AI Summary</button>
+        )}
       </div>
       <SummaryDialog open={summaryOpen} onClose={() => setSummaryOpen(false)} state={summary} />
     </>

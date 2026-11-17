@@ -6,7 +6,7 @@ import { aiConfig, sheetFor } from "@/lib/ai/config";
 import { AssistantApp } from "./assistant-app";
 import { toView } from "./view";
 
-export const metadata: Metadata = { title: "AI reporting" };
+export const metadata: Metadata = { title: "AI assistant" };
 
 export default async function AssistantPage({ searchParams }: PageProps<"/app/assistant">) {
   const ctx = await requireCapability("assistant.use");
@@ -45,7 +45,8 @@ export default async function AssistantPage({ searchParams }: PageProps<"/app/as
       initialConversations={conversations.map((c) => ({ ...c, updatedAt: c.updatedAt.toISOString() }))}
       initialConversation={initial ? { id: initial.id, title: initial.title, messages: initial.messages.map(toView) } : null}
       suggestions={suggestions}
-      userFirstName={(ctx.employee?.firstName ?? ctx.user.name).split(" ")[0]}
+      userFirstName="Admin"
+      initialQuote={typeof sp.q === "string" ? sp.q.slice(0, 2000) : null}
       firmName={ctx.organization.tradeName}
       modelName={aiConfig().model}
       configured={!!aiConfig().apiKey}

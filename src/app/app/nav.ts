@@ -4,7 +4,8 @@ export type NavItem = { href: string; label: string; icon: string; section: stri
 
 const ITEMS: (NavItem & { cap?: Capability })[] = [
   { href: "/app", label: "Dashboard", icon: "home", section: "Overview", cap: "dashboard.use" },
-  { href: "/app/assistant", label: "AI reporting", icon: "sparkles", section: "Overview", cap: "assistant.use" },
+  { href: "/app/reporting", label: "AI reporting", icon: "chart", section: "Overview", cap: "assistant.use" },
+  { href: "/app/assistant", label: "AI assistant", icon: "sparkles", section: "Overview", cap: "assistant.use" },
   { href: "/app/notifications", label: "Notifications", icon: "bell", section: "Overview" },
   { href: "/app/clients", label: "Clients", icon: "building", section: "Clients", cap: "clients.use" },
   { href: "/app/observations", label: "Client observations", icon: "message", section: "Clients", cap: "observations.use" },

@@ -100,7 +100,8 @@ function groupConversations(list: ConversationSummary[]) {
 
 // ============================================================================ app
 
-export function AssistantApp({ initialConversations, initialConversation, suggestions, userFirstName, firmName, modelName, configured }: {
+export function AssistantApp({ initialConversations, initialConversation, suggestions, userFirstName, firmName, modelName, configured, initialQuote = null }: {
+  initialQuote?: string | null;
   initialConversations: ConversationSummary[];
   initialConversation: { id: string; title: string; messages: ChatMessageView[] } | null;
   suggestions: Suggestion[];
@@ -114,7 +115,7 @@ export function AssistantApp({ initialConversations, initialConversation, sugges
   const [title, setTitle] = useState(initialConversation?.title ?? "New chat");
   const [messages, setMessages] = useState<UiMessage[]>(initialConversation?.messages ?? []);
   const [draft, setDraft] = useState("");
-  const [quote, setQuote] = useState<string | null>(null);
+  const [quote, setQuote] = useState<string | null>(initialQuote);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
