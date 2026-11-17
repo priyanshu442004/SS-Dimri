@@ -166,7 +166,8 @@ export function titleMessages(question: string): ChatMessage[] {
 /** Drops opening process lines the model sometimes writes ("I have what I need. Let me compare…"). */
 export function stripNarration(text: string): string {
   let t = text.trim();
-  const opener = /^(?:(?:ok(?:ay)?|alright|great|now|so),?\s+)?(?:i(?:'ve| have) (?:got |all )?(?:what i need|the (?:key |needed )?(?:figures|data|numbers|details))|let me (?!know)[^.\n]*|i(?:'ll| will) (?:now )?(?:check|look|compare|verify|calculate|pull|fetch)[^.\n]*|now i(?:'ll| will)? [^.\n]*)[.:!…]*\s*/i;
+  // A short opening sentence about the process: "I have all October rows.", "Let me aggregate…", "Now I'll compare…".
+  const opener = /^(?:(?:ok(?:ay)?|alright|great|now|so),?\s+)?(?:i(?:'ve| have) (?:got |now )?(?:what i need|all |the |everything)[^.\n]{0,60}|[^.\n]{0,40}\blet me (?!know)[^.\n]*|i(?:'ll| will) (?:now )?(?:check|look|compare|verify|calculate|pull|fetch|aggregate|sum|add)[^.\n]*|now i(?:'ll| will)? [^.\n]*)[.:!…]+\s*/i;
   for (let i = 0; i < 3; i++) {
     const m = t.match(opener);
     if (!m || m[0].length === t.length) break;

@@ -310,5 +310,7 @@ describe("stripNarration", () => {
     expect(stripNarration("I have what I need. Let me verify the arithmetic:\n\n**Revenue:** ok")).toBe("**Revenue:** ok");
     expect(stripNarration("11 people were late yesterday.")).toBe("11 people were late yesterday.");
     expect(stripNarration("Let me know if you need more.")).toBe("Let me know if you need more.");
+    expect(stripNarration("I have all October rows. Let me aggregate the daily revenue for October.\n\n**₹4.1L** in October.")).toBe("**₹4.1L** in October.");
+    expect(stripNarration("I have bad news on revenue data, sadly none.")).toBe("I have bad news on revenue data, sadly none.");
   });
 });
