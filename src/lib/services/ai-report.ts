@@ -32,7 +32,7 @@ export async function aiReportFirms(): Promise<string[]> {
 }
 
 /** A read context for the scheduled run: the firm's AI Reporting login (an administrator). */
-async function systemContext(organizationId: string): Promise<AppContext> {
+export async function systemContext(organizationId: string): Promise<AppContext> {
   const m = await prisma.organizationMembership.findFirstOrThrow({
     where: { organizationId, status: "ACTIVE", user: { email: { in: [...AI_REPORTING_EMAILS] } } },
     select: {
