@@ -144,6 +144,14 @@ export async function runAgent(
     if (stepText.trim() && !looksUp) { emit({ type: "text", text: "\n\n" }); answer += "\n\n"; }
   }
 
+  // The AI Reporting report: if the model left notes instead of the write-up, ask once more for the text only.
+  if (question.text.startsWith("REPORT REQUEST") && !signal.aborted && !/##\s*360/.test(answer)) {
+    emit({ type: "text_set", text: "" });
+    messages.push({ role: "user", content: "Now write ONLY the final report text in markdown, starting with \"## 360° health check\" (6 one-line bullets: Financial, Client mix, Delivery, Client data flow, People, Team economics), then \"## People insights\" (3–5 bullets) and \"## Key risks & recommended actions\" (4–6 bullets: risk with its number + concrete action). Use the figures already shown. No notes, no working, no preamble." });
+    const step = await streamStep(messages, { signal, maxTokens: 6000, onText: (t) => emit({ type: "text", text: t }) });
+    answer = step.content;
+  }
+
   const cleaned = stripNarration(stripNotes(answer));
   if (cleaned !== answer.trim()) emit({ type: "text_set", text: cleaned });
   return {
