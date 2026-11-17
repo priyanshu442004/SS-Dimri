@@ -25,7 +25,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   clients: "Clients", approvals: "Approvals", new: "New", employees: "Employees", allocations: "Team allocation", tasks: "Tasks",
   attendance: "Attendance", timesheet: "Timesheet", "day-reports": "Day reports", pending: "Pending tracker", reports: "Reports",
   services: "Services & departments", compliances: "Compliance", payroll: "Payroll", import: "Import from Excel", settings: "Settings", notifications: "Notifications",
-  onboarding: "My employee record", profile: "My profile", observations: "Client observations", dues: "Fees & dues", search: "Search", "no-access": "No access", assistant: "AI assistant",
+  onboarding: "My employee record", profile: "My profile", observations: "Client observations", dues: "Fees & dues", search: "Search", "no-access": "No access", assistant: "AI reporting",
 };
 
 // Most-used destinations for the phone tab bar (only those the user can reach are shown).

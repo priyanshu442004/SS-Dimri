@@ -6,7 +6,7 @@ import { aiConfig, sheetFor } from "@/lib/ai/config";
 import { AssistantApp } from "./assistant-app";
 import { toView } from "./view";
 
-export const metadata: Metadata = { title: "AI assistant" };
+export const metadata: Metadata = { title: "AI reporting" };
 
 export default async function AssistantPage({ searchParams }: PageProps<"/app/assistant">) {
   const ctx = await requireCapability("assistant.use");

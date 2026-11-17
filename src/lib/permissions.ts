@@ -175,7 +175,7 @@ export const GRANTABLE_RIGHTS: { capability: Capability; label: string; group: s
   { capability: "timesheet.review", label: "Review timesheets", group: "Timesheet" },
   { capability: "compliance.manage", label: "Manage the compliance tracker", group: "Compliance" },
   { capability: "records.delete", label: "Delete other entries", group: "Other" },
-  { capability: "assistant.use", label: "Use the AI assistant (sees only what their other rights allow)", group: "Other" },
+  { capability: "assistant.use", label: "Use AI reporting (sees only what their other rights allow)", group: "Other" },
 ];
 
 const GRANTABLE = new Set<string>(GRANTABLE_RIGHTS.map((r) => r.capability));
@@ -187,7 +187,12 @@ export type Member = {
   grantedCapabilities?: readonly string[];
   moduleRestricted?: boolean;
   allowedModules?: readonly string[];
+  /** The signed-in login; used for features released to named accounts only. */
+  user?: { email: string };
 };
+
+/** "AI reporting" is released only to these logins for now (the client's demo account). */
+export const AI_REPORTING_EMAILS: readonly string[] = ["demo@gmail.com"];
 
 const isUnrestrictable = (role: Role) => role === "OWNER" || role === "ADMIN";
 
@@ -199,6 +204,7 @@ export function canUseModule(member: Member, module: ModuleKey): boolean {
 
 export function can(who: Role | Member, capability: Capability): boolean {
   const member: Member = typeof who === "string" ? { role: who } : who;
+  if (capability === "assistant.use" && !AI_REPORTING_EMAILS.includes(member.user?.email?.toLowerCase() ?? "")) return false;
   const mod = moduleOf(capability);
   if (mod && member.role !== "CLIENT" && !canUseModule(member, mod)) return false;
   if ((CAPABILITIES[capability] as readonly Role[]).includes(member.role)) return true;

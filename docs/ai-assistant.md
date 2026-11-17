@@ -11,7 +11,7 @@ The model is DeepSeek (`deepseek-v4-pro`, OpenAI-compatible API).
 
 | | Owner / Admin | Manager | Senior | Staff |
 |---|---|---|---|---|
-| Assistant (`assistant.use`) | yes | yes | yes | only if granted |
+| Assistant (`assistant.use`) — **released only to demo@gmail.com for now** (`AI_REPORTING_EMAILS` in permissions.ts) | yes | yes | yes | only if granted |
 | Attendance, tasks, clients, timesheets | yes | yes | yes | — |
 | Payroll for everyone (`payroll_month`) | yes | — | — | — |
 | Salaries (`salary_overview`) | everyone | their team | — | — |

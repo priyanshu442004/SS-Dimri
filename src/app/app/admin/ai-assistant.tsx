@@ -95,7 +95,7 @@ function SummaryDialog({ open, onClose, state }: { open: boolean; onClose: () =>
 
 // ------------------------------------------------------------------ buttons
 
-export function AiAssistant() {
+export function AiAssistant({ chat = false }: { chat?: boolean }) {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const summary = useSummary();
   // The first click generates the report; reopening shows the last one until "Regenerate".
@@ -107,7 +107,7 @@ export function AiAssistant() {
     <>
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={openSummary} className={buttonClass("primary", "md")}><Sparkles className="size-4" aria-hidden /> AI Summary</button>
-        <Link href="/app/assistant" className={buttonClass("secondary", "md")}><MessageSquareText className="size-4" aria-hidden /> AI assistant</Link>
+        {chat && <Link href="/app/assistant" className={buttonClass("secondary", "md")}><MessageSquareText className="size-4" aria-hidden /> AI reporting</Link>}
       </div>
       <SummaryDialog open={summaryOpen} onClose={() => setSummaryOpen(false)} state={summary} />
     </>

@@ -186,7 +186,7 @@ export function AssistantApp({ initialConversations, initialConversation, sugges
   const send = useCallback(async (text: string, opts: { quote?: string | null; replaceFrom?: { messageId: string; index: number } } = {}) => {
     const q = text.trim();
     if (!q || busy) return;
-    if (!configured) { toast("The AI assistant is not configured yet.", "error"); return; }
+    if (!configured) { toast("AI reporting is not configured yet.", "error"); return; }
     const userMsg: UiMessage = { id: tempId(), role: "user", content: q, quote: opts.quote ?? null, blocks: [], followUp: null, status: "done", feedback: null, durationMs: null, createdAt: nowIso(), local: true };
     const draftId = tempId();
     const assistant: UiMessage = { id: draftId, role: "assistant", content: "", quote: null, blocks: [], followUp: null, status: "streaming", feedback: null, durationMs: null, createdAt: nowIso(), streaming: true, tools: [], reasoning: "", local: true };
@@ -705,7 +705,7 @@ function EmptyState({ name, firm, suggestions, onPick, configured }: { name: str
         </div>
       </div>
       {!configured && (
-        <p className="ai-in mt-6 flex items-start gap-2 rounded-xl border border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn"><CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />The assistant is not configured yet. An administrator needs to add the DeepSeek API key on the server.</p>
+        <p className="ai-in mt-6 flex items-start gap-2 rounded-xl border border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn"><CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />AI reporting is not configured yet. An administrator needs to add the DeepSeek API key on the server.</p>
       )}
       {suggestions.length > 0 && (
         <div className="mt-8 grid gap-2.5 sm:grid-cols-2">
