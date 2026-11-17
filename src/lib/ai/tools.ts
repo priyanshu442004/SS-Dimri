@@ -6,7 +6,7 @@ import { addDays, dateOnly, formatTime, isoDateInTz, toIsoDate } from "@/lib/dat
 import { getPolicy } from "@/lib/services/office-rules";
 import { MAX_RANGE_DAYS, teamAttendanceRows, type AttendanceFilter } from "@/lib/services/attendance";
 import { payrollForMonth, salaryOverview } from "@/lib/services/payroll";
-import { blockSchema, type Block } from "./blocks";
+import { blockSchema, type Block, type BlockFormat } from "./blocks";
 import { QueryError, runDbQuery, type DbQueryInput } from "./db-query";
 import { describeSheet, readSheet } from "./sheet";
 import { sheetFor } from "./config";
@@ -339,7 +339,18 @@ function parseBlock(name: string, args: Record<string, unknown>): Block {
   const raw = name === "show_kpis" ? { type: "kpis", ...args } : name === "show_chart" ? { type: "chart", ...args } : { type: "table", ...args };
   const parsed = blockSchema.safeParse(raw);
   if (!parsed.success) throw new QueryError(`Invalid ${name} input: ${parsed.error.issues.slice(0, 4).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}. Fix and call again.`);
-  return parsed.data;
+  const block = parsed.data;
+  if (block.type === "kpis") for (const k of block.items) if (!k.format && typeof k.value === "number") k.format = guessFormat(`${k.label} ${k.hint ?? ""}`, k.value);
+  return block;
+}
+
+/** A KPI sent without a format: money, % or a plain count, judged from its label (so 792800 shows as ₹7,92,800). */
+export function guessFormat(text: string, value: number): BlockFormat {
+  const t = text.toLowerCase();
+  if (/₹|hourly|per hour|\/hr/.test(t)) return "inr";
+  if (/%|percent|share|ratio|rate|utili[sz]ation/.test(t)) return "percent";
+  if (/revenue|cost|salar|payout|net pay|fee|profit|margin|amount|billed|earned|income|expense|price|loss|outstanding|fines?/.test(t)) return "inr";
+  return Number.isInteger(value) ? "count" : "decimal";
 }
 
 export async function runTool(ctx: AppContext, name: string, args: Record<string, unknown>): Promise<ToolOutcome> {

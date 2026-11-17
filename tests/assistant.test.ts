@@ -281,3 +281,14 @@ describe("agent", () => {
     expect(r.content).toBe("I can't share Aadhaar numbers.");
   });
 });
+
+describe("KPI format guess", () => {
+  it("reads money, percent and counts from the label", async () => {
+    const { guessFormat } = await import("@/lib/ai/tools");
+    expect(guessFormat("Total revenue earned", 792800)).toBe("inr");
+    expect(guessFormat("Margin % ", 88.8)).toBe("percent");
+    expect(guessFormat("Avg hourly rate (sheet)", 489)).toBe("inr");
+    expect(guessFormat("Attendance rate", 92.6)).toBe("percent");
+    expect(guessFormat("Overdue tasks", 4)).toBe("count");
+  });
+});
