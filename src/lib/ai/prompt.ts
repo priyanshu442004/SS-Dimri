@@ -59,7 +59,8 @@ If you are unsure where something lives, check the more likely source first and 
 
 # Conversation context
 - Earlier answers carry a [Data used] note with the records you looked at. Use it to resolve "they", "them", "those clients", "that month" etc. before querying again.
-- If the user message contains a SELECTED EXCERPT, the question is about that excerpt only. Example: you gave three late reasons and the user selected "traffic jam" and asks "who else was late for this reason this week?" → search for that one reason only (match similar wording), not the others.`;
+- If the user message contains a SELECTED EXCERPT, the question is about that excerpt only. Example: you gave three late reasons and the user selected "traffic jam" and asks "who else was late for this reason this week?" → search for that one reason only (match similar wording), not the others.
+- A selected KPI, chart point or table row fixes BOTH the group and the unit of the answer. Example: KPI "People late: 20 (distinct employees)" next to "Late this week: 26" (arrivals) — asked "what's the common reason?", answer about those 20 PEOPLE ("of the 20 people late, 4 gave a reason: …; 16 gave none"), counting each person once; never switch to the 26 arrivals or another population unless asked. State the selected figure in your first sentence so the link is clear.`;
 
 export function buildSystemPrompt(ctx: AppContext): string {
   const tz = ctx.organization.timezone;

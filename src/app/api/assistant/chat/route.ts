@@ -70,7 +70,8 @@ export async function POST(request: Request) {
     .slice(0, 24)
     .reverse()
     .map(({ id: _id, ...m }) => ({ ...m, role: m.role === "user" ? "user" : "assistant" }));
-  const isFirst = history.length === 0;
+  // Titled from the first real question: a chat that opened with "Hi" is still "New chat" and gets named later.
+  const isFirst = history.length === 0 || conversation.title === "New chat";
   // Moves the chat to the top of the history; nothing waits for it.
   if (existing) void prisma.aiConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } }).catch(() => undefined);
 
@@ -86,6 +87,7 @@ export async function POST(request: Request) {
       const partial: { text: string; blocks: unknown[]; followUp: string | null } = { text: "", blocks: [], followUp: null };
       const emit = (e: StreamEvent) => {
         if (e.type === "text") partial.text += e.text;
+        else if (e.type === "text_set") partial.text = e.text;
         else if (e.type === "block") partial.blocks.push(e.block);
         else if (e.type === "followup") partial.followUp = e.text;
         if (!open) return;
@@ -101,6 +103,7 @@ export async function POST(request: Request) {
       const titleJob = isFirst
         ? quickCompletion(titleMessages(body.text), 24, AbortSignal.timeout(15_000)).then(async (t) => {
             const title = (t ?? body.text).replace(/^["'\s]+|["'.\s]+$/g, "").slice(0, 80) || "New chat";
+            if (title.toLowerCase() === "new chat") return;
             await prisma.aiConversation.update({ where: { id: conversationId }, data: { title } });
             emit({ type: "title", title });
           }).catch(() => undefined)

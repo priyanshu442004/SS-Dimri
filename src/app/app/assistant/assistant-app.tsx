@@ -255,6 +255,10 @@ export function AssistantApp({ initialConversations, initialConversation, sugges
               textBuf.current += e.text;
               if (!rafRef.current) rafRef.current = requestAnimationFrame(flushText);
               break;
+            case "text_set":
+              flushText();
+              patchLast((m) => ({ ...m, content: e.text }));
+              break;
             case "block":
               flushText();
               patchLast((m) => ({ ...m, blocks: [...m.blocks, e.block] }));

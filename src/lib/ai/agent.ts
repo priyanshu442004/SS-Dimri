@@ -78,9 +78,11 @@ export async function runAgent(
       onReasoning: (t) => emit({ type: "reasoning", text: t }),
     });
     reasoning = step.reasoning;
-    answer += step.content;
-
-    if (!step.toolCalls.length) break;
+    if (!step.toolCalls.length) { answer += step.content; break; }
+    // Text written in a step that still looks data up is narration ("Let me check…"), not the answer: drop it.
+    const looksUp = step.toolCalls.some((c) => !PRESENTATION.has(c.function.name));
+    if (!looksUp) answer += step.content;
+    else if (stepText.trim()) emit({ type: "text_set", text: answer });
 
     messages.push({ role: "assistant", content: step.content || null, tool_calls: step.toolCalls, ...(cfg.thinking ? { reasoning_content: step.reasoning } : {}) });
     const onlyPresentation = step.toolCalls.every((c) => PRESENTATION.has(c.function.name));
@@ -116,8 +118,7 @@ export async function runAgent(
     // Answer text already written alongside the visuals: done, no extra round trip.
     if (onlyPresentation && stepText.trim() && !presentationFailed) break;
     if (signal.aborted) break;
-    if (stepText.trim()) emit({ type: "text", text: "\n\n" });
-    if (stepText.trim()) answer += "\n\n";
+    if (stepText.trim() && !looksUp) { emit({ type: "text", text: "\n\n" }); answer += "\n\n"; }
   }
 
   return {
@@ -133,7 +134,7 @@ export async function runAgent(
 /** A 3–6 word title for a new chat, made from the first question (runs alongside the answer). */
 export function titleMessages(question: string): ChatMessage[] {
   return [
-    { role: "system", content: "Write a 2–6 word title for a chat that starts with the user's question. Title case, no quotes, no trailing punctuation. Reply with the title only." },
+    { role: "system", content: "Write a 2–6 word title for a chat that starts with the user's question. Title case, no quotes, no trailing punctuation. Reply with the title only. If the message is only a greeting, thanks or small talk with no real question, reply exactly: New chat" },
     { role: "user", content: question.slice(0, 500) },
   ];
 }

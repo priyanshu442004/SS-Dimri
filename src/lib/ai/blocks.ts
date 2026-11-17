@@ -59,6 +59,8 @@ export type StreamEvent =
   | { type: "tool"; id: string; name: string; label: string; state: "running" | "done" | "error" }
   | { type: "reasoning"; text: string }
   | { type: "text"; text: string }
+  /** Replaces the answer text shown so far (drops "Let me check…" lines written before a data lookup). */
+  | { type: "text_set"; text: string }
   | { type: "block"; block: Block }
   | { type: "followup"; text: string }
   | { type: "title"; title: string }
