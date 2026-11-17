@@ -292,3 +292,13 @@ describe("KPI format guess", () => {
     expect(guessFormat("Overdue tasks", 4)).toBe("count");
   });
 });
+
+describe("stripNarration", () => {
+  it("drops opening process lines only", async () => {
+    const { stripNarration } = await import("@/lib/ai/agent");
+    expect(stripNarration("I have the key figures. Let me compare the totals across tabs.\n\n**Verdict: no.**")).toBe("**Verdict: no.**");
+    expect(stripNarration("I have what I need. Let me verify the arithmetic:\n\n**Revenue:** ok")).toBe("**Revenue:** ok");
+    expect(stripNarration("11 people were late yesterday.")).toBe("11 people were late yesterday.");
+    expect(stripNarration("Let me know if you need more.")).toBe("Let me know if you need more.");
+  });
+});

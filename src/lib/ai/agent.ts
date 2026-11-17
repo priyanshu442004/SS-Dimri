@@ -121,8 +121,10 @@ export async function runAgent(
     if (stepText.trim() && !looksUp) { emit({ type: "text", text: "\n\n" }); answer += "\n\n"; }
   }
 
+  const cleaned = stripNarration(answer);
+  if (cleaned !== answer.trim()) emit({ type: "text_set", text: cleaned });
   return {
-    content: answer.trim(),
+    content: cleaned,
     blocks,
     followUp,
     context: contextNotes.join("\n").slice(0, 6000),
@@ -137,4 +139,16 @@ export function titleMessages(question: string): ChatMessage[] {
     { role: "system", content: "Write a 2–6 word title for a chat that starts with the user's question. Title case, no quotes, no trailing punctuation. Reply with the title only. If the message is only a greeting, thanks or small talk with no real question, reply exactly: New chat" },
     { role: "user", content: question.slice(0, 500) },
   ];
+}
+
+/** Drops opening process lines the model sometimes writes ("I have what I need. Let me compare…"). */
+export function stripNarration(text: string): string {
+  let t = text.trim();
+  const opener = /^(?:(?:ok(?:ay)?|alright|great|now|so),?\s+)?(?:i(?:'ve| have) (?:got |all )?(?:what i need|the (?:key |needed )?(?:figures|data|numbers|details))|let me (?!know)[^.\n]*|i(?:'ll| will) (?:now )?(?:check|look|compare|verify|calculate|pull|fetch)[^.\n]*|now i(?:'ll| will)? [^.\n]*)[.:!…]*\s*/i;
+  for (let i = 0; i < 3; i++) {
+    const m = t.match(opener);
+    if (!m || m[0].length === t.length) break;
+    t = t.slice(m[0].length).trimStart();
+  }
+  return t;
 }
