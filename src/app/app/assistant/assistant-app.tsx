@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { clsx } from "clsx";
+import { createPortal } from "react-dom";
 import {
   ArrowDown, ArrowUp, Check, ChevronDown, CircleAlert, Copy, Database, FileSpreadsheet, History, Loader2, MessageSquarePlus, MoreHorizontal, PanelLeftClose,
   PanelLeftOpen, Pencil, Pin, PinOff, Quote, RefreshCw, Search, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X,
@@ -594,24 +595,28 @@ function HistoryItem({ c, active, onOpen, onRenamed, onPinned, onDeleted }: {
   const [confirm, setConfirm] = useState(false);
   const [value, setValue] = useState(c.title);
   const menuRef = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
 
   const open = !!menu;
   useEffect(() => {
     if (!open) return;
-    const close = (e: Event) => { if (!(e.target instanceof Node) || !menuRef.current?.contains(e.target)) { setMenu(null); setConfirm(false); } };
+    const close = (e: Event) => { if (!(e.target instanceof Node) || (!menuRef.current?.contains(e.target) && !popRef.current?.contains(e.target))) { setMenu(null); setConfirm(false); } };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setMenu(null); setConfirm(false); } };
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", onKey);
+    const onScroll = (e: Event) => { if (!(e.target instanceof Node) || !popRef.current?.contains(e.target)) { setMenu(null); setConfirm(false); } };
     window.addEventListener("resize", close);
-    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", onKey); window.removeEventListener("resize", close); };
+    window.addEventListener("scroll", onScroll, true); // the menu is pinned to the page, so close it when the list scrolls
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", onKey); window.removeEventListener("resize", close); window.removeEventListener("scroll", onScroll, true); };
   }, [open]);
 
-  // The menu floats above the list (fixed position), so it is never clipped by the scrolling history.
+  // The menu is portalled to <body> with a fixed position: inside the page an animated (transformed)
+  // ancestor would make "fixed" relative to it, pushing the menu right and widening the list.
   function toggleMenu(e: React.MouseEvent<HTMLButtonElement>) {
     if (menu) { setMenu(null); setConfirm(false); return; }
     const r = e.currentTarget.getBoundingClientRect();
     const height = 120;
-    setMenu({ top: r.bottom + 4 + height > window.innerHeight ? Math.max(8, r.top - height - 4) : r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ top: r.bottom + 4 + height > window.innerHeight ? Math.max(8, r.top - height - 4) : r.bottom + 4, left: Math.min(window.innerWidth - 184, Math.max(8, r.right - 176)) });
   }
 
   async function saveTitle() {
@@ -655,8 +660,8 @@ function HistoryItem({ c, active, onOpen, onRenamed, onPinned, onDeleted }: {
         <button type="button" onClick={toggleMenu} className={clsx("rounded-md p-1 text-muted transition-opacity hover:bg-surface hover:text-ink", open || active ? "opacity-100" : "opacity-0 focus:opacity-100 group-hover:opacity-100")} aria-label={`Options for ${c.title}`} aria-expanded={open} aria-haspopup="menu">
           <MoreHorizontal className="size-4" />
         </button>
-        {menu && (
-          <div className="ai-pop fixed z-50 w-44 rounded-xl border border-line bg-surface p-1 text-sm shadow-xl" style={{ top: menu.top, left: menu.left }} role="menu">
+        {menu && createPortal(
+          <div ref={popRef} className="ai-pop fixed z-50 w-44 rounded-xl border border-line bg-surface p-1 text-sm shadow-xl" style={{ top: menu.top, left: menu.left }} role="menu">
             {confirm ? (
               <div className="p-2">
                 <p className="text-xs text-muted">Delete this chat for good?</p>
@@ -672,7 +677,8 @@ function HistoryItem({ c, active, onOpen, onRenamed, onPinned, onDeleted }: {
                 <MenuItem icon={<Trash2 className="size-3.5" />} danger onClick={() => setConfirm(true)}>Delete</MenuItem>
               </>
             )}
-          </div>
+          </div>,
+          document.body,
         )}
       </div>
     </li>
