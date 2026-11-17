@@ -620,7 +620,7 @@ function HistoryItem({ c, active, onOpen, onRenamed, onPinned, onDeleted }: {
     if (!t || t === c.title) { setValue(c.title); return; }
     onRenamed(t);
     const r = await renameConversation(c.id, t);
-    if (!r.ok) { toast(r.message, "error"); onRenamed(c.title); setValue(c.title); }
+    if (!r.ok) { toast(r.message, "error"); onRenamed(c.title); setValue(c.title); } else toast("Chat renamed.", "success");
   }
   async function togglePin() {
     setMenu(null);
