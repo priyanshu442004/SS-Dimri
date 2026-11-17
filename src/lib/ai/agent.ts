@@ -2,7 +2,7 @@ import "server-only";
 import type { AppContext } from "@/lib/session";
 import type { Block, StreamEvent } from "./blocks";
 import { aiConfig } from "./config";
-import { streamStep, type ChatMessage } from "./deepseek";
+import { streamStep, type ChatMessage, type ToolCall } from "./deepseek";
 import { buildSystemPrompt } from "./prompt";
 import { runTool, toolSpecs, toolLabel } from "./tools";
 
@@ -18,28 +18,50 @@ export function userTurnText(text: string, quote?: string | null): string {
   return `SELECTED EXCERPT (the user highlighted this part of an earlier answer; the question is about it only):\n"""\n${quote}\n"""\n\nQuestion: ${text}`;
 }
 
-function blockSummary(blocks: unknown): string {
-  if (!Array.isArray(blocks) || !blocks.length) return "";
-  const parts = (blocks as Block[]).map((b) => {
-    if (b.type === "kpis") return `KPIs: ${b.items.map((i) => `${i.label} = ${i.value}`).join("; ")}`;
-    if (b.type === "chart") return `${b.chart} chart "${b.title}": ${b.labels.slice(0, 20).map((l, i) => `${l} ${b.series.map((s) => s.values[i]).join("/")}`).join(", ")}`;
-    return `table "${b.title ?? ""}" (${b.columns.join(", ")}): ${b.rows.slice(0, 15).map((r) => r.join(" | ")).join("; ")}`;
-  });
-  return `\n[Shown with this answer] ${parts.join(" || ")}`.slice(0, 2500);
+/** One stored data note "name(args) → result" back into a tool call and its result. */
+function noteToCall(note: string, id: string): { call: ToolCall; result: string } | null {
+  const m = note.match(/^([a-z_]+)\((.*?)\) → ([\s\S]*)$/);
+  if (!m) return null;
+  let args = m[2];
+  try { JSON.parse(args); } catch { args = JSON.stringify({ summary: args }); }
+  return { call: { id, type: "function", function: { name: m[1], arguments: args } }, result: m[3] };
 }
 
-/** Past turns → model messages. The latest few answers keep their data notes for follow-ups. */
+/**
+ * Past turns → model messages. The latest few answers are replayed as real tool calls and results
+ * (the data looked up, then the cards / charts shown), never as text notes inside the answer: text
+ * notes taught the model to write fake "[Data used]" lines and invent figures instead of looking.
+ */
 export function historyMessages(history: HistoryMessage[], thinking: boolean): ChatMessage[] {
   const recent = history.slice(-16);
   const assistantIdx = recent.map((m, i) => (m.role === "assistant" ? i : -1)).filter((i) => i >= 0);
   const keepContextFrom = assistantIdx.at(-4) ?? 0;
-  return recent.map((m, i): ChatMessage => {
-    if (m.role === "user") return { role: "user", content: userTurnText(m.content, m.quote) };
-    const extra = i >= keepContextFrom ? `${blockSummary(m.blocks)}${m.context ? `\n[Data used] ${m.context}` : ""}` : "";
-    const msg: ChatMessage = { role: "assistant", content: `${m.content || "(answer shown as visuals)"}${extra}` };
-    if (thinking) msg.reasoning_content = m.reasoning ?? "";
-    return msg;
+  const out: ChatMessage[] = [];
+  recent.forEach((m, i) => {
+    if (m.role === "user") { out.push({ role: "user", content: userTurnText(m.content, m.quote) }); return; }
+    const reasoning = thinking ? { reasoning_content: m.reasoning ?? "" } : {};
+    if (i >= keepContextFrom) {
+      const replay: { call: ToolCall; result: string }[] = [];
+      (m.context ?? "").split("\n").filter(Boolean).forEach((note, j) => { const r = noteToCall(note, `h${i}_${j}`); if (r) replay.push(r); });
+      if (Array.isArray(m.blocks)) (m.blocks as Block[]).forEach((b, j) => {
+        const { type, ...args } = b;
+        const name = type === "kpis" ? "show_kpis" : type === "chart" ? "show_chart" : "show_table";
+        replay.push({ call: { id: `h${i}_b${j}`, type: "function", function: { name, arguments: JSON.stringify(args).slice(0, 4000) } }, result: "Shown to the user." });
+      });
+      if (replay.length) {
+        out.push({ role: "assistant", content: null, tool_calls: replay.map((r) => r.call), ...reasoning });
+        for (const r of replay) out.push({ role: "tool", tool_call_id: r.call.id, content: r.result });
+      }
+    }
+    out.push({ role: "assistant", content: stripNotes(m.content) || "(answer shown as visuals)", ...reasoning });
   });
+  return out;
+}
+
+/** Removes any "[Data used]" / "[Shown with this answer]" note text from an answer (and everything after it). */
+export function stripNotes(text: string): string {
+  const i = text.search(/\n?\s*\[(?:Data used|Shown with this answer)\]/);
+  return (i < 0 ? text : text.slice(0, i)).trim();
 }
 
 function compactForContext(name: string, args: Record<string, unknown>, result: unknown): string {
@@ -121,7 +143,7 @@ export async function runAgent(
     if (stepText.trim() && !looksUp) { emit({ type: "text", text: "\n\n" }); answer += "\n\n"; }
   }
 
-  const cleaned = stripNarration(answer);
+  const cleaned = stripNarration(stripNotes(answer));
   if (cleaned !== answer.trim()) emit({ type: "text_set", text: cleaned });
   return {
     content: cleaned,

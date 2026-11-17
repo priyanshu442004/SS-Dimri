@@ -234,14 +234,24 @@ describe("agent", () => {
     expect(t.endsWith("Question: who else was late for this reason this week?")).toBe(true);
   });
 
-  it("keeps data notes of recent answers so 'they' can be resolved", () => {
+  it("replays recent answers' data as real tool calls, never as text notes in the answer", () => {
     const msgs = historyMessages([
       { role: "user", content: "Who was late yesterday?" },
-      { role: "assistant", content: "Ravi and Neha were late.", context: 'attendance_report → [{"name":"Ravi Kumar","lateReason":"Traffic"}]', blocks: [{ type: "kpis", items: [{ label: "Late", value: 2 }] }] },
+      { role: "assistant", content: "Ravi and Neha were late.", context: 'attendance_report({"from":"2026-11-16"}) → [{"name":"Ravi Kumar","lateReason":"Traffic"}]', blocks: [{ type: "kpis", items: [{ label: "Late", value: 2 }] }] },
     ], false);
-    expect(msgs[1].content).toContain("[Data used]");
-    expect(msgs[1].content).toContain("Ravi Kumar");
-    expect(msgs[1].content).toContain("Late = 2");
+    const calls = msgs[1] as { role: string; tool_calls?: { function: { name: string; arguments: string } }[] };
+    expect(calls.role).toBe("assistant");
+    expect(calls.tool_calls?.map((c) => c.function.name)).toEqual(["attendance_report", "show_kpis"]);
+    expect(calls.tool_calls?.[0].function.arguments).toBe('{"from":"2026-11-16"}');
+    expect(msgs[2]).toMatchObject({ role: "tool", content: '[{"name":"Ravi Kumar","lateReason":"Traffic"}]' });
+    expect(msgs[3]).toMatchObject({ role: "tool", content: "Shown to the user." });
+    expect(msgs[4]).toEqual({ role: "assistant", content: "Ravi and Neha were late." });
+    expect(JSON.stringify(msgs)).not.toContain("[Data used]");
+  });
+
+  it("strips copied note text from an answer", async () => {
+    const { stripNotes } = await import("@/lib/ai/agent");
+    expect(stripNotes("Top client is X.\n[Shown with this answer] KPIs: …\n[Data used] read_sheet(…)")).toBe("Top client is X.");
   });
 
   it("runs data tools in parallel, then finishes in the same step as the visuals", async () => {
