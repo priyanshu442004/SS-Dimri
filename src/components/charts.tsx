@@ -67,11 +67,13 @@ export function ChartCard({ title, subtitle, table, children, action }: {
   );
 }
 
+/** No figures: the chart keeps its full size (a white area) with the message in the middle. */
 function Empty({ children = "No data for this period yet." }: { children?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center py-6 text-center">
-      <EmptyArt kind="chart" className="h-14 w-16 opacity-80" />
-      <p className="mt-2 text-sm text-muted">{children}</p>
+    <div className="flex min-h-[200px] w-full flex-col items-center justify-center rounded-lg border border-dashed border-line bg-surface px-4 text-center" role="status">
+      <EmptyArt kind="chart" className="h-12 w-14 opacity-80" />
+      <p className="mt-2 text-sm font-semibold text-ink">No Data Available</p>
+      <p className="mt-0.5 text-xs text-muted">{children}</p>
     </div>
   );
 }

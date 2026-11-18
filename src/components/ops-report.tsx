@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { clsx } from "clsx";
-import { Sparkles } from "lucide-react";
+import { Inbox, Sparkles } from "lucide-react";
 import type { Kpi, OpsSummary } from "@/lib/services/ops-summary";
 
 // The management report in the client's "Daily AI Summary Report" format (17 Nov 2026): a navy band,
@@ -94,10 +94,20 @@ function KpiTile({ k, animate, compare, i, busy }: { k: Kpi; animate: boolean; c
   );
 }
 
+/** Print: cards grow to fit (nothing is cut off); screen: fixed height, the card scrolls inside. */
+const PrintCtx = createContext(false);
+
+/**
+ * Every section has the same structure (client feedback, 18 Nov 2026): a title bar, then one white
+ * card of a fixed height for its row — a short table leaves white space below, it never shrinks.
+ */
+const HEIGHT = { a: 300, b: 400, c: 300, d: 320 } as const;
+type Height = keyof typeof HEIGHT;
+
 function Section({ title, badge, children, className, i = 0, action }: { title: string; badge?: ReactNode; children: ReactNode; className?: string; i?: number; action?: ReactNode }) {
   return (
-    <section className={clsx("ops-rise min-w-0 break-inside-avoid", className)} style={{ "--d": `${60 + i * 30}ms` } as CSSProperties}>
-      <header className="mb-2 flex items-center gap-2 border-b-2 border-night pb-1">
+    <section className={clsx("ops-rise flex min-w-0 flex-col break-inside-avoid", className)} style={{ "--d": `${60 + i * 30}ms` } as CSSProperties}>
+      <header className="mb-2 flex min-h-7 items-center gap-2 border-b-2 border-night pb-1">
         <h2 className="text-[15px] font-bold text-night dark:text-ink">{title}</h2>
         {badge}
         <span className="ml-auto">{action}</span>
@@ -107,25 +117,51 @@ function Section({ title, badge, children, className, i = 0, action }: { title: 
   );
 }
 
+function Panel({ h, children, footer }: { h: Height; children: ReactNode; footer?: ReactNode }) {
+  const print = useContext(PrintCtx);
+  return (
+    <div className="flex flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-[0_1px_2px_rgb(15_29_51/.05)]" style={print ? { minHeight: HEIGHT[h] } : { height: HEIGHT[h] }}>
+      <div className={clsx("flex min-h-0 flex-1 flex-col", !print && "overflow-auto")}>{children}</div>
+      {footer && <div className="shrink-0 border-t border-line bg-subtle/70 px-3 py-1.5 text-[12px]">{footer}</div>}
+    </div>
+  );
+}
+
+/** The empty state inside a card: the card keeps its size, the message sits in the middle. */
+function NoData({ note }: { note?: string }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-4 py-6 text-center" role="status">
+      <span aria-hidden className="grid size-10 place-items-center rounded-full bg-subtle text-muted"><Inbox className="size-5" /></span>
+      <p className="text-[13px] font-semibold text-ink">No Data Available</p>
+      {note && <p className="max-w-64 text-[12px] text-muted">{note}</p>}
+    </div>
+  );
+}
+
 const Badge = ({ children, tone = "ai" }: { children: ReactNode; tone?: "ai" | "est" }) => (
   <span className={clsx("rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide", tone === "ai" ? "bg-marigold text-night" : "bg-marigold-soft text-warn")}>{children}</span>
 );
 
 /** `narrow`: a table in a third of the page wraps its text instead of scrolling sideways. */
-function Grid({ head, rows, total, align, empty = "Nothing to show.", narrow = false }: { head: string[]; rows: ReactNode[][]; total?: ReactNode[]; align?: ("l" | "r" | "c")[]; empty?: string; narrow?: boolean }) {
+function Grid({ head, rows, total, align, empty, narrow = false, h, footer }: {
+  head: string[]; rows: ReactNode[][]; total?: ReactNode[]; align?: ("l" | "r" | "c")[]; empty?: string; narrow?: boolean; h: Height; footer?: ReactNode;
+}) {
   const cls = (i: number) => (align?.[i] === "r" ? "text-right" : align?.[i] === "c" ? "text-center" : "text-left");
   return (
-    <div className="overflow-x-auto">
-      <table className={clsx("w-full border-collapse text-[12.5px]", narrow ? "min-w-0" : "min-w-[420px]")}>
-        <thead><tr className="bg-night text-paper">{head.map((h, i) => <th key={h} scope="col" className={clsx("px-2 py-1.5 font-semibold", cls(i))}>{h}</th>)}</tr></thead>
-        <tbody>
-          {rows.length === 0 ? <tr><td colSpan={head.length} className="px-2 py-3 text-center text-muted">{empty}</td></tr> : rows.map((r, n) => (
-            <tr key={n} className="border-b border-line/70 odd:bg-surface even:bg-paper/60">{r.map((c, i) => <td key={i} className={clsx("px-2 py-1.5 align-top", cls(i))}>{c}</td>)}</tr>
-          ))}
-          {total && rows.length > 0 && <tr className="bg-subtle font-bold">{total.map((c, i) => <td key={i} className={clsx("whitespace-nowrap px-2 py-1.5", cls(i))}>{c}</td>)}</tr>}
-        </tbody>
+    <Panel h={h} footer={footer}>
+      <table className={clsx("w-full border-collapse text-[12.5px]", narrow ? "min-w-0" : "min-w-[440px]")}>
+        <thead className="sticky top-0 z-[1]"><tr className="bg-night text-paper">{head.map((x, i) => <th key={x} scope="col" className={clsx("px-2.5 py-2 text-[12px] font-semibold leading-tight", cls(i))}>{x}</th>)}</tr></thead>
+        {rows.length > 0 && (
+          <tbody>
+            {rows.map((r, n) => (
+              <tr key={n} className="border-b border-line/70 odd:bg-surface even:bg-paper/50">{r.map((c, i) => <td key={i} className={clsx("px-2.5 py-1.5 align-top leading-snug", cls(i))}>{c}</td>)}</tr>
+            ))}
+            {total && <tr className="border-t-2 border-line bg-subtle font-bold">{total.map((c, i) => <td key={i} className={clsx("whitespace-nowrap px-2.5 py-1.5", cls(i))}>{c}</td>)}</tr>}
+          </tbody>
+        )}
       </table>
-    </div>
+      {rows.length === 0 && <NoData note={empty} />}
+    </Panel>
   );
 }
 
@@ -215,6 +251,7 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
   const k = data.period; // re-key sections so a new period animates in
 
   return (
+    <PrintCtx.Provider value={print}>
     <div ref={ref} className={clsx("relative", busy && "pointer-events-none", print && "ops-static")} aria-busy={busy}>
       {/* Band */}
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 rounded-t-xl bg-night px-5 py-3 text-paper">
@@ -231,25 +268,31 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
       {/* Loading bar while another period is fetched */}
       <div className="relative h-0.5 overflow-hidden bg-transparent" aria-hidden>{busy && <span className="ops-loading-bar" />}</div>
 
-      <div className={clsx("space-y-5 rounded-b-xl border border-t-0 border-line bg-paper/40 p-4 transition-opacity duration-300", busy && "opacity-60")}>
+      <div className={clsx("space-y-6 rounded-b-xl border border-t-0 border-line bg-paper/40 p-4 transition-opacity duration-300 sm:p-5", busy && "opacity-60")}>
         {/* KPI tiles */}
         <div key={`k-${k}`} className={clsx("grid gap-2", print ? "grid-cols-4" : "grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8")}>
           {data.kpis.map((kpi, i) => <KpiTile key={kpi.key} k={kpi} animate={animate} compare={data.compareLabel} i={i} busy={busy} />)}
         </div>
 
         {/* Summary + attendance by role */}
-        <div key={`a-${k}`} className="grid gap-5 lg:grid-cols-[1.45fr_1fr]">
+        <div key={`a-${k}`} className="grid items-start gap-5 lg:grid-cols-[1.45fr_1fr]">
           <Section title={ai ? "AI executive summary" : "Executive summary"} badge={ai ? <Badge>AI-generated</Badge> : null} i={0}>
-            <ul className="divide-y divide-line rounded-md border border-line bg-surface text-[13px]">
-              {summary.map((s, i) => (
-                <li key={s.label} className={clsx("px-3 py-1.5", i === 1 && "bg-danger-bg/60")}>
-                  <strong className="text-ink">{s.label}:</strong> <span className="text-ink/90">{s.text}</span>
-                </li>
-              ))}
-            </ul>
+            <Panel h="a">
+              {summary.length === 0 ? <NoData /> : (
+                <ul className="divide-y divide-line text-[13px]">
+                  {summary.map((s, i) => (
+                    <li key={s.label} className={clsx("px-3 py-2 leading-snug", i === 1 && "bg-danger-bg/60")}>
+                      <strong className="text-ink">{s.label}:</strong> <span className="text-ink/90">{s.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Panel>
           </Section>
           <Section title={`Attendance by role – ${data.singleDay ? (today ? "today" : "yesterday") : data.periodLabel.toLowerCase()}`} i={1}>
             <Grid
+              h="a"
+              empty="No staff on record for this period."
               head={["Role", "Staff", "On time", "Late", "Leave", "Offsite"]}
               align={["l", "l", "c", "c", "c", "c"]}
               rows={cap(data.attendanceByRole, 6).map((r) => [r.role, <span key="s" className="text-muted">{r.staff}</span>, r.onTime, r.late, r.leave, r.offsite])}
@@ -263,21 +306,23 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
         </div>
 
         {/* Workload + urgent cases */}
-        <div key={`b-${k}`} className="grid gap-5 lg:grid-cols-2">
+        <div key={`b-${k}`} className="grid items-start gap-5 lg:grid-cols-2">
           <Section title={`Team workload – ${data.singleDay ? (today ? "today" : "yesterday") : data.periodLabel.toLowerCase()}`} i={2}>
             <Grid
-              head={["Member", "Role", "Status", "Assigned", "Done", "Open", "Overdue", data.compareLabel.replace("vs ", "vs ")]}
+              h="b"
+              head={["Member", "Role", "Status", "Assigned", "Done", "Open", "Overdue", data.compareLabel]}
               align={["l", "l", "l", "c", "c", "c", "c", "c"]}
               rows={cap(data.workload, 9).map((r) => [
                 <strong key="m">{r.member}</strong>, <span key="r" className="text-muted">{r.role}</span>, <span key="s" className={STATUS_TONE[r.statusTone]}>{r.status}</span>,
                 r.assigned, r.done, r.open, <span key="o" className={r.overdue ? "font-bold text-danger" : ""}>{r.overdue}</span>, <D key="d" v={r.delta} />,
               ])}
               total={["Total", "", "", data.workloadTotal.assigned, data.workloadTotal.done, data.workloadTotal.open, <span key="o" className="text-danger">{data.workloadTotal.overdue}</span>, <D key="d" v={data.workloadTotal.delta} />]}
-              empty="No open work."
+              empty="No work assigned or open in this period."
             />
           </Section>
           <Section title="Urgent & flagged cases" i={3}>
             <Grid
+              h="b"
               head={["Priority", "Client", "Item", "Due", "Owner", "Issue / action"]}
               rows={cap(data.urgent, 6).map((u) => [
                 <strong key="p" className={PRIORITY_TONE[u.priority]}>{u.priority}</strong>,
@@ -285,65 +330,71 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
                 print ? u.item : <Link key="i" href={u.href} className="hover:underline">{u.item}</Link>,
                 <span key="d" className={u.due.startsWith("Overdue") ? "text-danger" : ""}>{u.due}</span>, u.owner, u.issue,
               ])}
-              empty="Nothing urgent."
+              empty="Nothing urgent or flagged right now."
             />
           </Section>
         </div>
 
         {/* Client pending · late arrivals · offsite */}
-        <div key={`c-${k}`} className="grid gap-5 lg:grid-cols-3">
+        <div key={`c-${k}`} className="grid items-start gap-5 lg:grid-cols-3">
           <Section title="Pending from client side" i={4}>
             <Grid
+              h="c"
               head={["Client", "Items", "Δ", "Age", "Documents awaited"]}
               align={["l", "c", "c", "c", "l"]}
               rows={cap(data.pendingClient, 5).map((r) => [<strong key="c">{r.client}</strong>, r.items, <D key="d" v={r.delta} />, `${r.age} d`, r.awaited])}
-              total={["Total", data.pendingClientTotal.items, <D key="d" v={data.pendingClientTotal.delta} />, "", <span key="n" className="font-normal text-muted">{data.pendingClientTotal.note}</span>]}
               empty="Nothing is waiting on clients."
               narrow
+              footer={<><strong>Total:</strong> {data.pendingClientTotal.items} item{data.pendingClientTotal.items === 1 ? "" : "s"} <D v={data.pendingClientTotal.delta} />{data.pendingClientTotal.note ? <span className="text-muted"> · {data.pendingClientTotal.note}</span> : null}</>}
             />
           </Section>
           <Section title="Late arrivals & reasons" i={5}>
             <Grid
+              h="c"
               head={data.singleDay ? ["Member / role", "In", "Late by", "Reason logged"] : ["Member / role", "Day · in", "Late by", "Reason logged"]}
               align={["l", "c", "c", "l"]}
               rows={cap(data.late, 5).map((r) => [
                 <span key="m"><strong>{r.member}</strong><span className="block text-[11px] text-muted">{r.role}</span></span>,
                 data.singleDay ? r.inTime : `${r.date} · ${r.inTime}`, `${r.lateBy} min`, r.reason,
               ])}
-              empty="Nobody was late."
+              empty="Nobody was late in this period."
               narrow
+              footer={<><strong>By role:</strong> {data.lateByRole}</>}
             />
-            <p className="mt-1.5 rounded bg-subtle px-2 py-1 text-[12px]"><strong>By role:</strong> {data.lateByRole}</p>
           </Section>
           <Section title="Offsite visits" i={6}>
             <Grid
+              h="c"
               head={["Member", "Client visited", "Purpose", data.singleDay ? "Time" : "Day · time"]}
               rows={cap(data.offsite, 5).map((r) => [<strong key="m">{r.member}</strong>, r.client, r.purpose, data.singleDay ? r.time : `${r.date} · ${r.time}`])}
-              empty="No offsite work."
+              empty="No client visits or on-site work in this period."
               narrow
+              footer={<strong>{data.offsiteTotal}</strong>}
             />
-            <p className="mt-1.5 rounded bg-subtle px-2 py-1 text-[12px] font-semibold">{data.offsiteTotal}</p>
           </Section>
         </div>
 
         {/* Late fees + priorities */}
-        <div key={`d-${k}`} className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
+        <div key={`d-${k}`} className="grid items-start gap-5 lg:grid-cols-[1.2fr_1fr]">
           <Section title="Overdue penalties & payments due" badge={<Badge tone="est">Estimate</Badge>} i={7}>
             <Grid
+              h="d"
               head={["Item", "Client", "Late", "Penalty", data.compareLabel, "Borne by"]}
               align={["l", "l", "c", "r", "c", "l"]}
               rows={data.penalties.map((r) => [r.item, r.client, r.late, inr(r.penalty), <D key="d" v={r.delta} money />, <span key="b" className="font-semibold text-info">{r.borneBy}</span>])}
               total={["Total exposure", "", "", inr(data.penaltyTotal.penalty), <D key="d" v={data.penaltyTotal.delta} money />, <span key="n" className="font-normal text-muted">{data.penaltyTotal.note}</span>]}
-              empty="No overdue GST / TDS / ITR / ROC filing: no late fee building up."
+              empty="No overdue GST / TDS / ITR / ROC filing: no late fee is building up."
+              footer={<span className="text-[11px] text-muted">Estimated statutory late fee on overdue filings: GST ₹50/day (max ₹10,000), GSTR-9 ₹200/day, TDS/TCS ₹200/day (234E), ITR ₹5,000 (234F), ROC ₹100/day.</span>}
             />
-            <p className="mt-1 text-[11px] text-muted">Statutory late fee on overdue filings: GST ₹50/day (max ₹10,000), GSTR-9 ₹200/day, TDS/TCS ₹200/day (234E), ITR ₹5,000 (234F), ROC ₹100/day.</p>
           </Section>
           <Section title={ai ? `AI-recommended priorities${today ? " for tomorrow" : ""}` : `Recommended priorities${today ? " for tomorrow" : ""}`} badge={ai ? <Badge>AI-generated</Badge> : null} i={8}>
-            {priorities.length === 0 ? <p className="text-sm text-muted">Nothing pressing.</p> : (
-              <ol className="divide-y divide-line rounded-md border border-line bg-surface text-[13px]">
-                {priorities.map((p, i) => <li key={i} className={clsx("px-3 py-1.5", i === 0 && "bg-danger-bg/60")}><strong>{i + 1}.</strong> {p}</li>)}
-              </ol>
-            )}
+            <Panel h="d">
+              {priorities.length === 0 ? <NoData note="Nothing pressing for tomorrow." /> : (
+                <ol className="divide-y divide-line text-[13px]">
+                  {priorities.map((p, i) => <li key={i} className={clsx("flex gap-2 px-3 py-2 leading-snug", i === 0 && "bg-danger-bg/60")}><strong className="shrink-0 tabular-nums">{i + 1}.</strong><span>{p}</span></li>)}
+                </ol>
+              )}
+            </Panel>
           </Section>
         </div>
 
@@ -353,5 +404,6 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
       </div>
       {bubble}
     </div>
+    </PrintCtx.Provider>
   );
 }
