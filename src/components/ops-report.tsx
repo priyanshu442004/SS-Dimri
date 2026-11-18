@@ -101,7 +101,7 @@ const PrintCtx = createContext(false);
  * Every section has the same structure (client feedback, 18 Nov 2026): a title bar, then one white
  * card of a fixed height for its row — a short table leaves white space below, it never shrinks.
  */
-const HEIGHT = { a: 300, b: 400, c: 300, d: 320 } as const;
+const HEIGHT = { a: 340, b: 400, c: 300, d: 320 } as const;
 type Height = keyof typeof HEIGHT;
 
 function Section({ title, badge, children, className, i = 0, action }: { title: string; badge?: ReactNode; children: ReactNode; className?: string; i?: number; action?: ReactNode }) {
@@ -293,6 +293,7 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
             <Grid
               h="a"
               empty="No staff on record for this period."
+              narrow
               head={["Role", "Staff", "On time", "Late", "Leave", "Offsite"]}
               align={["l", "l", "c", "c", "c", "c"]}
               rows={cap(data.attendanceByRole, 6).map((r) => [r.role, <span key="s" className="text-muted">{r.staff}</span>, r.onTime, r.late, r.leave, r.offsite])}
@@ -345,7 +346,7 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
               rows={cap(data.pendingClient, 5).map((r) => [<strong key="c">{r.client}</strong>, r.items, <D key="d" v={r.delta} />, `${r.age} d`, r.awaited])}
               empty="Nothing is waiting on clients."
               narrow
-              footer={<><strong>Total:</strong> {data.pendingClientTotal.items} item{data.pendingClientTotal.items === 1 ? "" : "s"} <D v={data.pendingClientTotal.delta} />{data.pendingClientTotal.note ? <span className="text-muted"> · {data.pendingClientTotal.note}</span> : null}</>}
+              footer={<><strong>Total:</strong> {data.pendingClientTotal.items} item{data.pendingClientTotal.items === 1 ? "" : "s"}{data.pendingClientTotal.delta ? <> <D v={data.pendingClientTotal.delta} /></> : null}{data.pendingClientTotal.note ? <span className="text-muted"> · {data.pendingClientTotal.note}</span> : null}</>}
             />
           </Section>
           <Section title="Late arrivals & reasons" i={5}>

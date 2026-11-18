@@ -162,7 +162,7 @@ export async function reportPdf(reportId: string): Promise<Buffer> {
       await page.emulateMedia({ media: "print" });
       await page.evaluate(() => document.fonts.ready);
       await page.waitForTimeout(250);
-      return await page.pdf({ format: "A4", landscape: true, printBackground: true, margin: { top: "7mm", bottom: "7mm", left: "7mm", right: "7mm" }, scale: 0.7 });
+      return await page.pdf({ format: "A4", landscape: true, printBackground: true, margin: { top: "7mm", bottom: "7mm", left: "7mm", right: "7mm" }, scale: 0.6 });
     } finally {
       await browser.close();
     }
