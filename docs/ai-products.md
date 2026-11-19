@@ -31,5 +31,8 @@ To release the products to another login, add its email to `AI_PRODUCTS_EMAILS` 
 ## Operations
 - PM2 processes `aip-*` (`pm2 ls`, `pm2 logs aip-tds-return`). Data lives in
   `~/SS-Dimri/ai-products/apps/<slug>/backend/data` on the server (gitignored, survives deploys).
-- Memory: the server has 1.9 GB RAM + 2 GB swap. The backends together use a few hundred MB; the
-  ERP build (`--max-old-space-size=3072`) still fits with swap.
+- Memory: the server has 1.9 GB RAM + 2 GB swap. Idle, the nine backends use roughly 0.8 GB; after
+  heavy runs they grew to ~1.3 GB, so each Node backend's heap is capped at 256 MB and PM2 restarts a
+  backend above 280–350 MB (data is on disk; nothing is lost). If an ERP build ever runs out of memory,
+  `pm2 stop /^aip-/` before `npm run build` and `pm2 start /^aip-/` after.
+- Change PM2 settings (node_args, limits): `pm2 delete /^aip-/ && pm2 start ai-products/deploy/ecosystem.config.cjs && pm2 save`.
