@@ -1,0 +1,5 @@
+{
+  "//": "Stops Vite/esbuild from inheriting the ERP's root tsconfig (custom JSX runtime) for the few .tsx files in the AI products.",
+  "compilerOptions": { "jsx": "react-jsx", "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "skipLibCheck": true },
+  "include": []
+}

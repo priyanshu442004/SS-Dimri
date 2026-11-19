@@ -47,3 +47,13 @@ next-env.d.ts
 # Playwright output
 /test-results/
 /playwright-report/
+
+# AI products (ai-products/): secrets are copied to the server by hand, never committed
+ai-products/**/node_modules/
+ai-products/**/dist/
+ai-products/**/.venv/
+ai-products/**/__pycache__/
+ai-products/**/*.pyc
+ai-products/apps/*/backend/data/
+ai-products/apps/*/backend/uploads/
+**/firebaseServiceAccount.json

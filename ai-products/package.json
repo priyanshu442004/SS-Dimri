@@ -1,0 +1,5 @@
+{
+  "//": "Module scope for files in ai-products/ without their own package.json (apps/_shared/server). Each app has its own package.json.",
+  "private": true,
+  "type": "module"
+}

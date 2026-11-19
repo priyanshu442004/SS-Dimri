@@ -94,6 +94,8 @@ export const CAPABILITIES = {
    * still limited by the person's other rights (salaries only with payroll rights, and so on).
    */
   "assistant.use": LEADS,
+  /** AI products (invoice, bank, GST, TDS, ledgers, trial balance, …): released to AI_PRODUCTS_EMAILS only. */
+  "ai_products.use": EVERYONE,
   /** Client portal: own business profile, requests, permitted work updates, dues. */
   "portal.use": CLIENTS,
 } as const satisfies Record<string, readonly Role[]>;
@@ -219,6 +221,9 @@ export type Member = {
 /** "AI reporting" is released only to these logins for now (the client's demo account). */
 export const AI_REPORTING_EMAILS: readonly string[] = ["demo@gmail.com"];
 
+/** The AI products (ai-products/apps) are released only to these logins (the client's demo account). */
+export const AI_PRODUCTS_EMAILS: readonly string[] = ["demo@gmail.com"];
+
 const isUnrestrictable = (role: Role) => role === "OWNER" || role === "ADMIN";
 
 /** Is this module open to the member? Owners and administrators can never be locked out. */
@@ -230,6 +235,7 @@ export function canUseModule(member: Member, module: ModuleKey): boolean {
 export function can(who: Role | Member, capability: Capability): boolean {
   const member: Member = typeof who === "string" ? { role: who } : who;
   if (capability === "assistant.use" && !AI_REPORTING_EMAILS.includes(member.user?.email?.toLowerCase() ?? "")) return false;
+  if (capability === "ai_products.use" && !AI_PRODUCTS_EMAILS.includes(member.user?.email?.toLowerCase() ?? "")) return false;
   const mod = moduleOf(capability);
   if (mod && member.role !== "CLIENT" && !canUseModule(member, mod)) return false;
   if ((CAPABILITIES[capability] as readonly Role[]).includes(member.role)) return true;

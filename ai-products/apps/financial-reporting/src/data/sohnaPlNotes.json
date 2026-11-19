@@ -1,0 +1,624 @@
+[
+  [
+    null,
+    null,
+    null,
+    null,
+    null,
+    100000
+  ],
+  [
+    "XYZ SOHNA PROJECTS LIMITED"
+  ],
+  [
+    "[CIN: U45200HR2006PLC073744]"
+  ],
+  [],
+  [
+    "Notes to Standalone financal statements for the year ended September 30, 2025 "
+  ],
+  [
+    "(All amounts in Millions, unless otherwise stated)"
+  ],
+  [],
+  [
+    "Note 20  Revenue from operations"
+  ],
+  [
+    "Particulars",
+    "For the year ended September 30, 2025 ",
+    "For the year ended March 31, 2025 ",
+    "For the year ended March 31, 2024 "
+  ],
+  [
+    "Operating Revenue"
+  ],
+  [
+    "Revenue from constructed properties",
+    385.0662801122646,
+    3296.384237898615,
+    324.282889382772,
+    385066280.11226463,
+    385066280.11226463,
+    3296384237.898615
+  ],
+  [],
+  [
+    "Other Operating Revenues"
+  ],
+  [
+    "Recovery of maintenance, electricity, Club Membership Fee and other charges",
+    26.591504,
+    80.318093,
+    44.152324,
+    26591504
+  ],
+  [
+    "Income from sale of scrap",
+    0.044,
+    1.4650078,
+    1.3879709999999998,
+    44000
+  ],
+  [
+    "Holding, Registration and transfer charges from customer",
+    0.003195,
+    6.644062,
+    4.841532,
+    3195,
+    23436357.63
+  ],
+  [],
+  [
+    "Total",
+    411.7049791122646,
+    3384.8114006986148,
+    374.664716382772,
+    null,
+    411704979.1122646
+  ],
+  [],
+  [
+    "Note 21  Other income"
+  ],
+  [
+    "Particulars",
+    "For the year ended September 30, 2025 ",
+    "For the year ended March 31, 2025 ",
+    "For the year ended March 31, 2024 "
+  ],
+  [],
+  [
+    "Interest on Fixed Deposit",
+    10.643226460000001,
+    16.759734,
+    13.560503,
+    10643226.46,
+    1.6759734000000002
+  ],
+  [
+    "Interest Received on Delayed Payment",
+    7.90963035,
+    8.26415559,
+    5.59361214,
+    7909630.35,
+    0.826415559
+  ],
+  [
+    "Interest from Related Party",
+    10.370228,
+    3.735054,
+    0.50492136,
+    10370228,
+    0.3735054
+  ],
+  [
+    "Interest received on Income tax Refund",
+    0,
+    0.16438761,
+    0.9950490000000001,
+    0,
+    0.016438761
+  ],
+  [
+    "Miscellaneous income",
+    1,
+    1.0472378,
+    0.22811781355932204,
+    1000000,
+    0.10472378
+  ],
+  [],
+  [
+    "Total",
+    29.92308481,
+    29.970569,
+    20.882203313559327,
+    29923084.810000002
+  ],
+  [
+    "Interest from others comprises interest received on loan given to related party (XYZ Greens Ltd.) @ 7% and XYZ Infrastructure & Properties Ltd. @ 15%."
+  ],
+  [],
+  [
+    "Note 22 Cost of material consumed"
+  ],
+  [
+    "Particulars",
+    "For the year ended September 30, 2025 ",
+    "For the year ended March 31, 2025 ",
+    "For the year ended March 31, 2024 "
+  ],
+  [
+    "Land Cost",
+    2740.0754346416825,
+    0.587,
+    0,
+    null,
+    0.058699999999999995
+  ],
+  [
+    "Construction Material, Labour and other costs",
+    119.32247456,
+    324.41655538000003,
+    403.40019421,
+    null,
+    32.441655538000006
+  ],
+  [
+    "Finance Cost",
+    25.422208,
+    45.01868839999999,
+    133.10498653,
+    null,
+    4.501868839999998
+  ],
+  [
+    "Indirect Expenses (including EDC/IDC Cost)",
+    26.014133920000003,
+    102.77201548000001,
+    84.12481938,
+    null,
+    10.277201548
+  ],
+  [],
+  [
+    "Total",
+    2910.8342511216824,
+    472.79505926,
+    620.63080012,
+    2910834251.1216826
+  ],
+  [],
+  [
+    "Note 23 Changes in Inventories of finished goods"
+  ],
+  [
+    "Particulars",
+    "For the year ended September 30, 2025 ",
+    "For the year ended March 31, 2025 ",
+    "For the year ended March 31, 2024 "
+  ],
+  [
+    "Opening Stock "
+  ],
+  [
+    "Stock of Finish Goods",
+    574.2014242069877,
+    3796.9887340583095,
+    3476.119093
+  ],
+  [],
+  [
+    "Less: Closing Stock"
+  ],
+  [
+    "Stock of Finish Goods \r\n(As valued and certified by the management)",
+    3032.408513617681,
+    574.2014242069877,
+    3796.9887340583095
+  ],
+  [],
+  [
+    "Total",
+    -2458.2070894106932,
+    3222.787309851322,
+    -320.86964105830975
+  ],
+  [],
+  [
+    "Note 24 Employee benefits expense"
+  ],
+  [
+    "Particulars",
+    "For the year ended September 30, 2025 ",
+    "For the year ended March 31, 2025 ",
+    "For the year ended March 31, 2024 "
+  ],
+  [],
+  [
+    "Salary Wages and Bonus",
+    8.182147,
+    8.915611,
+    5.394254,
+    8182147.000000001,
+    0.8915611
+  ],
+  [
+    "Contribution to Provident fund\r\n (including PF admin charges)",
+    0.367659,
+    0.339654,
+    0.196283,
+    367659,
+    0.0339654
+  ],
+  [
+    "Graturity expenses",
+    0.10466983333333334,
+    0.179494,
+    0.12088600000000001,
+    104669.83333333334,
+    0.017949399999999997
+  ],
+  [
+    "Leave encashment",
+    0.060069333333333336,
+    0.102976,
+    0.056426,
+    60069.333333333336,
+    0.0102976
+  ],
+  [],
+  [
+    "Total",
+    8.714545166666666,
+    9.537735,
+    5.767849,
+    8714545.166666666
+  ],
+  [],
+  [
+    "Note 25 Finance Cost"
+  ],
+  [
+    "Particulars",
+    "For the year ended September 30, 2025 ",
+    "For the year ended March 31, 2025 ",
+    "For the year ended March 31, 2024 "
+  ],
+  [],
+  [
+    "Interest cost",
+    65.4980126446309,
+    53.793372,
+    125.5121782,
+    6549801.26446309,
+    5.3793372
+  ],
+  [
+    "Subvention Charges",
+    0,
+    0.692334,
+    0,
+    null,
+    0.0692334
+  ],
+  [
+    "Loan processing fees ",
+    0,
+    1.416,
+    6.98383,
+    null,
+    0.1416
+  ],
+  [
+    "Bank Commision Charges on Bank Guarantee",
+    0,
+    0.6978874,
+    0.60897833,
+    null,
+    0.06978874
+  ],
+  [
+    "Bank Charges",
+    0.22340601999999998,
+    0.08823466,
+    0.24506119,
+    null,
+    0.008823466
+  ],
+  [
+    null,
+    65.7214186646309,
+    56.687828059999994,
+    133.35004772000002
+  ],
+  [
+    "Less: finance cost transferred to project cost",
+    -60.044434644630904,
+    -45.018688399999995,
+    -133.10498653000002,
+    -6004443.4644630905
+  ],
+  [],
+  [
+    "Total",
+    5.676984019999999,
+    11.669139659999999,
+    0.24506119000000126,
+    5676984.019999999
+  ],
+  [
+    "Interest cost includes interest paid to related party of Rs. 15.98 Millions."
+  ],
+  [],
+  [
+    "Note 26 Other expenses"
+  ],
+  [
+    "Particulars",
+    "For the year ended September 30, 2025 ",
+    "For the year ended March 31, 2025 ",
+    "For the year ended March 31, 2024 "
+  ],
+  [],
+  [
+    "Advertisement & Publicity",
+    32.679259,
+    4.3649830000000005,
+    36.81680484,
+    32679259,
+    0.43649830000000006
+  ],
+  [
+    "Auditors Remuneration (*)",
+    0.43170000000000003,
+    1.509,
+    0.6599999999999999,
+    431700,
+    0.15089999999999998,
+    43170
+  ],
+  [
+    "Books & Periodicals",
+    0,
+    0.00076,
+    0,
+    0,
+    0.000076
+  ],
+  [
+    "Brokerage & Commission",
+    1.326916,
+    21.0081587,
+    41.168857519999996,
+    1326916,
+    2.10081587
+  ],
+  [
+    "Business Promotion",
+    5.262748,
+    6.614505,
+    5.335273,
+    5262748,
+    0.6614505
+  ],
+  [
+    "Domestic Travelling-Staff",
+    0.537915,
+    1.2698218900000002,
+    1.75680649,
+    537915,
+    0.12698218900000002
+  ],
+  [
+    "Maintenance & Electricity Charges ",
+    30.75495048,
+    49.84905747,
+    58.65637647999999,
+    30754950.48,
+    4.984905747
+  ],
+  [
+    "Insurance Expenses",
+    0,
+    0.39523813,
+    0.40428,
+    0,
+    0.039523813000000005
+  ],
+  [
+    "Legal & Professional Charges",
+    4.1289907999999995,
+    3.6654612,
+    1.1095178,
+    4128990.7999999993,
+    0.36654612000000003
+  ],
+  [
+    "Office Expense",
+    0.018557,
+    0.055408,
+    0.723275,
+    18557,
+    0.0055408
+  ],
+  [
+    "Postage, Courier & Telegram expenses",
+    0.045525,
+    0.116282,
+    0.12883819999999999,
+    45525,
+    0.0116282
+  ],
+  [
+    "Printing & Stationery expenses",
+    0.034152,
+    0.134795,
+    0.12184600000000001,
+    34152,
+    0.0134795
+  ],
+  [
+    "Rates & Taxes",
+    0.24908176,
+    7.94341092,
+    5.3492349500000005,
+    249081.76,
+    0.794341092
+  ],
+  [
+    "Repair & Maintenance",
+    2.93570663,
+    1.75147688,
+    1.150787,
+    2935706.63,
+    0.175147688
+  ],
+  [
+    "Site Expense",
+    0.689363,
+    0.464231,
+    0.42557900000000004,
+    689363,
+    0.0464231
+  ],
+  [
+    "Interest on TDS and Income tax",
+    0.065597,
+    0.240088,
+    0.000618,
+    65597,
+    0.0240088
+  ],
+  [
+    "Interest & Penalty on GST",
+    0,
+    0.125937,
+    0.000618,
+    0,
+    0.0125937
+  ],
+  [
+    "Telephone Expenses",
+    0.0275,
+    0.10031278,
+    0.12424384,
+    27500,
+    0.010031278000000001
+  ],
+  [
+    "Miscellaneous expenses",
+    1.6330249363121632,
+    11.868471806728847,
+    0.54486637,
+    1633024.9363121632,
+    1.1868471806728846
+  ],
+  [],
+  [
+    "Total",
+    80.82598660631216,
+    111.47739877672882,
+    154.47782248999997,
+    80820986.60631217
+  ],
+  [
+    null,
+    null,
+    null,
+    null,
+    80.82098660631218
+  ],
+  [
+    "(*) Auditors remuneration (excluding service tax/GST) as under:"
+  ],
+  [
+    "Statutory audit fee",
+    0.54,
+    0.54,
+    0.54
+  ],
+  [
+    "Tax Audit fee",
+    0.12,
+    0.12,
+    0.12
+  ],
+  [
+    "Out of pocket expenses",
+    0,
+    0,
+    0
+  ],
+  [],
+  [],
+  [
+    "Note 27 Earning per equity share",
+    null,
+    0,
+    0,
+    null,
+    null,
+    null,
+    1373.26,
+    1432.93
+  ],
+  [
+    "Particulars",
+    "For the year ended September 30, 2025 ",
+    "For the year ended March 31, 2025 ",
+    "For the year ended March 31, 2024 ",
+    null,
+    null,
+    null,
+    1771197976,
+    1767791555
+  ],
+  [
+    "Net profit/(Loss) attributable to equity shareholders",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    7.753283475974342,
+    8.105763351720503
+  ],
+  [],
+  [
+    "Net profit/(loss) for the year",
+    -36.038643519198146,
+    -311.99127603783074,
+    -49.08280834311899
+  ],
+  [
+    "Nominal value of equity share ( ₹)",
+    10,
+    10,
+    10
+  ],
+  [
+    "Weighted average number of equity shares",
+    6100000,
+    6100000,
+    6100000
+  ],
+  [],
+  [
+    "Earning per share"
+  ],
+  [
+    "  Basic",
+    -5.9079743474095325,
+    -51.14611082587389,
+    -8.046362023462128
+  ],
+  [
+    "  Diluted",
+    -5.9079743474095325,
+    -51.14611082587389,
+    -8.046362023462128
+  ]
+]

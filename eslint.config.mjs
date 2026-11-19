@@ -20,6 +20,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Generated Prisma client
     "src/generated/**",
+    // AI products: separate Vite/Node/Python apps with their own tooling
+    "ai-products/**",
   ]),
 ]);
 

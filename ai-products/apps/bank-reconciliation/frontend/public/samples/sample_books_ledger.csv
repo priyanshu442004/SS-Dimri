@@ -1,0 +1,59 @@
+Ledger_Row_ID,Posting_Date,Voucher_No,Ledger_or_Party,Narration,Debit,Credit,Bank_Reference,Voucher_Type
+CB-0001,4/1/2026,BR-0001,Aster Components,Aster Components Pvt Ltd - payment/receipt,0,186500,NEFT/0401/0001,Receipt
+CB-0002,4/1/2026,BR-0002,Office refreshments,Office refreshments - payment/receipt,1450,0,UPI/0401/0002,Payment
+CB-0003,4/2/2026,BR-0003,Bluepeak Manufacturing,Bluepeak Manufacturing - payment/receipt,0,425000,RTGS/0402/0003,Receipt
+CB-0004,4/2/2026,BR-0004,Northwind Logistics,Northwind Logistics - payment/receipt,78250,0,,Payment
+CB-0005,4/3/2026,BR-0005,Petty cash replenishment,Petty cash replenishment - payment/receipt,12000,0,UPI/0403/0005,Payment
+CB-0006,4/3/2026,BR-0006,Cedar Tech Services,Cedar Tech Services - payment/receipt,0,96300,NEFT/0403/0006,Receipt
+CB-0007,4/4/2026,BR-0007,Office rent April,Office rent April - payment/receipt,85000,0,CHQ/0404/0007,Payment
+CB-0008,4/4/2026,BR-0008,Client Delta retainer,Client Delta retainer - payment/receipt,0,55000,IMPS/0404/0008,Receipt
+CB-0009,4/5/2026,BR-AGG-215,Client Birch,Invoice collection INV-221,0,92500,INV-221,Receipt
+CB-0010,4/5/2026,BR-AGG-216,Client Birch,Invoice collection INV-222,0,57500,INV-222,Receipt
+CB-0011,4/6/2026,BR-0010,Aster Components,Aster Components Pvt Ltd - payment/receipt,0,92500,NEFT/0406/0010,Receipt
+CB-0012,4/6/2026,BR-0012,Everest Retail,Everest Retail Ltd - payment/receipt,0,312000,RTGS/0407/0012,Receipt
+CB-0013,4/6/2026,BR-SPL-221,Orion Stationers,Supplier invoice settlement,24700,0,ORION-APR,Payment
+CB-0014,4/6/2026,BR-SPL-222,Bank charges allocated to supplier,Small processing fee,80,0,ORION-FEE,Payment
+CB-0015,4/7/2026,BR-0011,Fuel reimbursement - N Sharma,Fuel reimbursement - N Sharma - payment/receipt,3800,0,UPI/0407/0011,Payment
+CB-0016,4/8/2026,BR-PAY-220,Payroll - April,Combined salary batch for staff,461650,0,PAY-APR-BATCH,Payment
+CB-0017,4/9/2026,BR-0015,Client Echo payment,Client Echo payment - payment/receipt,0,73500,IMPS/0409/0015,Receipt
+CB-0018,4/9/2026,BR-0016,Tax payment,Tax payment - payment/receipt,42000,0,,Payment
+CB-0019,4/10/2026,BR-0017,Maple Consulting,Maple Consulting - payment/receipt,0,118000,NEFT/0410/0017,Receipt
+CB-0020,4/11/2026,BR-0019,Courier and postage,Courier and postage - payment/receipt,2650,0,UPI/0411/0019,Payment
+CB-0021,4/12/2026,BR-0020,Summit Infrastructure,Summit Infrastructure - payment/receipt,0,510000,RTGS/0412/0020,Receipt
+CB-0022,4/12/2026,BR-CON-214,Savings Sweep Account,Contra receipt from savings sweep,0,125000,TRF-1204,Contra
+CB-0023,4/13/2026,BR-0021,Granite Office Interiors,Granite Office Interiors - payment/receipt,143750,0,NEFT/0413/0021,Payment
+CB-0024,4/13/2026,BR-0022,Client Foxtrot,Client Foxtrot - payment/receipt,0,89500,NEFT/0413/0022,Receipt
+CB-0025,4/14/2026,BR-0023,Client Gamma,Client Gamma - payment/receipt,0,64000,IMPS/0414/0023,Receipt
+CB-0026,4/14/2026,BR-0024,Internet bill,Internet bill - payment/receipt,2499,0,UPI/0414/0024,Payment
+CB-0027,4/14/2026,BR-0025,Pinecone Analytics,Pinecone Analytics - payment/receipt,0,78500,NEFT/0415/0025,Receipt
+CB-0028,4/15/2026,BR-0026,Vendor payment - Helix,Vendor payment - Helix - payment/receipt,126400,0,NEFT/0415/0026,Payment
+CB-0029,4/16/2026,BR-0027,Travel advance - A Mehta,Travel advance - A Mehta - payment/receipt,15000,0,UPI/0416/0027,Payment
+CB-0030,4/17/2026,BR-0029,Insurance premium,Insurance premium - payment/receipt,36800,0,NEFT/0417/0029,Payment
+CB-0031,4/17/2026,BR-0030,Client Indigo,Client Indigo - payment/receipt,0,675000,RTGS/0417/0030,Receipt
+CB-0032,4/18/2026,BR-0031,Office maintenance,Office maintenance - payment/receipt,9250,0,UPI/0418/0031,Payment
+CB-0033,4/18/2026,BR-0032,Client Juniper,Client Juniper - payment/receipt,0,127500,NEFT/0418/0032,Receipt
+CB-0034,4/19/2026,BR-CON-213,HDFC Current Account,Contra transfer to HDFC account,250000,0,TRF-1904,Contra
+CB-0035,4/20/2026,BR-0033,Kite Systems,Kite Systems - payment/receipt,98500,0,,Payment
+CB-0036,4/20/2026,BR-0034,Client Kilo,Client Kilo - payment/receipt,0,162000,NEFT/0420/0034,Receipt
+CB-0037,4/21/2026,BR-0035,Staff welfare,Staff welfare - payment/receipt,4750,0,UPI/0421/0035,Payment
+CB-0038,4/21/2026,BR-0036,Client Lima,Client Lima - payment/receipt,0,94500,NEFT/0421/0036,Receipt
+CB-0039,4/22/2026,BR-0037,Client Metro,Client Metro - payment/receipt,0,385000,RTGS/0422/0037,Receipt
+CB-0040,4/22/2026,BR-0038,Vendor Nova,Vendor Nova - payment/receipt,211300,0,NEFT/0422/0038,Payment
+CB-0041,4/23/2026,BR-0039,Client Oscar,Client Oscar - payment/receipt,0,117800,NEFT/0423/0039,Receipt
+CB-0042,4/23/2026,BR-DUP-218,Client Oscar,Duplicate receipt entry candidate,0,117800,NEFT/0423/0039,Receipt
+CB-0043,4/24/2026,BR-0041,Client Papa,Client Papa - payment/receipt,0,203500,NEFT/0424/0041,Receipt
+CB-0044,4/24/2026,BR-0042,Vendor Quebec,Vendor Quebec - payment/receipt,76500,0,NEFT/0424/0042,Payment
+CB-0045,4/25/2026,BR-0043,Client Romeo,Client Romeo - payment/receipt,0,68900,IMPS/0425/0043,Receipt
+CB-0046,4/25/2026,BR-0044,Office equipment,Office equipment - payment/receipt,55400,0,NEFT/0425/0044,Payment
+CB-0047,4/26/2026,BR-ERR-217,Client Willow,Receipt against invoice - possible short credit,0,74600,NEFT/0426/991,Receipt
+CB-0048,4/26/2026,BR-OUT-210,Aster Components,Cheque issued but not presented,46200,0,CHQ-004812,Payment
+CB-0049,4/27/2026,BR-0045,Client Sierra,Client Sierra - payment/receipt,0,440000,RTGS/0427/0045,Receipt
+CB-0050,4/27/2026,BR-0046,Vendor Tango,Vendor Tango - payment/receipt,158250,0,NEFT/0427/0046,Payment
+CB-0051,4/28/2026,BR-0047,Client Uniform,Client Uniform - payment/receipt,0,134600,NEFT/0428/0047,Receipt
+CB-0052,4/28/2026,BR-0048,Printing and stationery,Printing and stationery - payment/receipt,3840,0,UPI/0428/0048,Payment
+CB-0053,4/29/2026,BR-0049,Client Victor,Client Victor - payment/receipt,0,97500,NEFT/0429/0049,Receipt
+CB-0054,4/29/2026,BR-0050,Vendor Whiskey,Vendor Whiskey - payment/receipt,113200,0,NEFT/0429/0050,Payment
+CB-0055,4/29/2026,BR-TIM-219,Client Yankee,Receipt recorded previous day,0,46500,NEFT/0430/999,Receipt
+CB-0056,4/30/2026,BR-0051,Client Zulu,Client Zulu - payment/receipt,0,295000,RTGS/0430/0051,Receipt
+CB-0057,4/30/2026,BR-DEP-211,Client Yarrow,Deposit recorded; bank credit pending,0,88500,DEP-APR30,Receipt
+CB-0058,4/30/2026,BR-DEP-212,Client Xenia,Deposit in transit - collection,0,127000,DEP-APR30-B,Receipt

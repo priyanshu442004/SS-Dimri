@@ -1,4 +1,5 @@
 import { can, type Capability, type Member } from "@/lib/permissions";
+import { AI_PRODUCTS } from "@/lib/ai-products";
 
 export type NavItem = { href: string; label: string; icon: string; section: string };
 
@@ -7,6 +8,8 @@ const ITEMS: (NavItem & { cap?: Capability })[] = [
   { href: "/app/reporting", label: "AI reporting", icon: "chart", section: "Overview", cap: "assistant.use" },
   { href: "/app/assistant", label: "AI assistant", icon: "sparkles", section: "Overview", cap: "assistant.use" },
   { href: "/app/notifications", label: "Notifications", icon: "bell", section: "Overview" },
+  // AI products: the demo login only (see AI_PRODUCTS_EMAILS).
+  ...AI_PRODUCTS.map((p) => ({ href: `/app/ai-products/${p.slug}`, label: p.short, icon: p.icon, section: "AI products", cap: "ai_products.use" as const })),
   { href: "/app/clients", label: "Clients", icon: "building", section: "Clients", cap: "clients.use" },
   { href: "/app/observations", label: "Client observations", icon: "message", section: "Clients", cap: "observations.use" },
   { href: "/app/reports/clients", label: "Client reports", icon: "chart", section: "Clients", cap: "reports.client" },

@@ -6,16 +6,18 @@ import { useCallback, useState, useSyncExternalStore, ViewTransition, type React
 import { clsx } from "clsx";
 import {
   Bell, BookOpen, Briefcase, Building2, CalendarDays, ChartColumn, ChevronRight, ChevronsLeft, ChevronsRight, Clock, FileText, Flag, Home, IdCard, LayoutGrid, ListChecks,
-  LogOut, MessageSquareWarning, Search, Settings, Sparkles, Users, Wallet, X,
+  Handshake, Landmark, LogOut, MessageSquareWarning, Package, Percent, Receipt, ReceiptText, Scale, Search, Settings, Sparkles, TrendingUp, Truck, Users, Wallet, X,
 } from "lucide-react";
 import { CommandPalette, usePaletteShortcut } from "@/components/command-palette";
 import { MotionDirector } from "@/components/motion-director";
 import { LanguageSwitch } from "@/components/language-switch";
+import { AI_PRODUCTS } from "@/lib/ai-products";
 import type { NavItem } from "./nav";
 
 const ICONS = {
   home: Home, bell: Bell, building: Building2, chart: ChartColumn, users: Users, list: ListChecks, clock: Clock,
   file: FileText, flag: Flag, calendar: CalendarDays, id: IdCard, briefcase: Briefcase, book: BookOpen, settings: Settings, message: MessageSquareWarning, wallet: Wallet, sparkles: Sparkles,
+  receipt: Receipt, landmark: Landmark, scale: Scale, trending: TrendingUp, percent: Percent, "receipt-text": ReceiptText, truck: Truck, handshake: Handshake, package: Package,
 } as const;
 const iconFor = (n: NavItem) => ICONS[n.icon as keyof typeof ICONS] ?? Home;
 
@@ -26,6 +28,8 @@ const SEGMENT_LABELS: Record<string, string> = {
   attendance: "Attendance", timesheet: "Timesheet", "day-reports": "Day reports", pending: "Pending tracker", reports: "Reports",
   services: "Services & departments", compliances: "Compliance", payroll: "Payroll", import: "Import from Excel", settings: "Settings", notifications: "Notifications",
   onboarding: "My employee record", profile: "My profile", observations: "Client observations", dues: "Fees & dues", search: "Search", "no-access": "No access", assistant: "AI assistant", reporting: "AI reporting",
+  "ai-products": "AI products",
+  ...Object.fromEntries(AI_PRODUCTS.map((p) => [p.slug, p.short])),
 };
 
 // Most-used destinations for the phone tab bar (only those the user can reach are shown).
@@ -253,7 +257,8 @@ export function AppShell({
         </header>
         <div className="px-4 pt-3 sm:px-6 lg:hidden print:hidden"><Breadcrumbs pathname={pathname} /></div>
 
-        <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:pb-10">
+        {/* An embedded AI product fills the whole area below the top bar. */}
+        <main id="main" className={clsx("mx-auto w-full flex-1", pathname.startsWith("/app/ai-products/") ? "max-w-none" : "max-w-7xl px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:pb-10")}>
           <ViewTransition key={pathname} enter="app-page" exit="app-page" default="none">
             <div>{children}</div>
           </ViewTransition>

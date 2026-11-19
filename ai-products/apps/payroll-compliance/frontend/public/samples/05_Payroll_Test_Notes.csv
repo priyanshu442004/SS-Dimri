@@ -1,0 +1,5 @@
+﻿Test_ID,Scenario
+P1,E002 has 2 unpaid leave days; check salary proration.
+P2,E005 joined mid-month; check joining-date proration rather than treating as full month.
+P3,Overtime and incentives should be added from separate payroll inputs.
+P4,Statutory calculations must use configurable eligibility and current law; provided rates are test placeholders only.

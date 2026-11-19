@@ -1,0 +1,5 @@
+﻿Scenario,Expected_issue
+CN-09,Credit note amount differs by INR 500.
+INV-104,Present in supplier statement but absent from books.
+INV-103,Present in books but absent from supplier statement.
+PAY-501,Likely matched payment despite different description wording.

@@ -1,0 +1,5 @@
+﻿Scenario,Expected_issue
+CN-21,Credit note differs by INR 500.
+SI-204,Present in customer statement but absent from company books.
+SI-203,Present in company books but absent from customer statement.
+RC-801,Receipt should match despite description wording difference.

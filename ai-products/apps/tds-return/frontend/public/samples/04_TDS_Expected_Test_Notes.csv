@@ -1,0 +1,6 @@
+﻿Test_ID,Scenario
+T1,"PAY001 and PAY004: same deductee, section and quarter; aggregate/validate as appropriate."
+T2,PAY006 and PAY008: verify rate/amount consistency using configured rules; do not assume legal treatment from this sample alone.
+T3,PAY007: missing PAN and zero TDS; flag for human/legal review.
+T4,Challan totals and deductions may not fully reconcile; identify unmatched or insufficient challan balance.
+T5,Return format/schema must be configured for the selected filing utility and applicable period.
