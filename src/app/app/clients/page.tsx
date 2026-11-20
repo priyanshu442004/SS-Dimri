@@ -6,8 +6,9 @@ import { clientScope } from "@/lib/services/clients";
 import { complianceChoices } from "@/lib/services/client-compliances";
 import { CLIENT_SORTS, CLIENT_STATUS_TABS, clientFiltersQuery, clientListOrder, clientListWhere, parseClientFilters } from "@/lib/services/client-list";
 import { employeeOptions } from "@/lib/services/lookups";
-import { DownloadButton, EmptyState, LinkButton, PageHeader, Pagination, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
+import { DownloadButton, EmptyState, LinkButton, Notice, PageHeader, Pagination, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
 import { Building2 } from "lucide-react";
+import { GST_TYPE_KEYS, GST_TYPES } from "@/lib/domain/gst-type";
 
 const PAGE_SIZE = 25;
 const selectCls = "h-10 rounded-md border border-line bg-surface px-2 text-sm";
@@ -44,7 +45,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
   ]);
 
   const qs = (extra: Record<string, string | number>) => `/app/clients${clientFiltersQuery(f, extra)}`;
-  const narrowed = !!(f.q || f.service || f.department || f.constitution || f.state || f.team);
+  const narrowed = !!(f.q || f.service || f.department || f.constitution || f.state || f.team || f.gstType);
 
   return (
     <>
@@ -56,10 +57,13 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
             {can(ctx, "clients.approve") && <LinkButton variant="secondary" href="/app/clients/approvals">Approval queue{pendingCount ? ` (${pendingCount})` : ""}</LinkButton>}
             {viewAll && <DownloadButton href={`/app/clients/export${clientFiltersQuery(f)}`}>Export to Excel</DownloadButton>}
             {can(ctx, "clients.import") && <LinkButton variant="secondary" href="/app/clients/import">Import from Excel</LinkButton>}
-            {can(ctx, "clients.register") && <LinkButton href="/app/clients/new">Register a client</LinkButton>}
+            {can(ctx, "clients.register") ? <LinkButton href="/app/clients/new">Register a client</LinkButton> : can(ctx, "clients.quick_register") && <LinkButton href="/app/clients/new/quick">Quick registration</LinkButton>}
           </>
         }
       />
+      {typeof sp.registered === "string" && sp.registered && (
+        <div className="mb-4"><Notice tone="ok">{sp.registered} is registered and sent to an administrator for approval. It appears in your list once approved and allocated to you.</Notice></div>
+      )}
       <TabNav
         current={f.status}
         tabs={CLIENT_STATUS_TABS.map((t) => ({
@@ -79,6 +83,11 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
         <select name="service" defaultValue={f.service} aria-label="Filter by service" className={selectCls}>
           <option value="">All services</option>
           {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <select name="gst" defaultValue={f.gstType} aria-label="Filter by GST registration type" className={selectCls}>
+          <option value="">Any GST type</option>
+          {GST_TYPE_KEYS.map((k) => <option key={k} value={k}>{GST_TYPES[k]}</option>)}
+          <option value="none">GST type not set</option>
         </select>
         <select name="con" defaultValue={f.constitution} aria-label="Filter by constitution" className={selectCls}>
           <option value="">Any constitution</option>

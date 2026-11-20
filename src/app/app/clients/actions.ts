@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { BusinessRuleError, parseForm, safeAction, type ActionState } from "@/lib/actions";
 import { actionContext } from "@/lib/session";
+import { can } from "@/lib/permissions";
 import { audit } from "@/lib/services/audit";
 import {
   addEngagement,
@@ -34,12 +35,18 @@ export async function quickRegisterAction(_p: ActionState, fd: FormData): Promis
   const parsed = parseForm(quickRegistrationSchema, fd);
   if (!parsed.success) return parsed.state;
   let id = "";
+  let name = "";
+  let canOpen = false;
   const r = await safeAction(async () => {
-    const ctx = await actionContext("clients.register");
-    id = (await quickRegisterClient(ctx, parsed.data, fd)).id;
+    const ctx = await actionContext("clients.quick_register");
+    const client = await quickRegisterClient(ctx, parsed.data, fd);
+    id = client.id;
+    name = client.tradeName;
+    // A team member cannot open a client still pending approval: back to the list with a note.
+    canOpen = can(ctx, "clients.view_all");
   });
   if (r.ok === false) return r;
-  redirect(`/app/clients/${id}?registered=1`);
+  redirect(canOpen ? `/app/clients/${id}?registered=1` : `/app/clients?registered=${encodeURIComponent(name)}`);
 }
 
 /** Full registration from the six-section form (Clients → New client). */
@@ -184,7 +191,9 @@ export async function updateEngagementAction(clientId: string, engagementId: str
 export async function setEngagementStatusAction(clientId: string, engagementId: string, status: "ACTIVE" | "ON_HOLD" | "COMPLETED" | "CANCELLED"): Promise<ActionState> {
   return safeAction(async () => {
     const { client } = await editableClient(clientId);
-    await prisma.clientService.update({ where: { id: engagementId, clientId: client.id }, data: { status } });
+    // The end of an engagement is dated: a one-time fee is earned on completion, a retainer stops accruing.
+    const ended = status === "COMPLETED" || status === "CANCELLED";
+    await prisma.clientService.update({ where: { id: engagementId, clientId: client.id }, data: { status, completedAt: ended ? new Date() : null } });
     revalidatePath(`/app/clients/${clientId}`);
   });
 }

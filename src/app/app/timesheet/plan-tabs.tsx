@@ -13,7 +13,7 @@ import { approvePlanAction, escalateAction, leadPlanAction, saveEodAction, saveP
 import { syncAssignedTasks } from "@/lib/services/plan-timer";
 import { Elapsed } from "./todo-timer";
 import { PlanEditor, type EditorLine } from "./plan-editor";
-import { AlarmClock, ClipboardCheck, FileWarning, IndianRupee, ListTodo, Play, Send, Square, Check } from "lucide-react";
+import { AlarmClock, ClipboardCheck, FileWarning, IndianRupee, ListTodo, Pause, Play, Send, Check } from "lucide-react";
 
 type SP = Record<string, string | string[] | undefined>;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -101,7 +101,7 @@ export async function MyPlanTab({ ctx, sp }: { ctx: AppContext; sp: SP }) {
       {iso === today && !eodFiled && plan && plan.items.length > 0 && (
         <Card title="To-do list" icon={<ListTodo />} padded={false}>
           <p className="border-b border-line px-4 py-3 text-sm text-muted">
-            Press <strong className="text-ink">Start</strong> when you begin a task and <strong className="text-ink">Stop</strong> when you finish or take a break: the time goes to your timesheet by itself, with the client and task — no need to enter it again. Tasks given to you are added here automatically. <strong className="text-ink">Done</strong> stops the timer, marks the line done and sends a task for review.
+            Press <strong className="text-ink">Start</strong> when you begin a task, <strong className="text-ink">Pause</strong> for a break and <strong className="text-ink">Resume</strong> to carry on: the time goes to your timesheet by itself, as one entry per task for the day with its total time (each start–pause is kept in its details) — no need to enter it again. Tasks given to you are added here automatically. <strong className="text-ink">Done</strong> stops the timer, marks the line done and sends a task for review.
           </p>
           <ul className="divide-y divide-line">
             {plan.items.map((i) => (
@@ -120,12 +120,12 @@ export async function MyPlanTab({ ctx, sp }: { ctx: AppContext; sp: SP }) {
                 <span className="flex gap-1.5">
                   {i.startedAt ? (
                     <>
-                      <ActionButton action={stopTodoAction.bind(null, i.id, false)}><Square className="size-3.5" aria-hidden /> Stop</ActionButton>
+                      <ActionButton action={stopTodoAction.bind(null, i.id, false)}><Pause className="size-3.5" aria-hidden /> Pause</ActionButton>
                       <ActionButton variant="primary" action={stopTodoAction.bind(null, i.id, true)}><Check className="size-3.5" aria-hidden /> Done</ActionButton>
                     </>
                   ) : i.status !== "DONE" ? (
                     <>
-                      <ActionButton variant="primary" action={startTodoAction.bind(null, i.id)}><Play className="size-3.5" aria-hidden /> Start</ActionButton>
+                      <ActionButton variant="primary" action={startTodoAction.bind(null, i.id)}><Play className="size-3.5" aria-hidden /> {i.workedMinutes > 0 ? "Resume" : "Start"}</ActionButton>
                       {i.workedMinutes > 0 && <ActionButton action={stopTodoAction.bind(null, i.id, true)}><Check className="size-3.5" aria-hidden /> Done</ActionButton>}
                     </>
                   ) : null}

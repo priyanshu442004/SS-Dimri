@@ -86,7 +86,7 @@ export async function quickRegisterClient(ctx: AppContext, v: z.infer<typeof qui
         },
       },
     });
-    await saveClientCompliances(tx, client.id, v["departments[]"], v["complianceItemIds[]"]);
+    await saveClientCompliances(tx, client.id, v["departments[]"], v["complianceItemIds[]"], v.gstRegistrationType ?? "");
     await audit(tx, ctx, "client.quick_registered", "client", client.id);
     await notifyRoles(tx, ctx.organization.id, ["OWNER", "ADMIN"], {
       type: "client.pending_approval",
@@ -128,6 +128,7 @@ export const clientDetailsSchema = z.object({
   dateOfBirth: zIsoDate.optional(),
   itFileNo: zOptionalText(40),
   masterRemark: zOptionalText(1000),
+  officeOpensAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Enter a time such as 10:00").optional(),
   gstUserId: zOptionalText(120),
   incomeTaxUserId: zOptionalText(120),
   tracesUserId: zOptionalText(120),
@@ -168,6 +169,7 @@ export async function saveClientDetails(ctx: AppContext, clientId: string, v: z.
         dateOfBirth: v.dateOfBirth ? dateOnly(v.dateOfBirth) : null,
         itFileNo: v.itFileNo ?? null,
         masterRemark: v.masterRemark ?? null,
+        officeOpensAt: v.officeOpensAt ?? null,
         gstUserId: v.gstUserId ?? null,
         incomeTaxUserId: v.incomeTaxUserId ?? null,
         tracesUserId: v.tracesUserId ?? null,
@@ -195,7 +197,7 @@ export async function saveClientDetails(ctx: AppContext, clientId: string, v: z.
         await tx.clientClassification.deleteMany({ where: { clientId: client.id, basis } });
       }
     }
-    if (v.compliancesShown) await saveClientCompliances(tx, client.id, v["departments[]"], v["complianceItemIds[]"]);
+    if (v.compliancesShown) await saveClientCompliances(tx, client.id, v["departments[]"], v["complianceItemIds[]"], v.gstRegistrationType ?? "");
     await audit(tx, ctx, "client.details_updated", "client", client.id);
   });
 }

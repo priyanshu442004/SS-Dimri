@@ -61,7 +61,13 @@ export async function syncAssignedTasks(ctx: AppContext): Promise<number> {
 
 type TimerItem = { id: string; task: string; clientId: string | null; clientName: string | null; taskId: string | null; startedAt: Date | null };
 
-/** Writes one timed stretch to the timesheet. A timer left running overnight stops at that day's office end. */
+export type TimedSession = { start: string; end: string; minutes: number };
+
+/**
+ * Writes one timed stretch to the timesheet. A timer left running overnight stops at that day's office end.
+ * Pause / Resume (tracker S.No. 71): every stretch of the same to-do line on the same day goes into ONE
+ * entry — its total time grows and each start–stop is kept as a session in its details.
+ */
 async function logStretch(tx: Prisma.TransactionClient, ctx: AppContext, item: TimerItem, from: Date, to: Date, officeEnd: string, done: boolean) {
   const tz = ctx.organization.timezone;
   const iso = isoDateInTz(from, tz);
@@ -75,14 +81,35 @@ async function logStretch(tx: Prisma.TransactionClient, ctx: AppContext, item: T
   const allocation = item.clientId
     ? await tx.teamAllocation.findFirst({ where: { clientId: item.clientId, employeeId: me, status: { in: ["ACTIVE", "PLANNED", "ENDED"] }, startDate: { lte: day }, OR: [{ endDate: null }, { endDate: { gte: day } }] }, select: { id: true, resourceType: true } })
     : null;
+  const session: TimedSession = { start: hhmm(minutesOfDayInTz(from, tz)), end: hhmm(minutesOfDayInTz(end, tz)), minutes };
+  const details = `${item.task} — timed from the to-do list`;
+  const existing = await tx.timesheetEntry.findFirst({
+    where: { employeeId: me, workDate: day, typeOfWork: TIMER_WORK, ...(item.taskId ? { taskId: item.taskId } : { taskId: null, clientId: item.clientId, workDetails: details }) },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, sessions: true, approxMinutes: true, startTime: true, endTime: true, status: true },
+  });
+  if (existing && existing.status !== "REVIEWED") {
+    const before = Array.isArray(existing.sessions) ? (existing.sessions as TimedSession[])
+      : existing.startTime && existing.endTime ? [{ start: existing.startTime, end: existing.endTime, minutes: existing.approxMinutes ?? 0 }] : [];
+    const sessions = [...before, session];
+    await tx.timesheetEntry.update({
+      where: { id: existing.id },
+      data: {
+        sessions, approxMinutes: (existing.approxMinutes ?? 0) + minutes,
+        startTime: [existing.startTime ?? session.start, session.start].sort()[0], endTime: [existing.endTime ?? session.end, session.end].sort()[1],
+        workStatus: done ? "COMPLETED" : "IN_PROGRESS",
+      },
+    });
+    return minutes;
+  }
   const serialNumber = (await tx.timesheetEntry.count({ where: { employeeId: me, workDate: day } })) + 1;
   await tx.timesheetEntry.create({
     data: {
       organizationId: ctx.organization.id, employeeId: me, serialNumber, workDate: day,
       clientId: item.clientId, clientNameText: item.clientName ?? "Office / Other", clientServiceId: task?.clientServiceId,
       taskId: item.taskId, teamAllocationId: allocation?.id, resourceType: allocation?.resourceType,
-      typeOfWork: TIMER_WORK, startTime: hhmm(minutesOfDayInTz(from, tz)), endTime: hhmm(minutesOfDayInTz(end, tz)), approxMinutes: minutes,
-      workDetails: `${item.task} — timed from the to-do list`, workStatus: done ? "COMPLETED" : "IN_PROGRESS",
+      typeOfWork: TIMER_WORK, startTime: session.start, endTime: session.end, approxMinutes: minutes, sessions: [session],
+      workDetails: details, workStatus: done ? "COMPLETED" : "IN_PROGRESS",
     },
   });
   return minutes;
@@ -131,7 +158,7 @@ export async function startTodo(ctx: AppContext, itemId: string): Promise<string
     if (task && (await taskActionsFor(ctx, task)).includes("start")) await performTaskAction(ctx, task.id, "start");
   }
   await prisma.dailyPlanItem.updateMany({ where: { id: item.id, startedAt: null }, data: { startedAt: new Date() } });
-  return `${paused}Timer started. Stop it when you finish or take a break; the time goes to your timesheet.`;
+  return `${paused}${item.workedMinutes > 0 ? "Resumed" : "Timer started"}. Pause it for a break and Resume later — the day's time stays in one timesheet entry.`;
 }
 
 export async function stopTodo(ctx: AppContext, itemId: string, done: boolean): Promise<string> {
@@ -140,6 +167,11 @@ export async function stopTodo(ctx: AppContext, itemId: string, done: boolean): 
   let extra = "";
   if (done) {
     await prisma.dailyPlanItem.update({ where: { id: item.id }, data: { status: "DONE", reason: null } });
+    // The day's one entry for this line is now finished work.
+    await prisma.timesheetEntry.updateMany({
+      where: { employeeId: ctx.employee!.id, workDate: item.plan.planDate, typeOfWork: TIMER_WORK, status: { not: "REVIEWED" }, ...(item.taskId ? { taskId: item.taskId } : { taskId: null, clientId: item.clientId, workDetails: `${item.task} — timed from the to-do list` }) },
+      data: { workStatus: "COMPLETED" },
+    });
     // Finished work on a task goes to its checker, with the time already in the timesheet.
     if (item.taskId) {
       const task = await loadTaskForCtx(ctx, item.taskId);
@@ -150,5 +182,5 @@ export async function stopTodo(ctx: AppContext, itemId: string, done: boolean): 
     }
   }
   const logged = minutes ? `${Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)} h ` : ""}${minutes % 60} min added to your timesheet.` : "";
-  return `${done ? "Marked Done." : "Timer stopped."} ${logged}${extra}`.trim();
+  return `${done ? "Marked Done." : "Paused."} ${logged}${extra}`.trim();
 }

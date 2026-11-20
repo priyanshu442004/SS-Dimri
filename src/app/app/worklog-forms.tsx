@@ -8,6 +8,8 @@ import { BRANCHES, ISSUE_LEVEL_HINT, ISSUE_LEVELS, ISSUE_STATUSES, PENDING_STATU
 
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
 type Option = { value: string; label: string };
+/** A task to link a log entry to; `clientId` null = an internal task. */
+export type TaskOption = Option & { clientId: string | null };
 
 const RESOURCE_OPTIONS = ["Dedicated", "Shared", "Backend Team"].map((v) => ({ value: v, label: v }));
 
@@ -63,14 +65,17 @@ export function PendingIssueFields({ d = {} }: { d?: Record<string, string> }) {
 
 /** The Team Daily Work Log row, column for column. */
 function LogFields({ clients, workTypes, lines, d, years, tasks }: {
-  clients: Option[]; workTypes: Option[]; lines: Option[]; d: Record<string, string>; years: string[]; tasks?: Option[];
+  clients: Option[]; workTypes: Option[]; lines: Option[]; d: Record<string, string>; years: string[]; tasks?: TaskOption[];
 }) {
+  // Under a client, only that client's tasks (tracker S.No. 76); with no client, only internal tasks.
+  const [client, setClient] = useState(d.clientId ?? "");
+  const clientTasks = tasks?.filter((t) => (t.clientId ?? "") === client);
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       <TextField label="Date of visit / work" name="workDate" type="date" required defaultValue={d.workDate} />
       <SelectField label="Tracker Ref No." name="trackerLineId" options={lines} defaultValue={d.trackerLineId} placeholder="New work (no Ref No.)" hint="Work given to you in the tracker; leave as new otherwise" />
       <SelectField label="Branch" name="branch" options={opts(BRANCHES)} defaultValue={d.branch} />
-      <SearchSelect label="Client" name="clientId" options={clients} defaultValue={d.clientId} placeholder="Search your clients…" emptyLabel="Office / Other" hint="Your allocated clients for this date" />
+      <SearchSelect label="Client" name="clientId" options={clients} defaultValue={d.clientId} onChange={setClient} placeholder="Search your clients…" emptyLabel="Office / Other" hint="Your allocated clients for this date" />
       <TextField label="Office / other — what was it?" name="clientNameText" defaultValue={d.clientNameText} hint="Optional, e.g. office work or a client not allocated to you" />
       <SelectField label="Place of work" name="placeOfWork" options={opts(PLACES_OF_WORK)} defaultValue={d.placeOfWork} />
       <SelectField label="Type of work" name="workTypeId" options={workTypes} defaultValue={d.workTypeId} required />
@@ -85,7 +90,7 @@ function LogFields({ clients, workTypes, lines, d, years, tasks }: {
       <details className="rounded-lg border border-line p-3 sm:col-span-3">
         <summary className="cursor-pointer text-sm font-medium text-muted">More (optional)</summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          {tasks && <SelectField label="Related task" name="taskId" options={tasks} placeholder="None" />}
+          {clientTasks && <SelectField key={client || "none"} label="Related task" name="taskId" options={clientTasks.map(({ value, label }) => ({ value, label }))} placeholder={clientTasks.length ? "None" : client ? "No open task of this client" : "No internal task"} hint={client ? "Open tasks of the chosen client" : "Internal tasks (no client)"} />}
           <SelectField label="Resource type" name="resourceType" options={RESOURCE_OPTIONS} defaultValue={d.resourceType} hint="Filled from the allocation if left blank" />
           <SelectField label="Assessment year (AY)" name="assessmentYear" options={[...new Set([...years, ...(d.assessmentYear ? [d.assessmentYear] : [])])].map((y) => ({ value: y, label: y }))} defaultValue={d.assessmentYear} />
           <TextArea label="Message sent on WhatsApp (if any)" name="whatsappMessage" rows={1} defaultValue={d.whatsappMessage} />
@@ -96,7 +101,7 @@ function LogFields({ clients, workTypes, lines, d, years, tasks }: {
 }
 
 export function TimesheetForm({ action, clients, workTypes, tasks, lines, date, years, prefill = {} }: {
-  action: Act; clients: Option[]; workTypes: Option[]; tasks: Option[]; lines: Option[]; date: string; years: string[]; prefill?: Record<string, string>;
+  action: Act; clients: Option[]; workTypes: Option[]; tasks: TaskOption[]; lines: Option[]; date: string; years: string[]; prefill?: Record<string, string>;
 }) {
   return (
     <ActionForm action={action} resetOnSuccess>

@@ -9,6 +9,7 @@ import { clientActions, type ClientStatus } from "@/lib/domain/client-workflow";
 import { daysPending, isTaskOverdue } from "@/lib/domain/derived";
 import { describeSchedule } from "@/lib/domain/allocation-schedule";
 import { clientScope } from "@/lib/services/clients";
+import { GST_TYPES, isGstType } from "@/lib/domain/gst-type";
 import { ActionButton } from "@/components/action-button";
 import { DeleteButton } from "@/components/delete-dialog";
 import { canDelete } from "@/lib/services/deletions";
@@ -59,7 +60,8 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
           ...(edit ? [{ key: "details", label: "Registration details", href: `${base}?tab=details` }] : []),
           { key: "registration", label: "GSTIN, contacts & representatives", href: `${base}?tab=registration` },
           { key: "services", label: "Services", href: `${base}?tab=services` },
-          ...(viewAll || edit ? [{ key: "documents", label: "Documents", href: `${base}?tab=documents` }] : []),
+          // Everyone who can open the client (its allocated team too) sees and downloads its documents; only editors upload.
+          { key: "documents", label: "Documents", href: `${base}?tab=documents` },
           ...(edit ? [{ key: "portal", label: "Portal access", href: `${base}?tab=portal` }] : []),
           ...(viewAll ? [{ key: "activity", label: "Activity", href: `${base}?tab=activity` }] : []),
         ]}
@@ -140,7 +142,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
       {tab === "activity" && viewAll && <ActivityTab clientId={c.id} organizationId={ctx.organization.id} />}
       {tab === "services" && <ServicesTab c={c} edit={edit} organizationId={ctx.organization.id} editId={typeof sp.edit === "string" ? sp.edit : undefined} />}
 
-      {tab === "documents" && (viewAll || edit) && (
+      {tab === "documents" && (
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <Card title="Certificates & documents">
             {(() => {
@@ -152,13 +154,13 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
                 ...c.documents.map((d) => ({ label: `${d.title ?? d.file.originalFileName} (${humanize(d.type)})`, fid: d.file.id, when: d.file.createdAt })),
               ];
               return rows.length === 0 ? (
-                <p className="text-sm text-muted">No documents uploaded.</p>
+                <p className="text-sm text-muted">No documents uploaded.{!edit && " Ask your manager to upload the client's documents."}</p>
               ) : (
                 <ul className="divide-y divide-line text-sm">
                   {rows.map((r) => (
                     <li key={r.fid} className="flex items-center justify-between py-2">
                       <span>{r.label}{r.when && <span className="ml-2 text-xs text-muted">{formatDate(r.when)}</span>}</span>
-                      <a href={`/api/files/${r.fid}`} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-700 hover:underline">View</a>
+                      <a href={`/api/files/${r.fid}`} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-700 hover:underline">View / download</a>
                     </li>
                   ))}
                 </ul>
@@ -199,9 +201,9 @@ async function DetailsFormLoader({ clientId, c }: { clientId: string; c: FullCli
         esiNumber: c.esiNumber ?? "", pfNumber: c.pfNumber ?? "", ...cls,
         gstUserId: c.gstUserId ?? "", incomeTaxUserId: c.incomeTaxUserId ?? "", tracesUserId: c.tracesUserId ?? "",
         gstPasswordSet: c.gstPasswordEncrypted ? "1" : "", incomeTaxPasswordSet: c.incomeTaxPasswordEncrypted ? "1" : "", tracesPasswordSet: c.tracesPasswordEncrypted ? "1" : "",
-        state: c.state ?? "", dateOfBirth: c.dateOfBirth ? toIsoDate(c.dateOfBirth) : "", itFileNo: c.itFileNo ?? "", masterRemark: c.masterRemark ?? "",
+        officeOpensAt: c.officeOpensAt ?? "", state: c.state ?? "", dateOfBirth: c.dateOfBirth ? toIsoDate(c.dateOfBirth) : "", itFileNo: c.itFileNo ?? "", masterRemark: c.masterRemark ?? "",
       }}
-      compliances={{ ...choices, chosenDepartments: c.departments, chosenIds: chosen.map((x) => x.complianceItemId) }}
+      compliances={{ ...choices, chosenDepartments: c.departments, chosenIds: chosen.map((x) => x.complianceItemId), gstType: c.gstRegistrationType ?? "" }}
       constitutions={constitutions.map((x) => ({ value: x.id, label: x.name }))}
       natures={natures.map((x) => ({ value: x.id, label: x.label }))}
       classifications={options.map((o) => ({ value: o.id, label: o.label, basis: o.basis }))}
@@ -246,7 +248,9 @@ async function Overview({ c, role, edit, viewAll, basis }: { basis: "CALENDAR" |
               ["ESI / PF", [c.esiNumber, c.pfNumber].filter(Boolean).join(" / ")],
               ["Billing basis", cls("BILLING_BASIS")],
               ["Place of work", cls("PLACE_OF_WORK")],
+              ["GST registration type", c.gstRegistrationType && isGstType(c.gstRegistrationType) ? GST_TYPES[c.gstRegistrationType] : null],
               ["GST status", cls("GST_STATUS")],
+              ["Office opens at", c.officeOpensAt ? `${c.officeOpensAt} (late-coming of staff at this client is checked against it)` : null],
               ["Priority", cls("PRIORITY")],
               ["State", c.state],
               ["Date of birth / incorporation", c.dateOfBirth ? formatDate(c.dateOfBirth) : null],
@@ -275,7 +279,7 @@ async function Overview({ c, role, edit, viewAll, basis }: { basis: "CALENDAR" |
             </div>
           )}
         </Card>
-        <Card title="Open tasks" actions={<Link className="text-sm text-brand-700 hover:underline" href={`/app/tasks?client=${c.id}`}>All tasks</Link>}>
+        <Card title="Open tasks" actions={<Link className="text-sm text-brand-700 hover:underline" href={`/app/tasks?client=${c.id}${viewAll ? "&scope=all" : ""}`}>All tasks of this client</Link>}>
           {tasks.length === 0 ? <p className="text-sm text-muted">No open tasks.</p> : (
             <ul className="divide-y divide-line text-sm">
               {tasks.map((t) => (

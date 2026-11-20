@@ -1,3 +1,4 @@
+import { GST_TYPES, isGstType } from "@/lib/domain/gst-type";
 import { NextResponse } from "next/server";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
     orderBy: clientListOrder(f.sort),
     take: 20_000,
     select: {
-      clientCode: true, tradeName: true, legalName: true, address: true, pan: true, tan: true, state: true, dateOfBirth: true, itFileNo: true,
+      clientCode: true, tradeName: true, legalName: true, address: true, pan: true, tan: true, state: true, gstRegistrationType: true, officeOpensAt: true, dateOfBirth: true, itFileNo: true,
       departments: true, masterRemark: true, status: true, gstUserId: true, incomeTaxUserId: true, tracesUserId: true, extraFields: true, createdAt: true,
       constitution: { select: { name: true } },
       gstRegistrations: { select: { gstin: true } },
@@ -30,13 +31,13 @@ export async function GET(request: Request) {
   });
   const extraKeys = [...new Set(clients.flatMap((c) => (c.extraFields && typeof c.extraFields === "object" && !Array.isArray(c.extraFields) ? Object.keys(c.extraFields) : [])))];
   const head = ["Client Code", "Name", "Legal Name (as per PAN)", "Address", "GSTIN", "PAN", "Constitution of Business", "GST User ID", "Income Tax User ID", "TRACES User ID",
-    "State", "TAN", "Contact Person", "Mobile", "Email", "DOB", "IT File No.", "Applicable Department", "Remark", "Services", "Team", "Status", "Registered on", ...extraKeys];
+    "State", "TAN", "Contact Person", "Mobile", "Email", "DOB", "IT File No.", "Applicable Department", "GST Registration Type", "Office Opens At", "Remark", "Services", "Team", "Status", "Registered on", ...extraKeys];
   const rows = clients.map((c) => {
     const extra = (c.extraFields ?? {}) as Record<string, string>;
     const contact = c.contacts[0];
     return [
       c.clientCode, c.tradeName, c.legalName, c.address, c.gstRegistrations.map((g) => g.gstin).join(", "), c.pan, c.constitution?.name, c.gstUserId, c.incomeTaxUserId, c.tracesUserId,
-      c.state, c.tan, contact?.name, contact?.mobile, contact?.email, c.dateOfBirth, c.itFileNo, c.departments.join(", "), c.masterRemark,
+      c.state, c.tan, contact?.name, contact?.mobile, contact?.email, c.dateOfBirth, c.itFileNo, c.departments.join(", "), c.gstRegistrationType && isGstType(c.gstRegistrationType) ? GST_TYPES[c.gstRegistrationType] : "", c.officeOpensAt ?? "", c.masterRemark,
       c.services.map((s) => s.service.name).join(", "), c.teamAllocations.map((a) => `${a.employee.firstName} ${a.employee.lastName ?? ""}`.trim()).join(", "),
       STATUS[c.status] ?? c.status, c.createdAt, ...extraKeys.map((k) => extra[k] ?? ""),
     ];

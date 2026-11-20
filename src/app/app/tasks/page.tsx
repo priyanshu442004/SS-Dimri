@@ -33,7 +33,20 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
   const ctx = await requireCapability("tasks.use");
   const sp = await searchParams;
   const view = sp.view === "calendar" ? "calendar" : sp.view === "board" ? "board" : "list";
-  const scope = typeof sp.scope === "string" ? sp.scope : can(ctx, "tasks.view_all") ? "all" : "mine";
+  const me = ctx.employee?.id ?? NO_EMPLOYEE;
+  // Tasks open on "My tasks" for everyone (tracker S.No. 77). The other tabs show only to those who use them:
+  // "Assigned by me" to people who have given tasks, "Awaiting my review" to reviewers, "All tasks" to leads.
+  const [givenCount, reviewCount] = await Promise.all([
+    prisma.task.count({ where: { AND: [taskScope(ctx), assignedByMe(ctx)] } }),
+    prisma.task.count({ where: { AND: [taskScope(ctx), { status: "PENDING_REVIEW", checkerEmployeeId: me }] } }),
+  ]);
+  const tabs = {
+    assigned: givenCount > 0 || can(ctx, "tasks.view_all"),
+    review: can(ctx, "tasks.review") || reviewCount > 0,
+    all: can(ctx, "tasks.view_all"),
+  };
+  const asked = typeof sp.scope === "string" ? sp.scope : "mine";
+  const scope = asked === "mine" || (asked in tabs && tabs[asked as keyof typeof tabs]) ? asked : "mine";
   const state = typeof sp.state === "string" ? sp.state : "open";
   const clientId = typeof sp.client === "string" && /^[0-9a-f-]{36}$/i.test(sp.client) ? sp.client : "";
   const priority = sp.priority === "ASAP" || sp.priority === "HIGH" || sp.priority === "MEDIUM" || sp.priority === "LOW" ? sp.priority : "";
@@ -44,7 +57,6 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
   const page = Math.max(1, Number(sp.page) || 1);
   const today = isoDateInTz(new Date(), ctx.organization.timezone);
   const month = typeof sp.month === "string" && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : today.slice(0, 7);
-  const me = ctx.employee?.id ?? NO_EMPLOYEE;
 
   const where: Prisma.TaskWhereInput = {
     AND: [
@@ -59,6 +71,7 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
     ],
   };
 
+  const filterClient = clientId ? await prisma.client.findFirst({ where: { id: clientId, organizationId: ctx.organization.id }, select: { tradeName: true } }) : null;
   const [tasks, total] = await Promise.all([
     prisma.task.findMany({
       where,
@@ -92,9 +105,9 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
         current={scope}
         tabs={[
           { key: "mine", label: "My tasks", href: params({ scope: "mine", page: 1 }) },
-          { key: "assigned", label: "Assigned by me", href: params({ scope: "assigned", state: "all", page: 1 }) },
-          ...(can(ctx, "tasks.review") || ctx.employee ? [{ key: "review", label: "Awaiting my review", href: params({ scope: "review", state: "all", page: 1 }) }] : []),
-          ...(can(ctx, "tasks.view_all") ? [{ key: "all", label: "All tasks", href: params({ scope: "all", page: 1 }) }] : []),
+          ...(tabs.assigned ? [{ key: "assigned", label: "Assigned by me", href: params({ scope: "assigned", state: "all", page: 1 }) }] : []),
+          ...(tabs.review ? [{ key: "review", label: "Awaiting my review", href: params({ scope: "review", state: "all", page: 1 }) }] : []),
+          ...(tabs.all ? [{ key: "all", label: "All tasks", href: params({ scope: "all", page: 1 }) }] : []),
         ]}
       />
       <form className="mb-4 flex flex-wrap items-center gap-2" aria-label="Filters">
@@ -123,6 +136,12 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
           </select>
         )}
         <button className="h-9 rounded-md border border-line bg-surface px-3 text-sm hover:bg-subtle">Apply</button>
+        {clientId && (
+          <span className="inline-flex h-9 items-center gap-2 rounded-md border border-brand-200 bg-brand-50 px-3 text-sm text-brand-700">
+            Client: <strong>{filterClient?.tradeName ?? "—"}</strong>
+            <Link href={`/app/tasks?${new URLSearchParams({ scope, state, view })}`} className="font-medium underline-offset-2 hover:underline" aria-label="Show tasks of every client">Clear</Link>
+          </span>
+        )}
         <span className="ml-auto flex gap-1 text-sm">
           <Link href={params({ view: "list" })} aria-current={view === "list" ? "page" : undefined} className={`rounded px-2 py-1 ${view === "list" ? "bg-brand-50 text-brand-700" : "text-muted hover:bg-subtle"}`}>List</Link>
           <Link href={params({ view: "board" })} aria-current={view === "board" ? "page" : undefined} className={`rounded px-2 py-1 ${view === "board" ? "bg-brand-50 text-brand-700" : "text-muted hover:bg-subtle"}`}>Board</Link>

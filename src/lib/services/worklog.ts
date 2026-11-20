@@ -99,6 +99,12 @@ export async function addTimesheetEntry(ctx: AppContext, v: TimesheetInput) {
   checkLogRules(v, typeOfWork, minutes);
   const lineId = await trackerLineFor(ctx, v.trackerLineId);
   const pending = pendingAndIssueData(v);
+  // A related task must be one of this client's tasks (tracker S.No. 76): no task of another client.
+  if (v.taskId) {
+    const task = await prisma.task.findFirst({ where: { id: v.taskId, organizationId: ctx.organization.id }, select: { clientId: true } });
+    if (!task) throw new BusinessRuleError("The related task was not found.");
+    if ((task.clientId ?? null) !== (client?.id ?? null)) throw new BusinessRuleError(client ? "The related task belongs to another client. Pick one of this client's tasks." : "The related task belongs to a client. Choose that client, or pick an internal task.");
+  }
   return prisma.$transaction(async (tx) => {
     const trackerLineId = await syncTrackerFromLog(tx, ctx.organization.id, {
       employeeId, workDate: day, clientId: client?.id ?? null, clientNameText: client?.tradeName ?? v.clientNameText ?? null, branch: v.branch ?? null,
@@ -222,7 +228,12 @@ export async function correctTimesheetEntry(ctx: AppContext, entryId: string, v:
     throw new BusinessRuleError(`${client.tradeName} is not allocated to you on this date. Choose one of your clients, or Office / Other.`);
   }
   const workType = v.workTypeId ? await prisma.workType.findFirst({ where: { id: v.workTypeId, organizationId: ctx.organization.id } }) : null;
-  const minutes = minutesFrom(v);
+  // A paused / resumed entry (several sessions) keeps its total unless its start or end time is changed:
+  // the span from first start to last end would count the breaks.
+  const sessions = Array.isArray(e.sessions) ? e.sessions : [];
+  const sameTimes = (v.startTime ?? null) === (e.startTime ?? null) && (v.endTime ?? null) === (e.endTime ?? null);
+  const keepTotal = sessions.length > 1 && sameTimes && !v.hours && !v.minutes;
+  const minutes = keepTotal ? e.approxMinutes : minutesFrom(v);
   checkLogRules(v, workType?.name ?? v.typeOfWork, minutes);
   const lineId = (await trackerLineFor(ctx, v.trackerLineId)) ?? e.trackerLineId;
   const next = {
@@ -258,7 +269,7 @@ export async function correctTimesheetEntry(ctx: AppContext, entryId: string, v:
     await tx.timesheetEntry.update({
       where: { id: e.id },
       // An employee's correction (re)submits the entry for review.
-      data: { ...next, trackerLineId, ...(own && e.status !== "REVIEWED" ? { status: "SUBMITTED" as const } : {}) },
+      data: { ...next, trackerLineId, ...(sessions.length > 1 && !keepTotal ? { sessions: [] } : {}), ...(own && e.status !== "REVIEWED" ? { status: "SUBMITTED" as const } : {}) },
     });
     await audit(tx, ctx, "timesheet.corrected", "timesheet_entry", e.id, { reason: v.reason ?? null, changes } as Prisma.InputJsonValue);
   });

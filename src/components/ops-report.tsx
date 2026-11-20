@@ -7,10 +7,11 @@ import { clsx } from "clsx";
 import { Inbox, Sparkles } from "lucide-react";
 import type { Kpi, OpsSummary } from "@/lib/services/ops-summary";
 
-// The management report in the client's "Daily AI Summary Report" format (17 Nov 2026): a navy band,
+// The management report in the client's "Daily Summary Report" format (17 Nov 2026): a navy band,
 // eight KPI tiles with change and a 7-point sparkline, then the summary, attendance, workload, urgent
 // cases, client pending, late arrivals, offsite work, late fees and priorities. Used by the dashboard
-// (with period filters), AI Reporting (with the AI-written summary) and the PDF print page.
+// (its operations detail, under the Business 360° pages), Reporting and the PDF print page. No section
+// is labelled as machine-written (client feedback, 20 Nov 2026).
 
 export type ReportNarrative = { summary: { label: string; text: string }[]; priorities: string[]; ai: boolean };
 type Mode = "dashboard" | "report" | "print";
@@ -138,8 +139,8 @@ function NoData({ note }: { note?: string }) {
   );
 }
 
-const Badge = ({ children, tone = "ai" }: { children: ReactNode; tone?: "ai" | "est" }) => (
-  <span className={clsx("rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide", tone === "ai" ? "bg-marigold text-night" : "bg-marigold-soft text-warn")}>{children}</span>
+const Badge = ({ children }: { children: ReactNode }) => (
+  <span className="rounded bg-marigold-soft px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warn">{children}</span>
 );
 
 /** `narrow`: a table in a third of the page wraps its text instead of scrolling sideways. */
@@ -227,12 +228,14 @@ function useSelectionAsk(container: RefObject<HTMLElement | null>, onAsk?: (text
 
 // ---------------------------------------------------------------- the report
 
-export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, generatedLabel, toolbar }: {
+export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, generatedLabel, toolbar, bare = false }: {
   data: OpsSummary;
   narrative?: ReportNarrative | null;
   mode: Mode;
   title: string;
   busy?: boolean;
+  /** Inside another page (the dashboard): a plain heading instead of the navy band. */
+  bare?: boolean;
   onAsk?: (text: string) => void;
   /** e.g. "Generated 6:00 PM IST" (report) or "Updated 4:12 PM" (dashboard). */
   generatedLabel: string;
@@ -244,26 +247,42 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
   const animate = mode !== "print";
   const print = mode === "print";
   const cap = <T,>(rows: T[], n: number) => (print ? rows.slice(0, n) : rows);
-  const ai = !!narrative?.ai;
   const summary = narrative?.summary ?? data.summary;
   const priorities = narrative?.priorities ?? data.priorities;
-  const today = data.period === "today";
-  const k = data.period; // re-key sections so a new period animates in
+  // "today" / "yesterday" / "19 Nov" for a one-day period; the period's name otherwise.
+  // Relative to when the figures were made (a stored report keeps its words).
+  const made = new Date(data.generatedAt);
+  const todayIso = made.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  const yesterdayIso = new Date(made.getTime() - 86_400_000).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  const today = data.singleDay && data.asOfDate === todayIso;
+  const dayWord = today ? "today" : data.asOfDate === yesterdayIso ? "yesterday" : new Date(`${data.asOfDate}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
+  const periodWord = data.singleDay ? dayWord : data.periodLabel.toLowerCase();
+  const k = `${data.period}-${data.asOfDate}-${data.rangeLabel}`; // re-key sections so a new period animates in
 
   return (
     <PrintCtx.Provider value={print}>
     <div ref={ref} className={clsx("relative", busy && "pointer-events-none", print && "ops-static")} aria-busy={busy}>
       {/* Band */}
-      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 rounded-t-xl bg-night px-5 py-3 text-paper">
-        <div className="min-w-0">
-          <h1 className="font-editorial text-[26px] leading-tight text-paper">{title}</h1>
-          <p className="text-[13px] text-paper/80">Accounting &amp; Compliance Practice &nbsp;|&nbsp; Operations, Attendance &amp; Urgency &nbsp;|&nbsp; For Management</p>
+      {bare ? (
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-1 rounded-t-xl border border-b-0 border-line bg-surface px-5 py-3">
+          <div className="min-w-0">
+            <h2 className="font-editorial text-[22px] leading-tight text-night dark:text-ink">{title}</h2>
+            <p className="text-[12.5px] text-muted">Work, attendance, urgent cases, client pending, late arrivals, offsite visits and late fees · {data.singleDay ? data.dateLabel : data.rangeLabel}</p>
+          </div>
+          <p className="text-[12.5px] text-muted">{data.counts.clients} clients · {data.counts.members} team members · {data.counts.items} open items</p>
         </div>
-        <div className="text-right">
-          <p className="text-[17px] font-bold text-paper">{data.singleDay ? data.dateLabel : data.rangeLabel}</p>
-          <p className="text-[12.5px] text-paper/80">{generatedLabel} &nbsp;|&nbsp; {data.counts.clients} clients · {data.counts.members} team members · {data.counts.items} open items</p>
+      ) : (
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 rounded-t-xl bg-night px-5 py-3 text-paper">
+          <div className="min-w-0">
+            <h1 className="font-editorial text-[26px] leading-tight text-paper">{title}</h1>
+            <p className="text-[13px] text-paper/80">Accounting &amp; Compliance Practice &nbsp;|&nbsp; Operations, Attendance &amp; Urgency &nbsp;|&nbsp; For Management</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[17px] font-bold text-paper">{data.singleDay ? data.dateLabel : data.rangeLabel}</p>
+            <p className="text-[12.5px] text-paper/80">{generatedLabel} &nbsp;|&nbsp; {data.counts.clients} clients · {data.counts.members} team members · {data.counts.items} open items</p>
+          </div>
         </div>
-      </div>
+      )}
       {toolbar && <div className="border-x border-line bg-surface px-4 py-2.5 print:hidden">{toolbar}</div>}
       {/* Loading bar while another period is fetched */}
       <div className="relative h-0.5 overflow-hidden bg-transparent" aria-hidden>{busy && <span className="ops-loading-bar" />}</div>
@@ -276,7 +295,7 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
 
         {/* Summary + attendance by role */}
         <div key={`a-${k}`} className="grid items-start gap-5 lg:grid-cols-[1.45fr_1fr]">
-          <Section title={ai ? "AI executive summary" : "Executive summary"} badge={ai ? <Badge>AI-generated</Badge> : null} i={0}>
+          <Section title="Executive summary" i={0}>
             <Panel h="a">
               {summary.length === 0 ? <NoData /> : (
                 <ul className="divide-y divide-line text-[13px]">
@@ -289,7 +308,7 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
               )}
             </Panel>
           </Section>
-          <Section title={`Attendance by role – ${data.singleDay ? (today ? "today" : "yesterday") : data.periodLabel.toLowerCase()}`} i={1}>
+          <Section title={`Attendance by role – ${periodWord}`} i={1}>
             <Grid
               h="a"
               empty="No staff on record for this period."
@@ -308,7 +327,7 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
 
         {/* Workload + urgent cases */}
         <div key={`b-${k}`} className="grid items-start gap-5 lg:grid-cols-2">
-          <Section title={`Team workload – ${data.singleDay ? (today ? "today" : "yesterday") : data.periodLabel.toLowerCase()}`} i={2}>
+          <Section title={`Team workload – ${periodWord}`} i={2}>
             <Grid
               h="b"
               head={["Member", "Role", "Status", "Assigned", "Done", "Open", "Overdue", data.compareLabel]}
@@ -377,7 +396,7 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
 
         {/* Late fees + priorities */}
         <div key={`d-${k}`} className="grid items-start gap-5 lg:grid-cols-[1.2fr_1fr]">
-          <Section title="Overdue penalties & payments due" badge={<Badge tone="est">Estimate</Badge>} i={7}>
+          <Section title="Overdue penalties & payments due" badge={<Badge>Estimate</Badge>} i={7}>
             <Grid
               h="d"
               head={["Item", "Client", "Late", "Penalty", data.compareLabel, "Borne by"]}
@@ -388,7 +407,7 @@ export function OpsReport({ data, narrative, mode, title, busy = false, onAsk, g
               footer={<span className="text-[11px] text-muted">Estimated statutory late fee on overdue filings: GST ₹50/day (max ₹10,000), GSTR-9 ₹200/day, TDS/TCS ₹200/day (234E), ITR ₹5,000 (234F), ROC ₹100/day.</span>}
             />
           </Section>
-          <Section title={ai ? `AI-recommended priorities${today ? " for tomorrow" : ""}` : `Recommended priorities${today ? " for tomorrow" : ""}`} badge={ai ? <Badge>AI-generated</Badge> : null} i={8}>
+          <Section title={`Recommended priorities${today ? " for tomorrow" : ""}`} i={8}>
             <Panel h="d">
               {priorities.length === 0 ? <NoData note="Nothing pressing for tomorrow." /> : (
                 <ol className="divide-y divide-line text-[13px]">

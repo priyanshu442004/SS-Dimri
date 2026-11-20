@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { BusinessRuleError, zCheckbox, zIsoDate, zOptionalText } from "@/lib/actions";
 import { addDays, dateOnly, formatDate, isoDateInTz, minutesOfDayInTz, monthRange, toIsoDate, todayDateOnly } from "@/lib/dates";
-import { hhmm, leaveWithIntimation, noticeDays, timesOfDay } from "@/lib/domain/attendance-policy";
+import { hhmm, leaveWithIntimation, noticeDays, scheduleFor, timesOfDay } from "@/lib/domain/attendance-policy";
 import { isMissingTimeOut, lunchAllowanceMinutes, lunchMinutes, lunchOverMinutes, markOutReminderDue } from "@/lib/domain/attendance-extras";
 import type { AppContext } from "@/lib/session";
 import { can } from "@/lib/permissions";
@@ -84,7 +84,12 @@ export async function markAttendance(ctx: AppContext, kind: "in" | "out", v: z.i
   if (kind === "in" && existing && existing.status !== "PRESENT") throw new BusinessRuleError(`Today is recorded as ${existing.status === "LEAVE" ? "leave" : existing.status === "ABSENT" ? "absent" : "a half day"}.`);
   if (kind === "out" && !existing?.timeIn) throw new BusinessRuleError("Mark in first.");
   if (kind === "out" && existing?.timeOut) throw new BusinessRuleError("You have already marked out today.");
-  const schedule = scheduleOf(policy, emp, existing);
+  // Reporting straight to a client whose office opening time is set (tracker S.No. 75): late-coming is
+  // checked against the client's time, not the firm's office time; the day keeps that schedule.
+  const clientOpens = kind === "in" && location && location !== "OFFICE" && v.workPlace
+    ? (await prisma.client.findFirst({ where: { organizationId: ctx.organization.id, tradeName: { equals: v.workPlace.trim(), mode: "insensitive" }, officeOpensAt: { not: null } }, select: { officeOpensAt: true } }))?.officeOpensAt ?? null
+    : null;
+  const schedule = clientOpens ? scheduleFor(policy.times, { attendanceProfile: "ONSITE", siteReportingTime: clientOpens }) : scheduleOf(policy, emp, existing);
   if (kind === "in" && ctx.role !== "OWNER" && minutesOfDayInTz(now, tz) >= schedule.absentAt) {
     // Someone on leave for part of the day (a half day), or who informed a late arrival, may still come in.
     const [onLeave, lateForm] = await Promise.all([

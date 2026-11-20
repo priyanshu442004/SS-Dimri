@@ -233,7 +233,11 @@ export async function performTaskAction(ctx: AppContext, taskId: string, action:
       const changes = await tx.taskActivity.findMany({ where: { taskId: task.id, type: "STATUS_CHANGED", id: { not: change.id } }, select: { toValue: true, actorUserId: true, createdAt: true } });
       const segments = taskWorkSegments(changes, ctx.user.id, change.createdAt, { start: office.officeStart, end: office.officeEnd }, ctx.organization.timezone);
       const client = task.clientId ? await tx.client.findUnique({ where: { id: task.clientId }, select: { tradeName: true } }) : null;
-      for (const seg of segments) {
+      // One entry per day for the task (tracker S.No. 71): the day's sessions are kept in its details.
+      const byDay = new Map<string, typeof segments>();
+      for (const seg of segments) byDay.set(seg.date, [...(byDay.get(seg.date) ?? []), seg]);
+      for (const daySegs of byDay.values()) {
+        const seg = { date: daySegs[0].date, start: daySegs[0].start, end: daySegs[daySegs.length - 1].end, minutes: daySegs.reduce((n, x) => n + x.minutes, 0) };
         const day = dateOnly(seg.date);
         const allocation = task.clientId
           ? await tx.teamAllocation.findFirst({ where: { clientId: task.clientId, employeeId: ctx.employee.id, status: { in: ["ACTIVE", "PLANNED", "ENDED"] }, startDate: { lte: day }, OR: [{ endDate: null }, { endDate: { gte: day } }] }, select: { id: true, resourceType: true } })
@@ -245,6 +249,7 @@ export async function performTaskAction(ctx: AppContext, taskId: string, action:
             clientId: task.clientId, clientNameText: client?.tradeName ?? "Office / Other", clientServiceId: task.clientServiceId,
             taskId: task.id, teamAllocationId: allocation?.id, resourceType: allocation?.resourceType,
             typeOfWork: "Task", startTime: seg.start, endTime: seg.end, approxMinutes: seg.minutes,
+            sessions: daySegs.map(({ start, end, minutes }) => ({ start, end, minutes })),
             workDetails: `${task.title} — sent for review (time recorded from the task)`, workStatus: "COMPLETED",
           },
         });

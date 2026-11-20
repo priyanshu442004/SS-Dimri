@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireCapability } from "@/lib/session";
+import { can } from "@/lib/permissions";
 import { Card, PageHeader } from "@/components/ui";
 import { QuickRegistrationForm } from "./quick-form";
 import { complianceChoices } from "@/lib/services/client-compliances";
 import { Zap } from "lucide-react";
 
 export default async function QuickClientPage() {
-  const ctx = await requireCapability("clients.register");
+  const ctx = await requireCapability("clients.quick_register");
   const [constitutions, services, choices] = await Promise.all([
     prisma.constitution.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
     prisma.service.findMany({
@@ -21,7 +22,7 @@ export default async function QuickClientPage() {
     <>
       <PageHeader icon={<Zap />}
         title="Quick registration"
-        back={{ href: "/app/clients/new", label: "Full registration" }}
+        back={can(ctx, "clients.register") ? { href: "/app/clients/new", label: "Full registration" } : { href: "/app/clients", label: "Clients" }}
         description="Only the essentials. The client is created as “pending approval” and can be completed later; an administrator activates it."
       />
       <Card className="max-w-3xl">

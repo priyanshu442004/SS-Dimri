@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Copy, Gauge, MessageSquareText, RefreshCw, RotateCcw, Sparkles, X } from "lucide-react";
+import { Copy, MessageSquareText, RefreshCw, RotateCcw, Sparkles, X } from "lucide-react";
 import { buttonClass } from "@/components/ui";
 import { toast } from "@/components/toaster";
 import { Markdown } from "@/components/markdown";
@@ -95,7 +95,7 @@ function SummaryDialog({ open, onClose, state }: { open: boolean; onClose: () =>
 
 // ------------------------------------------------------------------ buttons
 
-export function AiAssistant({ chat = false, dashboard360 = false }: { chat?: boolean; dashboard360?: boolean }) {
+export function AiAssistant({ chat = false }: { chat?: boolean }) {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const summary = useSummary();
   // The first click generates the report; reopening shows the last one until "Regenerate".
@@ -110,7 +110,6 @@ export function AiAssistant({ chat = false, dashboard360 = false }: { chat?: boo
           <>
             <Link href="/app/reporting" className={buttonClass("primary", "md")}><Sparkles className="size-4" aria-hidden /> AI Reporting</Link>
             <Link href="/app/assistant" className={buttonClass("secondary", "md")}><MessageSquareText className="size-4" aria-hidden /> AI Assistant</Link>
-            {dashboard360 && <Link href="/app/admin/360" className={buttonClass("secondary", "md")}><Gauge className="size-4" aria-hidden /> 360° Dashboard</Link>}
           </>
         ) : (
           <button type="button" onClick={openSummary} className={buttonClass("primary", "md")}><Sparkles className="size-4" aria-hidden /> AI Summary</button>

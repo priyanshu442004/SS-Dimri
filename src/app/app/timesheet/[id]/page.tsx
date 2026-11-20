@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import { dateOnly, formatDate, formatDateTime, isoDateInTz, minutesToHhmm, toIsoDate } from "@/lib/dates";
-import { assessmentYears } from "@/lib/domain/timesheet";
+import { assessmentYears, sessionsText } from "@/lib/domain/timesheet";
 import { DeleteButton } from "@/components/delete-dialog";
 import { canDelete } from "@/lib/services/deletions";
 import { daysPending } from "@/lib/domain/derived";
@@ -101,6 +101,7 @@ export default async function TimesheetEntryPage({ params }: PageProps<"/app/tim
                 ["Transactions / entries", e.transactionCount?.toString()],
                 ["Start – end time", e.startTime && e.endTime ? `${e.startTime} – ${e.endTime}` : null],
                 ["Hours invested", e.approxMinutes ? minutesToHhmm(e.approxMinutes) : null],
+                ["Sessions (start – pause)", sessionsText(e.sessions) || null],
                 ["Submitted on", formatDateTime(e.createdAt)],
                 ["Status of work", e.workStatus ? (STATUS_OF_WORK_LABEL[e.workStatus] ?? humanize(e.workStatus)) : null],
                 ["Task / compliance description", e.workDetails],

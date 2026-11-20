@@ -32,7 +32,7 @@ export function DetailsForm({
 }: {
   action: Act;
   d: Record<string, string>;
-  compliances: { items: ComplianceOption[]; departments: string[]; chosenDepartments: string[]; chosenIds: string[] };
+  compliances: { items: ComplianceOption[]; departments: string[]; chosenDepartments: string[]; chosenIds: string[]; gstType: string };
   constitutions: Option[];
   natures: Option[];
   classifications: (Option & { basis: string })[];
@@ -56,6 +56,7 @@ export function DetailsForm({
         <TextField label="Date of birth / incorporation" name="dateOfBirth" type="date" defaultValue={d.dateOfBirth} />
         <TextField label="IT file no." name="itFileNo" defaultValue={d.itFileNo} />
         <TextArea label="Remark" name="masterRemark" rows={1} defaultValue={d.masterRemark} />
+        <TextField label="Client's office opens at" name="officeOpensAt" type="time" defaultValue={d.officeOpensAt} hint="Staff who report straight to this client are late against this time, not the firm's office time. Leave blank to use the firm's time." />
       </fieldset>
 
       <fieldset className="grid gap-4 sm:grid-cols-3">
@@ -71,7 +72,7 @@ export function DetailsForm({
       <fieldset>
         <legend className="mb-2 text-sm font-semibold">Departments & compliances</legend>
         <input type="hidden" name="compliancesShown" value="on" />
-        <CompliancePicker items={compliances.items} departments={compliances.departments} defaultDepartments={compliances.chosenDepartments} defaultIds={compliances.chosenIds} />
+        <CompliancePicker items={compliances.items} departments={compliances.departments} defaultDepartments={compliances.chosenDepartments} defaultIds={compliances.chosenIds} defaultGstType={compliances.gstType} />
       </fieldset>
 
       <fieldset className="grid gap-4 sm:grid-cols-2">

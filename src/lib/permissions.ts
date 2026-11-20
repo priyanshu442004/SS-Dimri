@@ -40,6 +40,8 @@ export const CAPABILITIES = {
   "clients.use": EVERYONE,
   "clients.view_all": LEADS,
   "clients.register": MANAGERS,
+  /** Quick registration (the essentials, pending approval) is open to every team member (tracker S.No. 73). */
+  "clients.quick_register": EVERYONE,
   "clients.import": MANAGERS,
   "clients.edit": MANAGERS,
   "clients.approve": ADMINS,

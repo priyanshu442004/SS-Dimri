@@ -101,7 +101,7 @@ export function SearchSelect({
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
 
-  useFormReset(box, useMemo(() => () => { setInner(defaultValue); setQuery(null); }, [defaultValue]));
+  useFormReset(box, useMemo(() => () => { setInner(defaultValue); setQuery(null); onChange?.(defaultValue); }, [defaultValue, onChange]));
 
   const selected = options.find((o) => o.value === value);
   const shown = useMemo(() => {

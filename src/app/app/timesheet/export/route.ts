@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { dateOnly, isoDateInTz, toIsoDate } from "@/lib/dates";
-import { isLateReview, isLateSubmission, minutesBetween, slaOf } from "@/lib/domain/timesheet";
+import { isLateReview, isLateSubmission, minutesBetween, sessionsText, slaOf } from "@/lib/domain/timesheet";
 import { daysAllowed, daysOpen, STATUS_OF_WORK_LABEL, timelineFlagOf, TIMELINE_FLAGS, workStatusOf, WORK_STATUSES } from "@/lib/domain/tracker";
 import { can } from "@/lib/permissions";
 import { timesheetReviewers } from "@/lib/services/timesheet-report";
@@ -55,10 +55,12 @@ export async function GET(request: Request) {
   ];
   const rows = entries.map((e, i) => {
     const p = people.get(e.id);
-    const minutes = minutesBetween(e.startTime, e.endTime) ?? e.approxMinutes ?? 0;
+    // A paused / resumed entry's total is its sessions, not the span from first start to last end.
+    const sessions = sessionsText(e.sessions);
+    const minutes = (sessions ? e.approxMinutes : minutesBetween(e.startTime, e.endTime) ?? e.approxMinutes) ?? 0;
     return [
       i + 1, person(e.employee), e.workDate, e.clientNameText ?? "", e.branch ?? "", e.trackerLine?.refNo ?? "", e.placeOfWork ?? "", e.typeOfWork ?? "", e.bankName ?? "", e.periodFrom, e.periodTo,
-      e.transactionCount ?? "", Math.round((minutes / 60) * 100) / 100, e.workDetails ?? "", e.workStatus ? STATUS_OF_WORK_LABEL[e.workStatus] : "", e.issueLevel ?? "", e.issueDetails ?? "", e.issueStatus ?? "",
+      e.transactionCount ?? "", Math.round((minutes / 60) * 100) / 100, `${e.workDetails ?? ""}${sessions ? ` (sessions: ${sessions})` : ""}`, e.workStatus ? STATUS_OF_WORK_LABEL[e.workStatus] : "", e.issueLevel ?? "", e.issueDetails ?? "", e.issueStatus ?? "",
       e.clientPendingItem ?? "", e.clientRaisedOn, e.clientDueBy, e.clientPendingStatus ?? "", e.clientPendingItem ? daysOpen(e.clientRaisedOn, e.clientPendingStatus, today) ?? "" : "",
       e.teamPendingItem ?? "", e.teamRaisedOn, e.teamDueBy, e.teamPendingStatus ?? "", e.teamPendingItem ? daysOpen(e.teamRaisedOn, e.teamPendingStatus, today) ?? "" : "",
       e.startTime ?? "", e.endTime ?? "", e.resourceType ?? "", e.assessmentYear ?? "", local(e.createdAt), p?.reviewer ?? "Not Mapped", REVIEW[e.status] ?? e.status, e.reviewNote ?? "",

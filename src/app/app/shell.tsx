@@ -23,7 +23,7 @@ const iconFor = (n: NavItem) => ICONS[n.icon as keyof typeof ICONS] ?? Home;
 
 // Breadcrumb labels for path segments; ids and unknown segments become "Details".
 const SEGMENT_LABELS: Record<string, string> = {
-  app: "Home", admin: "Dashboard", "360": "360° dashboard", manager: "Dashboard", senior: "Dashboard", workspace: "Dashboard",
+  app: "Home", admin: "Dashboard", manager: "Dashboard", senior: "Dashboard", workspace: "Dashboard",
   clients: "Clients", approvals: "Approvals", new: "New", employees: "Employees", allocations: "Team allocation", tasks: "Tasks",
   attendance: "Attendance", timesheet: "Timesheet", "day-reports": "Day reports", pending: "Pending tracker", reports: "Reports",
   services: "Services & departments", compliances: "Compliance", payroll: "Payroll", import: "Import from Excel", settings: "Settings", notifications: "Notifications",

@@ -45,3 +45,12 @@ export function assessmentYears(today: Date) {
   const ay = (y: number) => `AY ${y}-${String((y + 1) % 100).padStart(2, "0")}`;
   return [ay(ayStart - 4), ay(ayStart - 3), ay(ayStart - 2), ay(ayStart - 1), ay(ayStart)];
 }
+
+/** "10:00–11:30, 14:00–15:10" for a timed entry's sessions (paused and resumed); "" for one or none. */
+export function sessionsText(sessions: unknown): string {
+  if (!Array.isArray(sessions) || sessions.length < 2) return "";
+  return sessions
+    .filter((x): x is { start: string; end: string } => !!x && typeof x === "object" && typeof (x as { start?: unknown }).start === "string")
+    .map((x) => `${x.start}–${x.end}`)
+    .join(", ");
+}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { clsx } from "clsx";
 import { Check } from "lucide-react";
+import { GST_TYPE_KEYS, GST_TYPE_NOTE, GST_TYPES, gstItemApplies, isGstType, type GstType } from "@/lib/domain/gst-type";
 
 export type ComplianceOption = { id: string; department: string; name: string; form: string | null; frequency: string | null; dueDateRule: string | null };
 
@@ -11,15 +12,28 @@ export type ComplianceOption = { id: string; department: string; name: string; f
  * of that department from the master data, all ticked, to untick what does not apply.
  * Posts departments[] and complianceItemIds[].
  */
-export function CompliancePicker({ items, departments, defaultDepartments = [], defaultIds }: {
+export function CompliancePicker({ items: allItems, departments, defaultDepartments = [], defaultIds, defaultGstType = "" }: {
   items: ComplianceOption[];
   departments: string[];
   defaultDepartments?: string[];
   /** Omitted: every compliance of the chosen departments starts ticked. */
   defaultIds?: string[];
+  /** GST registration type (tracker S.No. 74): the GST compliances listed follow it. */
+  defaultGstType?: string;
 }) {
+  const [gstType, setGstType] = useState<GstType | "">(isGstType(defaultGstType) ? defaultGstType : "");
+  const items = allItems.filter((i) => gstItemApplies(gstType || null, i));
   const [chosen, setChosen] = useState(() => new Set(defaultDepartments));
-  const [ids, setIds] = useState(() => new Set(defaultIds ?? items.filter((i) => defaultDepartments.includes(i.department)).map((i) => i.id)));
+  const [ids, setIds] = useState(() => new Set(defaultIds ?? allItems.filter((i) => defaultDepartments.includes(i.department) && gstItemApplies(isGstType(defaultGstType) ? defaultGstType : null, i)).map((i) => i.id)));
+  function changeGstType(t: GstType | "") {
+    setGstType(t);
+    // GST compliances of the new type start ticked (if GST is chosen); the others are dropped.
+    setIds((prev) => {
+      const next = new Set([...prev].filter((id) => { const i = allItems.find((x) => x.id === id); return !i || gstItemApplies(t || null, i); }));
+      if (chosen.has("GST")) for (const i of allItems) if (i.department === "GST" && gstItemApplies(t || null, i)) next.add(i.id);
+      return next;
+    });
+  }
 
   function toggleDept(d: string, on: boolean) {
     setChosen((prev) => {
@@ -43,6 +57,14 @@ export function CompliancePicker({ items, departments, defaultDepartments = [], 
 
   return (
     <div className="space-y-4">
+      <label className="block max-w-md">
+        <span className="mb-1 block text-sm font-medium">GST registration type</span>
+        <select name="gstRegistrationType" value={gstType} onChange={(e) => changeGstType(e.target.value as GstType | "")} className="h-10 w-full rounded-md border border-line bg-surface px-2 text-sm">
+          <option value="">Not set</option>
+          {GST_TYPE_KEYS.map((k) => <option key={k} value={k}>{GST_TYPES[k]}</option>)}
+        </select>
+        <span className="mt-1 block text-xs text-muted">{gstType ? GST_TYPE_NOTE[gstType] : "Regular, Composition dealer or Surrendered (cancelled): the GST compliances below follow it."}</span>
+      </label>
       <fieldset>
         <legend className="mb-2 text-sm font-medium">Departments the client is with</legend>
         <div className="flex flex-wrap gap-2" role="group">
@@ -62,7 +84,7 @@ export function CompliancePicker({ items, departments, defaultDepartments = [], 
       </fieldset>
       {[...chosen].filter((d) => departments.includes(d)).map((d) => {
         const list = items.filter((i) => i.department === d);
-        if (!list.length) return <p key={d} className="text-xs text-muted">{d}: no statutory compliances in the master list.</p>;
+        if (!list.length) return <p key={d} className="text-xs text-muted">{d === "GST" && gstType === "SURRENDERED" ? "GST: the registration is surrendered (cancelled) — no regular GST returns." : `${d}: no statutory compliances in the master list.`}</p>;
         const listIds = list.map((i) => i.id);
         const ticked = listIds.filter((id) => ids.has(id)).length;
         return (

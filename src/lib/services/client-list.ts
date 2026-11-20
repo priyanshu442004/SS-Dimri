@@ -2,6 +2,7 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import type { AppContext } from "@/lib/session";
 import { clientScope } from "./clients";
+import { isGstType } from "@/lib/domain/gst-type";
 
 // Filters and sorting of the Clients list, shared with its Excel export so both show the same clients.
 
@@ -26,6 +27,8 @@ export type ClientFilters = {
   state: string;
   /** An employee id, or "none" for clients with no team allocated. */
   team: string;
+  /** GST registration type (REGULAR / COMPOSITION / SURRENDERED), or "none" for not set. */
+  gstType: string;
   sort: ClientSort;
 };
 
@@ -44,6 +47,7 @@ export function parseClientFilters(sp: Record<string, string | string[] | undefi
     constitution: UUID.test(str(sp.con)) ? str(sp.con) : "",
     state: str(sp.state).slice(0, 60),
     team: team === "none" || UUID.test(team) ? team : "",
+    gstType: str(sp.gst) === "none" || isGstType(str(sp.gst)) ? str(sp.gst) : "",
     sort: sort in CLIENT_SORTS ? (sort as ClientSort) : "name",
   };
 }
@@ -72,6 +76,7 @@ export function clientListWhere(ctx: AppContext, f: ClientFilters): Prisma.Clien
       f.department ? { departments: { has: f.department } } : {},
       f.constitution ? { constitutionId: f.constitution } : {},
       f.state ? { state: { equals: f.state, mode: "insensitive" } } : {},
+      f.gstType === "none" ? { gstRegistrationType: null } : f.gstType ? { gstRegistrationType: f.gstType } : {},
       f.team === "none"
         ? { teamAllocations: { none: { status: { in: ["ACTIVE", "PLANNED"] } } } }
         : f.team
@@ -100,6 +105,7 @@ export function clientFiltersQuery(f: ClientFilters, extra: Record<string, strin
     ...(f.constitution && { con: f.constitution }),
     ...(f.state && { state: f.state }),
     ...(f.team && { team: f.team }),
+    ...(f.gstType && { gst: f.gstType }),
     ...(f.sort !== "name" && { sort: f.sort }),
   });
   for (const [k, v] of Object.entries(extra)) p.set(k, String(v));

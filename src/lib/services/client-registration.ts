@@ -208,7 +208,7 @@ export async function registerClient(ctx: AppContext, v: z.infer<typeof fullRegi
         },
       });
       if (v.people.length) await tx.constitutionMember.createMany({ data: representativeRows(organizationId, client.id, v.people) });
-      await saveClientCompliances(tx, client.id, v["departments[]"], v["complianceItemIds[]"]);
+      await saveClientCompliances(tx, client.id, v["departments[]"], v["complianceItemIds[]"], v.gstRegistrationType ?? "");
       await audit(tx, ctx, "client.registered_full", "client", client.id);
       await notifyRoles(tx, organizationId, ["OWNER", "ADMIN"], {
         type: "client.pending_approval",

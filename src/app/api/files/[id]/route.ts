@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { getContext } from "@/lib/session";
 import { createDownloadUrl } from "@/lib/storage/s3";
+import { clientScope } from "@/lib/services/clients";
 
 // Authorized file access: checks the caller's organization and their right to
 // the record that owns the file, then redirects to a 5-minute pre-signed URL.
@@ -69,8 +70,12 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/files/[i
   } else if (file.taskAttachment) {
     const task = file.taskAttachment.task;
     allowed = can(ctx, "tasks.view_all") || task.createdById === ctx.user.id || task.makerEmployeeId === me || task.checkerEmployeeId === me || task.assignments.some((a) => a.employeeId === me);
+  } else if (clientOwner) {
+    // Client documents: whoever may open the client — all clients for leads, the allocated team for
+    // everyone else (tracker S.No. 72: view and download the RC and other documents, no editing).
+    allowed = can(ctx, "clients.view_all") || (can(ctx, "clients.use") && !!(await prisma.client.findFirst({ where: { AND: [clientScope(ctx), { id: clientOwner }] }, select: { id: true } })));
   } else {
-    // Organization and client documents: internal staff with client access.
+    // Organization documents: internal staff with client access.
     allowed = can(ctx, "clients.view_all");
   }
   if (!allowed) return new NextResponse("Not found", { status: 404 });

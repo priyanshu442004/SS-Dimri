@@ -27,9 +27,14 @@ export const isPeriod = (v: unknown): v is PeriodKey => typeof v === "string" &&
 type Range = { from: string; to: string };
 type Delta = number | null;
 
+/** A range of its own (the weekly report, the Business 360° dashboard's filters). */
+export type CustomPeriod = { cur: Range; prev: Range; label: string; compare: string };
+/** Narrow the summary to some clients and / or staff (null = all). */
+export type OpsScope = { clientIds: string[] | null; staffIds: string[] | null };
+
 export type Kpi = { key: string; label: string; value: number; display: string; delta: Delta; deltaDisplay: string; better: "up" | "down" | "none"; hint: string; spark: number[]; tone: "ink" | "ok" | "danger" | "warn" | "info" | "stamp" };
 export type OpsSummary = {
-  period: PeriodKey;
+  period: PeriodKey | "custom";
   periodLabel: string;
   rangeLabel: string;
   compareLabel: string;
@@ -137,13 +142,19 @@ const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
 const fmtDelta = (d: Delta, unit = "") => (d === null ? "–" : d === 0 ? "no change" : `${d > 0 ? "▲" : "▼"} ${Math.abs(d).toLocaleString("en-IN")}${unit}`);
 const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 
-export async function opsSummary(ctx: AppContext, period: PeriodKey): Promise<OpsSummary> {
+export async function opsSummary(ctx: AppContext, which: PeriodKey | CustomPeriod, scope: OpsScope = { clientIds: null, staffIds: null }): Promise<OpsSummary> {
   const org = ctx.organization.id;
   const tz = ctx.organization.timezone;
   const now = new Date();
   const today = isoDateInTz(now, tz);
-  const { cur, prev, compare } = periodRanges(period, today);
+  const custom = typeof which === "string" ? null : which;
+  const period: PeriodKey | "custom" = custom ? "custom" : (which as PeriodKey);
+  const { cur, prev, compare } = custom ?? periodRanges(which as PeriodKey, today);
+  const periodName = custom ? custom.label : PERIODS[which as PeriodKey];
   const single = cur.from === cur.to;
+  const dayWord = cur.to === today ? "today" : cur.to === shift(today, -1) ? "yesterday" : shortDate(cur.to);
+  const clientSet = scope.clientIds ? new Set(scope.clientIds) : null;
+  const staffSet = scope.staffIds ? new Set(scope.staffIds) : null;
   const endOf = (iso: string) => (iso >= today ? now : new Date(zonedDateTime(shift(iso, 1), 0, tz).getTime() - 1));
   const startOf = (iso: string) => zonedDateTime(iso, 0, tz);
   const asOf = endOf(cur.to);
@@ -182,11 +193,13 @@ export async function opsSummary(ctx: AppContext, period: PeriodKey): Promise<Op
       where: { organizationId: org, visitDate: { gte: dateOnly(cur.from), lte: dateOnly(cur.to) } },
       orderBy: { startedAt: "desc" },
       take: 200,
-      select: { employeeId: true, placeName: true, purpose: true, visitDate: true, startedAt: true, endedAt: true },
+      select: { employeeId: true, clientId: true, placeName: true, purpose: true, visitDate: true, startedAt: true, endedAt: true },
     }),
   ]);
 
-  const emp = new Map(employees.map((e) => [e.id, e]));
+  const allEmp = new Map(employees.map((e) => [e.id, e]));
+  if (staffSet) employees.splice(0, employees.length, ...employees.filter((e) => staffSet.has(e.id)));
+  const emp = allEmp;
   const nameOf = (id: string | null | undefined) => (id && emp.get(id) ? emp.get(id)!.firstName : null);
   const roleOf = (id: string) => {
     const e = emp.get(id);
@@ -196,6 +209,8 @@ export async function opsSummary(ctx: AppContext, period: PeriodKey): Promise<Op
   // ------------------------------------------------ work items (tasks + tracker lines)
   const items: Item[] = [];
   for (const t of tasks) {
+    if (clientSet && !(t.client && clientSet.has(t.client.id))) continue;
+    if (staffSet && !(t.makerEmployeeId && staffSet.has(t.makerEmployeeId)) && !t.assignments.some((a) => staffSet.has(a.employeeId))) continue;
     const people = [...new Set([...t.assignments.map((a) => a.employeeId), ...(t.makerEmployeeId ? [t.makerEmployeeId] : [])])];
     const owner = t.makerEmployeeId ?? t.assignments[0]?.employeeId ?? null;
     items.push({
@@ -211,6 +226,8 @@ export async function opsSummary(ctx: AppContext, period: PeriodKey): Promise<Op
     });
   }
   for (const l of lines) {
+    if (clientSet && !(l.clientId && clientSet.has(l.clientId))) continue;
+    if (staffSet && !(l.makerEmployeeId && staffSet.has(l.makerEmployeeId)) && !(l.checkerEmployeeId && staffSet.has(l.checkerEmployeeId))) continue;
     const ws = workStatusOf(l);
     const period = l.periodFrom ? ` (${l.periodFrom.toLocaleDateString("en-IN", { month: "short", year: "2-digit", timeZone: "UTC" })})` : "";
     const people = [...new Set([l.makerEmployeeId, l.checkerEmployeeId].filter((x): x is string => !!x))];
@@ -269,7 +286,7 @@ export async function opsSummary(ctx: AppContext, period: PeriodKey): Promise<Op
     ? (await teamAttendanceRows(ctx, policy, { from: winFrom, to: cur.to, q: "", status: "", departmentId: "", employeeId: "" })).rows
     : [];
   type AttRow = (typeof att)[number];
-  const rowsIn = (r: Range) => att.filter((x) => { const d = toIsoDate(x.date); return d >= r.from && d <= r.to && d >= dataStart; });
+  const rowsIn = (r: Range) => att.filter((x) => { const d = toIsoDate(x.date); return d >= r.from && d <= r.to && d >= dataStart && (!staffSet || staffSet.has(x.employee.id)); });
   const isPresent = (x: AttRow) => x.state === "PRESENT" || x.state === "HALF_DAY";
   const isLeave = (x: AttRow) => x.state === "LEAVE" || x.approvedLeave;
   const isOffsite = (x: AttRow) => isPresent(x) && !!x.record?.workLocation && x.record.workLocation !== "OFFICE";
@@ -289,13 +306,13 @@ export async function opsSummary(ctx: AppContext, period: PeriodKey): Promise<Op
   const sparkAtt = spark.map((b) => attStats(b));
   const presentPct = pct(a.present, a.rows);
   const kpis: Kpi[] = [
-    { key: "assigned", label: single ? `Tasks assigned ${period === "today" ? "today" : "yesterday"}` : "Tasks assigned", value: w.assigned, display: String(w.assigned), delta: w.assigned - wp.assigned, deltaDisplay: "", better: "up", hint: "Items allotted to team", spark: sparkWork.map((s) => s.assigned), tone: "ink" },
-    { key: "completed", label: single ? `Completed ${period === "today" ? "today" : "yesterday"}` : "Completed", value: w.completed, display: String(w.completed), delta: w.completed - wp.completed, deltaDisplay: "", better: "up", hint: `Open items now ${w.open}`, spark: sparkWork.map((s) => s.completed), tone: "ok" },
+    { key: "assigned", label: single ? `Tasks assigned ${dayWord}` : "Tasks assigned", value: w.assigned, display: String(w.assigned), delta: w.assigned - wp.assigned, deltaDisplay: "", better: "up", hint: "Items allotted to team", spark: sparkWork.map((s) => s.assigned), tone: "ink" },
+    { key: "completed", label: single ? `Completed ${dayWord}` : "Completed", value: w.completed, display: String(w.completed), delta: w.completed - wp.completed, deltaDisplay: "", better: "up", hint: `Open items now ${w.open}`, spark: sparkWork.map((s) => s.completed), tone: "ok" },
     { key: "overdue", label: "Overdue items", value: w.overdue, display: String(w.overdue), delta: w.overdue - wp.overdue, deltaDisplay: "", better: "down", hint: `${pct(w.overdue, w.open)}% of open items`, spark: sparkWork.map((s) => s.overdue), tone: "danger" },
     { key: "pendingClient", label: "Pending: client side", value: w.pendingClient, display: String(w.pendingClient), delta: w.pendingClient - wp.pendingClient, deltaDisplay: "", better: "down", hint: `${pct(w.pendingClient, w.open)}% of open items`, spark: sparkWork.map((s) => s.pendingClient), tone: "danger" },
     { key: "pendingTeam", label: "Pending: team side", value: w.pendingTeam, display: String(w.pendingTeam), delta: w.pendingTeam - wp.pendingTeam, deltaDisplay: "", better: "down", hint: "Maker / check / rework / hold", spark: sparkWork.map((s) => s.pendingTeam), tone: "warn" },
     single
-      ? { key: "present", label: `Present ${period === "today" ? "today" : "yesterday"}`, value: a.present, display: `${a.present} / ${a.rows}`, delta: dAtt(a.present, ap.present), deltaDisplay: "", better: "up", hint: `${a.present - a.offsite} office · ${a.offsite} offsite`, spark: sparkAtt.map((s) => s.present), tone: "info" }
+      ? { key: "present", label: `Present ${dayWord}`, value: a.present, display: `${a.present} / ${a.rows}`, delta: dAtt(a.present, ap.present), deltaDisplay: "", better: "up", hint: `${a.present - a.offsite} office · ${a.offsite} offsite`, spark: sparkAtt.map((s) => s.present), tone: "info" }
       : { key: "present", label: "Attendance", value: presentPct, display: `${presentPct}%`, delta: hasPrevAtt ? presentPct - pct(ap.present, ap.rows) : null, deltaDisplay: "", better: "up", hint: `${a.days ? (a.present / a.days).toFixed(1) : 0} present a day · ${a.offsite} offsite days`, spark: sparkAtt.map((s) => pct(s.present, s.rows)), tone: "info" },
     { key: "lateLeave", label: "Late · on leave", value: a.late, display: `${a.late} · ${a.leave}`, delta: dAtt(a.late, ap.late), deltaDisplay: "", better: "down", hint: "", spark: sparkAtt.map((s) => s.late + s.leave), tone: "warn" },
     { key: "penalty", label: "Penalty exposure", value: w.penalty, display: inr(w.penalty), delta: w.penalty - wp.penalty, deltaDisplay: "", better: "down", hint: `Est. late fees on ${count((i) => feeAt(i, asOf) > 0)} overdue filings`, spark: sparkWork.map((s) => s.penalty), tone: "stamp" },
@@ -411,7 +428,7 @@ export async function opsSummary(ctx: AppContext, period: PeriodKey): Promise<Op
   // ------------------------------------------------ offsite visits
   const offRows = curRows.filter(isOffsite);
   const offsite = [
-    ...visits.map((v) => ({
+    ...visits.filter((v) => (!staffSet || staffSet.has(v.employeeId)) && (!clientSet || (!!v.clientId && clientSet.has(v.clientId)))).map((v) => ({
       member: nameOf(v.employeeId) ?? "—", client: v.placeName, purpose: v.purpose ?? "Client visit", date: shortDate(toIsoDate(v.visitDate)),
       time: v.endedAt ? `${Math.round((v.endedAt.getTime() - v.startedAt.getTime()) / 60_000)} min` : "On site",
     })),
@@ -432,7 +449,7 @@ export async function opsSummary(ctx: AppContext, period: PeriodKey): Promise<Op
   }
 
   // ------------------------------------------------ summary lines and next steps (worked out, not AI)
-  const when = period === "today" ? "today" : period === "yesterday" ? "yesterday" : `in ${PERIODS[period].toLowerCase()}`;
+  const when = single ? (dayWord === "today" || dayWord === "yesterday" ? dayWord : `on ${dayWord}`) : `in ${periodName.toLowerCase()}`;
   const topOverdueClient = [...items.filter((i) => overdueAt(i, asOf)).reduce((m, i) => m.set(i.client, (m.get(i.client) ?? 0) + 1), new Map<string, number>()).entries()].sort((x, y) => y[1] - x[1])[0];
   const leaveNames = lateNames(curRows.filter(isLeave));
   const summary = [
@@ -451,7 +468,7 @@ export async function opsSummary(ctx: AppContext, period: PeriodKey): Promise<Op
 
   const clientsOpen = new Set(items.filter((i) => openAt(i, asOf) && i.clientId).map((i) => i.client)).size;
   return {
-    period, periodLabel: PERIODS[period], compareLabel: compare, singleDay: single, asOfDate: cur.to,
+    period, periodLabel: periodName, compareLabel: compare, singleDay: single, asOfDate: cur.to,
     rangeLabel: single ? longDate(cur.from) : `${shortDate(cur.from)} – ${shortDate(cur.to)} ${cur.to.slice(0, 4)}`,
     dateLabel: longDate(cur.to), generatedAt: now.toISOString(), firm: ctx.organization.tradeName,
     counts: { clients: clientsOpen, members: employees.length, items: count((i) => openAt(i, asOf)) },

@@ -14,8 +14,8 @@ import { can } from "@/lib/permissions";
 
 const inr = (n: number) => `₹ ${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
-/** The firm dashboard as it was before 17 Nov 2026: now the "360° dashboard" for the AI Reporting login, and still the main dashboard for everyone else. */
-export async function ClassicDashboard({ ctx, heading }: { ctx: AppContext; heading?: boolean }) {
+/** The firm dashboard: the main dashboard for owners and administrators (the AI Reporting login gets the Business 360° dashboard). */
+export async function ClassicDashboard({ ctx }: { ctx: AppContext }) {
   const [o, lead, charts, myAttendance, today] = await Promise.all([
     orgOverview(ctx),
     leadOverview(ctx, "org"),
@@ -27,7 +27,7 @@ export async function ClassicDashboard({ ctx, heading }: { ctx: AppContext; head
   const section = (t: string) => <h2 className="mb-3 mt-2 font-editorial text-2xl text-ink">{t}</h2>;
   return (
     <>
-      {heading !== false && <Greeting ctx={ctx} subtitle={`${ctx.role === "OWNER" ? "Firm owner" : "Administrator"} dashboard · ${ctx.organization.tradeName}`} />}
+      {<Greeting ctx={ctx} subtitle={`${ctx.role === "OWNER" ? "Firm owner" : "Administrator"} dashboard · ${ctx.organization.tradeName}`} />}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div className="min-w-60 flex-1 sm:max-w-sm"><Stat label="My attendance" value={myAttendance?.timeIn ? (myAttendance.timeOut ? "Done for today" : `In ${formatTime(myAttendance.timeIn, ctx.organization.timezone)}`) : "Not marked"} hint={myAttendance?.timeIn ? undefined : "Open to mark in"} href="/app/attendance" icon={<CalendarCheck2 />} tone={myAttendance?.timeIn ? "ok" : "warn"} /></div><AiAssistant chat={can(ctx, "assistant.use")} /></div>
       {section("Needs attention")}
       <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">

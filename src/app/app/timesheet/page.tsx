@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import { addDays, dateOnly, formatDate, formatDateTime, isoDateInTz, minutesToHhmm, toIsoDate } from "@/lib/dates";
-import { assessmentYears, isLateReview, isLateSubmission, OVERDUE_HOURS, slaOf, type Sla } from "@/lib/domain/timesheet";
+import { assessmentYears, isLateReview, isLateSubmission, OVERDUE_HOURS, sessionsText, slaOf, type Sla } from "@/lib/domain/timesheet";
 import { timesheetExportHref, timesheetReviewers } from "@/lib/services/timesheet-report";
 import { DeleteButton } from "@/components/delete-dialog";
 import { canDelete } from "@/lib/services/deletions";
@@ -108,7 +108,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
       prisma.timesheetEntry.findMany({ where: { employeeId: ctx.employee.id, workDate: dateOnly(date) }, orderBy: { serialNumber: "asc" }, include: { task: { select: { id: true, title: true } }, trackerLine: { select: { refNo: true } } } }),
       ownWorkClientOptions(ctx, dateOnly(date)),
       prisma.workType.findMany({ where: { organizationId: ctx.organization.id, isActive: true }, orderBy: { sortOrder: "asc" } }),
-      prisma.task.findMany({ where: { AND: [taskScope(ctx), { status: { notIn: ["COMPLETED", "CANCELLED"] } }] }, select: { id: true, title: true }, take: 100 }),
+      prisma.task.findMany({ where: { AND: [taskScope(ctx), { status: { notIn: ["COMPLETED", "CANCELLED"] } }] }, select: { id: true, title: true, clientId: true }, orderBy: [{ isAsap: "desc" }, { dueAt: { sort: "asc", nulls: "last" } }], take: 500 }),
       myOpenLines(ctx),
       pendingPointsFor(ctx.organization.id, ctx.employee.id),
     ]);
@@ -203,7 +203,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
                   <Td className="text-xs">{e.bankName ?? "—"}</Td>
                   <Td className="whitespace-nowrap text-xs">{e.periodFrom ? `${formatDate(e.periodFrom)} – ${formatDate(e.periodTo)}` : "—"}</Td>
                   <Td className="text-xs">{e.transactionCount ?? "—"}</Td>
-                  <Td>{e.approxMinutes ? minutesToHhmm(e.approxMinutes) : "—"}</Td>
+                  <Td>{e.approxMinutes ? minutesToHhmm(e.approxMinutes) : "—"}{sessionsText(e.sessions) && <div className="text-[11px] text-muted" title="Start – pause sessions">{sessionsText(e.sessions)}</div>}</Td>
                   <Td className="max-w-xs text-xs">{e.workDetails}{e.task && <div><Link href={`/app/tasks/${e.task.id}`} className="text-brand-700 hover:underline">{e.task.title}</Link></div>}</Td>
                   <Td className="text-xs">{e.workStatus ? STATUS_OF_WORK_LABEL[e.workStatus] : "—"}</Td>
                   <Td className="max-w-40 text-xs">{e.issueLevel ? <><Badge tone={e.issueLevel === "High" || e.issueLevel === "Critical" ? "danger" : "warn"}>{e.issueLevel}</Badge> {e.issueStatus}</> : "—"}{e.issueDetails && <div className="text-muted">{e.issueDetails}</div>}</Td>
@@ -226,7 +226,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
               action={addTimesheetAction}
               clients={clients}
               workTypes={workTypes.map((w) => ({ value: w.id, label: w.name }))}
-              tasks={tasks.map((t) => ({ value: t.id, label: t.title }))}
+              tasks={tasks.map((t) => ({ value: t.id, label: t.title, clientId: t.clientId }))}
               lines={lines.map((l) => ({ value: l.id, label: `${l.refNo} · ${l.clientName} · ${l.typeOfWork}` }))}
               date={date}
               years={assessmentYears(dateOnly(today))}
@@ -330,7 +330,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
                     <Td className="text-xs">{e.placeOfWork ?? "—"}</Td>
                     <Td className="text-xs">{e.periodFrom ? `${formatDate(e.periodFrom)} – ${formatDate(e.periodTo)}` : "—"}</Td>
                     <Td className="whitespace-nowrap text-xs">{e.startTime && e.endTime ? `${e.startTime} – ${e.endTime}` : "—"}</Td>
-                    <Td>{e.approxMinutes ? minutesToHhmm(e.approxMinutes) : "—"}</Td>
+                    <Td>{e.approxMinutes ? minutesToHhmm(e.approxMinutes) : "—"}{sessionsText(e.sessions) && <div className="text-[11px] text-muted" title="Start – pause sessions">{sessionsText(e.sessions)}</div>}</Td>
                     <Td className="max-w-xs text-xs">{e.workDetails}{e.whatsappMessage && <div className="text-muted">WhatsApp: {e.whatsappMessage}</div>}{e.reviewNote && <div className="text-muted">Reviewer: {e.reviewNote}</div>}</Td>
                     <Td className="whitespace-nowrap text-xs">{formatDateTime(e.createdAt, tz)}</Td>
                     <Td className="text-xs">{reviewers.get(e.id)?.reviewer ?? "Not mapped"}</Td>
@@ -439,7 +439,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
                       <Td>{nameOf(e.employee)}</Td>
                       <Td>{e.clientNameText ?? "—"}</Td>
                       <Td>{e.typeOfWork ?? "—"}</Td>
-                      <Td>{e.approxMinutes ? minutesToHhmm(e.approxMinutes) : "—"}</Td>
+                      <Td>{e.approxMinutes ? minutesToHhmm(e.approxMinutes) : "—"}{sessionsText(e.sessions) && <div className="text-[11px] text-muted" title="Start – pause sessions">{sessionsText(e.sessions)}</div>}</Td>
                       <Td className="max-w-xs text-xs">{e.workDetails ?? "—"}</Td>
                       <Td className="whitespace-nowrap text-xs">{formatDateTime(e.createdAt, tz)}</Td>
                       <Td className="text-xs">{reviewers.get(e.id)?.reviewer ?? "Not mapped"}</Td>

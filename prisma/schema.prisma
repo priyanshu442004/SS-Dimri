@@ -931,6 +931,10 @@ model Client {
   natureOfUserId       String?                 @map("nature_of_user_id") @db.Uuid
   /// One Time / Retainer. Scope PENDING CONFIRMATION — see also client_services.engagement_nature.
   natureOfClient       ClientEngagementNature? @map("nature_of_client")
+  /// GST registration type: REGULAR, COMPOSITION or SURRENDERED (cancelled). Decides the GST compliances.
+  gstRegistrationType  String?                 @map("gst_registration_type") @db.VarChar(16)
+  /// The client's office opening time ("HH:MM"): staff reporting straight to the client are late against it.
+  officeOpensAt        String?                 @map("office_opens_at") @db.VarChar(5)
   constitutionId       String?                 @map("constitution_id") @db.Uuid
   profilePictureFileId String?                 @unique @map("profile_picture_file_id") @db.Uuid
 
@@ -1172,6 +1176,8 @@ model ClientService {
   /// Previous engagement this one renews (retainer renewal chain).
   renewedFromId     String?                 @unique @map("renewed_from_id") @db.Uuid
   status            ClientServiceStatus     @default(ACTIVE)
+  /// When the engagement was marked Completed (a one-time fee is earned then).
+  completedAt       DateTime?               @map("completed_at") @db.Timestamptz(3)
 
   pocEmployeeId String? @map("poc_employee_id") @db.Uuid
   pocName       String? @map("poc_name")
@@ -2000,6 +2006,8 @@ model TimesheetEntry {
   /// This task's time block ("HH:MM" in the firm's timezone); hours derive from it.
   startTime           String?      @map("start_time") @db.VarChar(5)
   endTime             String?      @map("end_time") @db.VarChar(5)
+  /// Timed work in one entry (one per task per day): [{ start: "HH:MM", end: "HH:MM", minutes }].
+  sessions            Json?        @map("sessions")
   // Team Daily Work Log columns.
   branch              String?      @map("branch")
   trackerLineId       String?      @map("tracker_line_id") @db.Uuid
@@ -3014,7 +3022,9 @@ model MessageLog {
 model AiReport {
   id             String    @id @default(uuid(7)) @db.Uuid
   organizationId String    @map("organization_id") @db.Uuid
-  /// Set for the evening run only: one per firm per day (Refresh rows leave it empty).
+  /// DAILY (one day) or WEEKLY (Monday to Sunday).
+  kind           String    @default("DAILY") @db.VarChar(8)
+  /// Scheduled runs only: the day (daily) or the Monday of the week (weekly). Refresh rows leave it empty.
   scheduledFor   DateTime? @map("scheduled_for") @db.Date
   /// SCHEDULED or MANUAL.
   trigger        String    @default("MANUAL") @db.VarChar(12)
@@ -3035,7 +3045,7 @@ model AiReport {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  @@unique([organizationId, scheduledFor])
+  @@unique([organizationId, kind, scheduledFor])
   @@index([organizationId, createdAt])
   @@map("ai_reports")
 }
