@@ -22,7 +22,7 @@ export async function teamToday(ctx: AppContext) {
   const nowMin = minutesOfDayInTz(now, tz);
   const [policy, subjects, holidays] = await Promise.all([getPolicy(ctx.organization.id), ruleSubjects(ctx.organization.id), holidaySet(ctx.organization.id, day, day)]);
   const ids = [...subjects.keys()].filter((id) => (scope === "ALL" || scope.includes(id)) && id !== ctx.employee?.id);
-  const [employees, records, leaves, plans, otApproved, requests, leaveWaiting, escalate] = await Promise.all([
+  const [employees, records, leaves, plans, otApproved, requests, leaveWaiting, escalate, weeklyOffs] = await Promise.all([
     prisma.employee.findMany({ where: { id: { in: ids }, OR: [{ dateOfJoining: null }, { dateOfJoining: { lte: day } }] }, select: { id: true, attendanceProfile: true, siteReportingTime: true } }),
     prisma.attendanceRecord.findMany({ where: { employeeId: { in: ids }, attendanceDate: day }, select: { employeeId: true, status: true, timeIn: true, timeOut: true, scheduledStart: true, scheduledEnd: true } }),
     prisma.leaveRequest.findMany({ where: { employeeId: { in: ids }, status: "APPROVED", fromDate: { lte: day }, toDate: { gte: day } }, select: { employeeId: true } }),
@@ -31,7 +31,9 @@ export async function teamToday(ctx: AppContext) {
     pendingRequestCount(ctx),
     prisma.leaveRequest.count({ where: { employeeId: { in: ids }, status: "PENDING" } }),
     toEscalate(ctx),
+    prisma.attendanceRequest.findMany({ where: { employeeId: { in: ids }, requestDate: day, kind: "WEEKLY_OFF", status: "APPROVED" }, select: { employeeId: true } }),
   ]);
+  const weeklyOff = new Set(weeklyOffs.map((w) => w.employeeId));
   const recBy = new Map(records.map((r) => [r.employeeId, r]));
   const onLeave = new Set(leaves.map((l) => l.employeeId));
   const planned = new Set(plans.map((p) => p.employeeId));
@@ -48,7 +50,7 @@ export async function teamToday(ctx: AppContext) {
       if (!r.timeOut && nowMin > s.overtimeAfter && !ot.has(e.id)) staying++;
       if (subjects.get(e.id)?.plans && !planned.has(e.id)) noPlan++;
     } else if (r?.status === "ABSENT") absent++;
-    else if (!off && !onLeave.has(e.id) && r?.status !== "LEAVE") notIn++;
+    else if (!off && !weeklyOff.has(e.id) && !onLeave.has(e.id) && r?.status !== "LEAVE") notIn++;
   }
   const planDue = now >= zonedDateTime(iso, hhmmToMinutes(policy.row.morningPlanBy), tz);
   return {

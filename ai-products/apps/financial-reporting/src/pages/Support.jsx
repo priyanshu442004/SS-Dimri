@@ -98,7 +98,7 @@ const SupportPage = () => {
                 <h2 className="text-lg font-semibold text-[#0b1a33]">Contact support</h2>
               </div>
               <p className="text-[#566176] mb-4 leading-[1.6]">
-                Your message goes to the Agarwal & Saxena team by email; we reply to the address you enter.
+                Your message goes to the support team by email; we reply to the address you enter.
               </p>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -146,7 +146,7 @@ const SupportPage = () => {
             <div className="bg-ink text-paper p-4 sm:p-6 md:p-8 rounded-[20px]">
               <div className="flex items-center gap-3 mb-3"><Mail className="w-6 h-6" /><h2 className="text-lg font-semibold">Still need help?</h2></div>
               <p className="leading-[1.6]">
-                Use the form on this page — your message goes to the Agarwal &amp; Saxena team by email and we reply to the address you enter.
+                Use the form on this page — your message goes to the support team by email and we reply to the address you enter.
               </p>
             </div>
           </div>

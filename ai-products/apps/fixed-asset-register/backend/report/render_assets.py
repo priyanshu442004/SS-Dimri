@@ -67,7 +67,7 @@ def wrap(text, font, size, maxw):
 def render(m, out):
     c = canvas.Canvas(out, pagesize=(W, H))
     c.setTitle(m["title"])
-    c.setAuthor("Agarwal & Saxena Fixed Asset Register")
+    c.setAuthor("Fixed Asset Register")
 
     tw = width(m["title"], "Helvetica-Bold", 18)
     draw(c, (W - tw) / 2, 66.6, m["title"], "Helvetica-Bold", 18)

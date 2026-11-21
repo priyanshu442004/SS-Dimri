@@ -15,7 +15,7 @@ import Help from "./pages/Help";
 import Settings from "./pages/Settings";
 import Ask from "./pages/Ask";
 
-const product = { name: "Bank Reconciliation", tagline: "Agarwal & Saxena", icon: "bank" };
+const product = { name: "Bank Reconciliation", tagline: "Workflow automation", icon: "bank" };
 const nav = [
   { to: "/", label: "Overview", icon: "overview", end: true },
   { to: "/new", label: "New reconciliation", icon: "plus" },

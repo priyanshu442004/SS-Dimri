@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { timesheetWho } from "@/lib/services/worklog";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import { addDays, dateOnly, formatDate, formatDateTime, isoDateInTz, minutesToHhmm, toIsoDate } from "@/lib/dates";
@@ -286,6 +287,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
     const to = typeof sp.to === "string" && ISO.test(sp.to) ? sp.to : date;
     const where: Prisma.TimesheetEntryWhereInput = {
       organizationId: ctx.organization.id,
+      ...timesheetWho(ctx),
       workDate: { gte: dateOnly(from), lte: dateOnly(to) },
       ...(employeeId ? { employeeId } : {}),
       ...(clientId ? { clientId } : {}),
@@ -356,7 +358,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
     const now = new Date();
     const [open, workPending] = await Promise.all([
       prisma.timesheetEntry.findMany({
-        where: { organizationId: ctx.organization.id, status: { in: ["SUBMITTED", "RETURNED"] }, ...(employeeId ? { employeeId } : {}) },
+        where: { organizationId: ctx.organization.id, ...timesheetWho(ctx), status: { in: ["SUBMITTED", "RETURNED"] }, ...(employeeId ? { employeeId } : {}) },
         orderBy: { createdAt: "asc" },
         take: 500,
         include: { employee: { select: { id: true, firstName: true, lastName: true } } },
@@ -364,7 +366,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
       // Work the team member marked as not finished, over the last 30 days.
       prisma.timesheetEntry.groupBy({
         by: ["employeeId"],
-        where: { organizationId: ctx.organization.id, workStatus: { in: ["PENDING", "IN_PROGRESS"] }, workDate: { gte: addDays(dateOnly(today), -30) }, ...(employeeId ? { employeeId } : {}) },
+        where: { organizationId: ctx.organization.id, ...timesheetWho(ctx), workStatus: { in: ["PENDING", "IN_PROGRESS"] }, workDate: { gte: addDays(dateOnly(today), -30) }, ...(employeeId ? { employeeId } : {}) },
         _count: { _all: true },
       }),
     ]);
@@ -480,7 +482,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
   async function Dashboard() {
     const from = typeof sp.from === "string" && ISO.test(sp.from) ? sp.from : `${today.slice(0, 8)}01`;
     const to = typeof sp.to === "string" && ISO.test(sp.to) ? sp.to : today;
-    const scope: Prisma.TimesheetEntryWhereInput = { organizationId: ctx.organization.id, ...(employeeId ? { employeeId } : {}), ...(clientId ? { clientId } : {}) };
+    const scope: Prisma.TimesheetEntryWhereInput = { organizationId: ctx.organization.id, ...timesheetWho(ctx), ...(employeeId ? { employeeId } : {}), ...(clientId ? { clientId } : {}) };
     const now = new Date();
     const [entries, lastEntry, employees] = await Promise.all([
       prisma.timesheetEntry.findMany({

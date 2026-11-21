@@ -15,7 +15,7 @@ import Help from "./pages/Help";
 import Settings from "./pages/Settings";
 import Ask from "./pages/Ask";
 
-const product = { name: "Customer Ledger", tagline: "Agarwal & Saxena", icon: "customer" };
+const product = { name: "Customer Ledger", tagline: "Workflow automation", icon: "customer" };
 const nav = [
   { to: "/", label: "Overview", icon: "overview", end: true },
   { to: "/new", label: "New reconciliation", icon: "plus" },

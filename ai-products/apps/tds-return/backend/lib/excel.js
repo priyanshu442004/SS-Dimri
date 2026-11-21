@@ -15,7 +15,7 @@ function sheet(wb, name, columns, rows) {
 export async function buildWorkbook(r) {
   const { default: ExcelJS } = await import("exceljs");
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Agarwal & Saxena TDS Returns";
+  wb.creator = "TDS Returns";
   wb.created = new Date();
 
   sheet(wb, "Deduction Register",

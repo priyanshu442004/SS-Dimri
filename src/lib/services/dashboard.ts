@@ -1,4 +1,5 @@
 import "server-only";
+import { lineIds } from "@/lib/hierarchy";
 import { myPlanStatus } from "./daily-plans";
 import { getPolicy, hasAcceptedRules } from "./office-rules";
 import { NO_EMPLOYEE } from "@/lib/ids";
@@ -59,13 +60,13 @@ export async function leadOverview(ctx: AppContext, scope: "org" | "team") {
   const me = ctx.employee?.id ?? NO_EMPLOYEE;
   const now = new Date();
   const week = addDays(now, 7);
-  const reportees = await prisma.employeeReportingRelationship.findMany({ where: { managerId: me }, select: { employeeId: true } });
-  const teamIds = reportees.map((r) => r.employeeId);
+  // The team = everyone in the lead's line, at all levels (tracker S.No. 96, 97).
+  const teamIds = scope === "team" ? (await lineIds(ctx)).filter((id) => id !== me) : [];
   const teamFilter = scope === "team" ? { id: { in: teamIds } } : {};
   const [reviewQueue, workload, deadlines, dayReports, timesheetToReview, pendingByWith] = await Promise.all([
     prisma.task.findMany({
       // Named checker (even when also the maker), or no checker and someone else's work.
-      where: { organizationId: org, status: "PENDING_REVIEW", OR: [{ checkerEmployeeId: me }, { checkerEmployeeId: null, makerEmployeeId: { not: me } }] },
+      where: { organizationId: org, status: "PENDING_REVIEW", OR: [{ checkerEmployeeId: me }, { checkerEmployeeId: null, makerEmployeeId: scope === "team" ? { in: teamIds } : { not: me } }] },
       orderBy: { dueAt: "asc" },
       take: 10,
       select: { id: true, title: true, dueAt: true, client: { select: { tradeName: true } }, maker: { select: { firstName: true } } },

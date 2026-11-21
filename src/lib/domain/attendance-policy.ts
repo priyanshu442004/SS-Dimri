@@ -154,6 +154,8 @@ export type DayInput = {
   lateIntimated: boolean;
   earlyLeaveApproved: boolean;
   overtimeApproved: boolean;
+  /** Work on this Sunday / holiday approved as an extra day (tracker S.No. 82). */
+  offDayWorkApproved?: boolean;
 };
 
 export type DayKind = "NOT_EMPLOYED" | "FUTURE" | "OFF" | "WORKED" | "HALF_DAY" | "LEAVE" | "HALF_LEAVE" | "ABSENT";
@@ -208,8 +210,12 @@ export type MonthScore = {
   /** Everything unpaid, in days. */
   unpaidDays: number;
   payableDays: number;
-  /** Any leave, absence or half day this month (no bonus then). */
+  /** Any leave, absence or half day this month. */
   tookLeave: boolean;
+  /** Days away this month for the no-leave bonus: leave (paid or not), absences and half days. */
+  leaveTaken: number;
+  /** Sundays / holidays worked with approval: paid as extra days (½ for a half day). */
+  extraDays: number;
 };
 
 const isFullWorking = (d: DayInput) => d.record && (d.record.status === "PRESENT" || d.record.status === "HALF_DAY");
@@ -246,7 +252,8 @@ export function scoreMonth(days: (DayInput & { inMonth: boolean })[], p: PolicyN
     const kind = kindOf(d);
     const worked = kind === "WORKED" || kind === "HALF_DAY";
     const times = worked && d.record ? timesOfDay(d.record, d.iso, d.schedule, p.veryLateAfterMinutes, tz) : null;
-    const scoreTimes = kind === "WORKED" ? times : null; // a half day is already half a day
+    // A half day is already half a day; a Sunday / holiday worked has no late or early-leaving rules.
+    const scoreTimes = kind === "WORKED" && !d.off ? times : null;
     return {
       iso: d.iso,
       kind,
@@ -282,14 +289,14 @@ export function scoreMonth(days: (DayInput & { inMonth: boolean })[], p: PolicyN
   // §6: one late arrival a month (the first one told in advance) is a warning only.
   let excusable = p.lateGracePerMonth;
   for (const s of month) {
-    const band = s.kind === "WORKED" ? s.times?.lateBand : undefined;
+    const band = s.kind === "WORKED" && !s.input.off ? s.times?.lateBand : undefined;
     if (excusable > 0 && (band === "LATE" || band === "VERY_LATE") && s.input.lateIntimated) {
       s.lateExcused = true;
       s.veryLateHalfDay = false;
       excusable--;
     }
   }
-  const lateArrivals = month.filter((s) => s.kind === "WORKED" && s.times?.lateBand === "LATE" && !s.lateExcused).length;
+  const lateArrivals = month.filter((s) => s.kind === "WORKED" && !s.input.off && s.times?.lateBand === "LATE" && !s.lateExcused).length;
   const veryLate = month.filter((s) => s.veryLateHalfDay).length;
   const lateHalfDays = Math.floor(lateArrivals / Math.max(1, p.lateArrivalsPerHalfDay)) * 0.5 + veryLate * 0.5;
 
@@ -326,6 +333,9 @@ export function scoreMonth(days: (DayInput & { inMonth: boolean })[], p: PolicyN
 
   const unpaidDays = round2(unpaidLeave + absentDaysCharged + sandwichDays + halfDays * 0.5 + lateHalfDays + earlyHalfDays);
   const tookLeave = unpaidDays > 0 || paidLeave > 0;
+  // Leave actually taken (not the late / early penalties): leave days, absences (counted once), half days.
+  const leaveTaken = round2(month.reduce((t, s) => t + (s.kind === "LEAVE" ? 1 : s.kind === "HALF_LEAVE" ? 0.5 : 0), 0) + absentDays.length + halfLeaveAbsent + halfDays * 0.5 + sandwichDays);
+  const extraDays = month.reduce((t, s) => t + (s.input.off && s.input.offDayWorkApproved ? (s.kind === "WORKED" ? 1 : s.kind === "HALF_DAY" || s.kind === "HALF_LEAVE" ? 0.5 : 0) : 0), 0);
   return {
     days: month.map(({ inMonth: _i, input: _d, ...s }) => s),
     employedDays,
@@ -349,10 +359,20 @@ export function scoreMonth(days: (DayInput & { inMonth: boolean })[], p: PolicyN
     unpaidDays,
     payableDays: Math.max(0, round2(counted - unpaidDays)),
     tookLeave,
+    leaveTaken,
+    extraDays,
   };
 }
 
 // ---------------------------------------------------------------- pay
+
+/**
+ * No-leave bonus (office rule §10, as in the salary sheet): the full bonus (2 days) with no leave in the
+ * month, one day less for each day of leave taken (1 day with one leave), nothing beyond that.
+ */
+export function noLeaveBonusDays(score: Pick<MonthScore, "leaveTaken">, p: Pick<PolicyNumbers, "noLeaveBonusDays">): number {
+  return Math.max(0, p.noLeaveBonusDays - Math.ceil(score.leaveTaken));
+}
 
 export type PayInput = {
   monthlySalary: number | null;
@@ -363,6 +383,10 @@ export type PayInput = {
   fullMonth: boolean;
   score: MonthScore;
   fines: number;
+  /** Approved conveyance claims of the month (tracker S.No. 84), paid as "Any other". */
+  conveyance?: number;
+  /** Salary advance recovered this month (tracker S.No. 85). */
+  advanceDeduction?: number;
 };
 
 export type Pay = {
@@ -371,25 +395,37 @@ export type Pay = {
   overtimePay: number | null;
   bonusDays: number;
   bonus: number | null;
+  extraDays: number;
+  extraPay: number | null;
+  conveyance: number;
+  advanceDeduction: number;
   fines: number;
   net: number | null;
 };
 
 export function computePay(i: PayInput, p: PolicyNumbers): Pay {
-  const bonusDays = i.complete && i.fullMonth && !i.score.tookLeave ? p.noLeaveBonusDays : 0;
-  if (i.monthlySalary === null) return { perDay: null, basePay: null, overtimePay: null, bonusDays, bonus: null, fines: i.fines, net: null };
+  const bonusDays = i.complete && i.fullMonth ? noLeaveBonusDays(i.score, p) : 0;
+  const conveyance = round2(i.conveyance ?? 0);
+  const advanceDeduction = round2(i.advanceDeduction ?? 0);
+  const extraDays = i.score.extraDays ?? 0;
+  if (i.monthlySalary === null) return { perDay: null, basePay: null, overtimePay: null, bonusDays, bonus: null, extraDays, extraPay: null, conveyance, advanceDeduction, fines: i.fines, net: null };
   const perDay = i.monthlySalary / i.daysInMonth;
   const basePay = perDay * i.score.payableDays;
   const overtimePay = p.overtimeMinutesPerDay > 0 ? (perDay * i.score.overtimeMinutes) / p.overtimeMinutesPerDay : 0;
   const bonus = perDay * bonusDays;
+  const extraPay = perDay * extraDays;
   return {
     perDay: round2(perDay),
     basePay: round2(basePay),
     overtimePay: round2(overtimePay),
     bonusDays,
     bonus: round2(bonus),
+    extraDays,
+    extraPay: round2(extraPay),
+    conveyance,
+    advanceDeduction,
     fines: i.fines,
-    net: round2(Math.max(0, basePay + overtimePay + bonus - i.fines)),
+    net: round2(Math.max(0, basePay + overtimePay + bonus + extraPay + conveyance - i.fines - advanceDeduction)),
   };
 }
 

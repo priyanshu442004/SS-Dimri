@@ -80,6 +80,9 @@ export function PolicyForm({ action, d }: { action: Act; d: D }) {
         {t("Office start", "officeStart")}{t("Grace until", "reportingGraceUntil", "Up to 15 minutes late: no deduction")}
         {t("Office end", "officeEnd")}{t("Lunch from", "lunchStart")}{t("Lunch to", "lunchEnd", "Never more than this; a Team Lead may move it")}
         {n("Client-site day (minutes)", "onsiteRequiredMinutes", "480 = 8 hours from the reporting time the Team Lead fixes")}
+        <SelectField label="Photo (selfie) at mark-in / out" name="attendancePhoto" placeholder={null} defaultValue={d.attendancePhoto || "OPTIONAL"} options={[
+          { value: "OFF", label: "Disabled — no photo" }, { value: "OPTIONAL", label: "Enabled — optional" }, { value: "REQUIRED", label: "Enabled — required" },
+        ]} hint="Photos taken by a Team Lead for someone else are always required" />
       </fieldset>
       <fieldset className="grid gap-3 sm:grid-cols-3">
         <legend className="mb-2 text-sm font-semibold">Reporting and late arrival (rules 3 and 6)</legend>

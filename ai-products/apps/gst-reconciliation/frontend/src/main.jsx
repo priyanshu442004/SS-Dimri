@@ -15,7 +15,7 @@ import Ask from "./pages/Ask";
 import Help from "./pages/Help";
 import Settings from "./pages/Settings";
 
-const product = { name: "GST Reconciliation", tagline: "Agarwal & Saxena", icon: "gst" };
+const product = { name: "GST Reconciliation", tagline: "Workflow automation", icon: "gst" };
 const nav = [
   { to: "/", label: "Overview", icon: "overview", end: true },
   { to: "/new", label: "New case", icon: "plus" },

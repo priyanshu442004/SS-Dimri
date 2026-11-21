@@ -148,6 +148,7 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
         description={viewAll ? "Who works for which client, on which days, and who is free. Changes keep the history." : "Clients you are allocated to, and on which days."}
         actions={
           <>
+            {viewAll && <LinkButton variant="secondary" href="/app/allocations/report">Allocation reports</LinkButton>}
             {viewAll && <DownloadButton href={`/app/allocations/export${filtersQuery(filters)}`}>Export to Excel</DownloadButton>}
             {manage && <LinkButton variant="secondary" href="/app/allocations/import">Import from Excel</LinkButton>}
           </>

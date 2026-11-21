@@ -15,7 +15,7 @@ import Help from "./pages/Help";
 import Settings from "./pages/Settings";
 import Ask from "./pages/Ask";
 
-const product = { name: "Fixed Assets", tagline: "Agarwal & Saxena", icon: "asset" };
+const product = { name: "Fixed Assets", tagline: "Workflow automation", icon: "asset" };
 const nav = [
   { to: "/", label: "Overview", icon: "overview", end: true },
   { to: "/new", label: "New asset run", icon: "plus" },

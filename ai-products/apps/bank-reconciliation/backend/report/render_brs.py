@@ -46,7 +46,7 @@ class Doc:
     def __init__(self, path, title):
         self.c = canvas.Canvas(path, pagesize=(W, H))
         self.c.setTitle(title)
-        self.c.setAuthor("Agarwal & Saxena Bank Reconciliation")
+        self.c.setAuthor("Bank Reconciliation")
         self.top = 0.0
         self.fresh = False  # True right after a page break: the next block sits at PAGE_TOP, no gap
 

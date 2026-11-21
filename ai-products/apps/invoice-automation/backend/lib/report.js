@@ -123,7 +123,7 @@ export function pdfModel(b) {
   return {
     title: "INVOICE PROCESSING — REVIEW REPORT",
     subtitle: `${b.batchName} | ${t.invoices} invoices${b.period ? ` | ${dmy(b.period.from)} to ${dmy(b.period.to)}` : ""}`,
-    footer: `Agarwal & Saxena Invoice Automation · ${b.batchName} · generated ${new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" }).replaceAll("/", "-")}`,
+    footer: `Invoice Automation · ${b.batchName} · generated ${new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" }).replaceAll("/", "-")}`,
     statusLead: b.status.lead, statusText: b.status.text,
     summary: [
       ["Invoices processed", String(t.invoices)], ["Passed all checks", String(t.passed)], ["Need review", String(t.exceptions)],

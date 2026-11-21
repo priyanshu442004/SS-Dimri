@@ -14,7 +14,7 @@ function sheet(wb, name, columns, rows) {
 export async function buildWorkbook(r) {
   const { default: ExcelJS } = await import("exceljs");
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Agarwal & Saxena Fixed Asset Register";
+  wb.creator = "Fixed Asset Register";
   wb.created = new Date();
 
   sheet(wb, "Asset Rollforward",

@@ -103,7 +103,7 @@ export function BusinessDashboard({ initial, today }: { initial: DashboardBundle
         </span>
       </div>
       <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="w-20 text-[11.5px] font-bold uppercase tracking-wide text-night dark:text-ink">Dimension</span>
+        <span className="w-20 text-[11.5px] font-bold uppercase tracking-wide text-night dark:text-ink">Filter</span>
         <div className="grid min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <label className="flex min-w-0 items-center gap-2 text-[12px] text-muted"><span className="w-14 shrink-0">Client</span>
             <select value={f.client} onChange={(e) => set({ client: e.target.value })} className={selectCls}><option value="">All ({b.options.clients.length})</option>{b.options.clients.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
@@ -120,8 +120,8 @@ export function BusinessDashboard({ initial, today }: { initial: DashboardBundle
         </div>
       </div>
       <p className="mt-2 text-[11.5px] text-muted">
-        Comparison rule: Today→Yesterday · Yesterday→Day before · 7 Days→Prior 7 days · Month→Previous month · Quarter→Previous quarter · Year→Previous year · Custom→Preceding equal-length range. Dimensions narrow every figure, chart and table on this page.
-        {(f.client || f.staff || f.activity || f.service) && <button type="button" onClick={() => set({ client: "", staff: "", activity: "", service: "" })} className="ml-2 font-semibold text-ink underline-offset-2 hover:underline">Clear dimensions</button>}
+        Comparison rule: Today→Yesterday · Yesterday→Day before · 7 Days→Prior 7 days · Month→Previous month · Quarter→Previous quarter · Year→Previous year · Custom→Preceding equal-length range. Filters narrow every figure, chart and table on this page.
+        {(f.client || f.staff || f.activity || f.service) && <button type="button" onClick={() => set({ client: "", staff: "", activity: "", service: "" })} className="ml-2 font-semibold text-ink underline-offset-2 hover:underline">Clear filters</button>}
       </p>
     </div>
   );

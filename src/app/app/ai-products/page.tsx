@@ -6,14 +6,14 @@ import { AI_PRODUCTS } from "@/lib/ai-products";
 import { PageHeader } from "@/components/ui";
 import { ProductIcon } from "./product-icon";
 
-export const metadata: Metadata = { title: "AI products" };
+export const metadata: Metadata = { title: "Workflow automation" };
 
 // The AI products, released to the demo login only (capability "ai_products.use").
 export default async function AiProductsPage() {
   await requireCapability("ai_products.use");
   return (
     <>
-      <PageHeader title="AI products" description="Workflow automation for accounting, tax and reconciliation. Each product keeps its own history, reports and AI chat, and emails its report when a run is made." />
+      <PageHeader title="Workflow automation" description="Automation for accounting, tax and reconciliation. Each product keeps its own history, reports and AI chat, and emails its report when a run is made." />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {AI_PRODUCTS.map((p) => (
           <Link

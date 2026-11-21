@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { lineIds } from "@/lib/hierarchy";
 import { NO_EMPLOYEE } from "@/lib/ids";
 import { teamAnalytics } from "@/lib/services/analytics";
 import { TeamCharts } from "../chart-sections";
@@ -9,8 +10,9 @@ import { teamToday } from "@/lib/services/team-today";
 
 export default async function SeniorDashboard() {
   const ctx = await requireCapability("tasks.review");
-  const reportees = await prisma.employeeReportingRelationship.findMany({ where: { managerId: ctx.employee?.id ?? NO_EMPLOYEE }, select: { employeeId: true } });
-  const [team, mine, charts, today] = await Promise.all([leadOverview(ctx, "team"), myOverview(ctx), teamAnalytics(ctx, reportees.map((r) => r.employeeId)), teamToday(ctx)]);
+  // My team = everyone in my line, all levels (tracker S.No. 96, 97).
+  const line = (await lineIds(ctx)).filter((id) => id !== (ctx.employee?.id ?? NO_EMPLOYEE));
+  const [team, mine, charts, today] = await Promise.all([leadOverview(ctx, "team"), myOverview(ctx), teamAnalytics(ctx, line), teamToday(ctx)]);
   return (
     <>
       <Greeting ctx={ctx} subtitle="Senior dashboard — your team's work, reviews and your own day." />

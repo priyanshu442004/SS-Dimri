@@ -37,7 +37,7 @@ export function mountChat(app, { stream, runDir, context, suggestions = [], assi
       hit = { stamp, title, text };
       contextCache.set(id, hit);
     }
-    return `You are "${assistant}", the AI assistant inside ${product}, used by a firm of Chartered Accountants (Agarwal & Saxena).
+    return `You are "${assistant}", the AI assistant inside ${product}, used by a firm of Chartered Accountants.
 You answer questions about ONE processed job: ${hit.title}. Everything you know about it is in the DOCUMENTS section below —
 the system's processed output (already validated, deterministic) and the source documents the user uploaded.
 

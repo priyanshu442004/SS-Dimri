@@ -88,6 +88,18 @@ export async function MyPlanTab({ ctx, sp }: { ctx: AppContext; sp: SP }) {
         <Link href={dayHref(toIsoDate(addDays(dateOnly(iso), 1)))} className="rounded border border-line px-2 py-1 hover:bg-subtle">Next day →</Link>
         <span className="ml-auto text-muted">Your Team Lead: <strong className="text-ink">{leadNames.length ? leadNames.join(", ") : "the administrators"}</strong></span>
       </div>
+      {/* Short user guide (tracker S.No. 91): open by default until the plan is sent. */}
+      <details open={!submitted && iso === today} className="rounded-xl border border-info/30 bg-info-bg/40 px-4 py-3 text-sm">
+        <summary className="cursor-pointer font-semibold text-ink">How the morning plan works — 5 steps</summary>
+        <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-ink/90">
+          <li><strong>Every morning, by {v.morningPlanBy}:</strong> under &ldquo;Morning plan&rdquo; below, add each piece of work you will do today — the client, what will be done, and when you expect to finish it. Work not finished yesterday is already carried over at the top. Tasks given to you are added by themselves.</li>
+          <li><strong>Press &ldquo;Send plan to my Team Lead&rdquo;.</strong> Your Team Lead sees it, may edit it and approves it. A plan sent after {v.morningPlanBy} is marked late.</li>
+          <li><strong>During the day, use the To-do list:</strong> press <strong>Start</strong> on a line when you begin, <strong>Pause</strong> for a break and <strong>Resume</strong> to carry on. The time goes to your Timesheet by itself — one entry per task for the day — so you do not type it again. <strong>Done</strong> finishes the line (and sends a task for review).</li>
+          <li><strong>Before you leave: file the EOD report.</strong> Mark each line Done or Pending (with the reason), and add any work that was not in the plan. Pending lines come back in tomorrow&apos;s plan.</li>
+          <li><strong>Fines (office rule 2):</strong> an EOD not filed by the next day&apos;s reporting time costs ₹{v.penalty}; a Team Lead who does not escalate a missing EOD the same day is fined too.</li>
+        </ol>
+        <p className="mt-2 text-xs text-muted">Full rules: <Link href="/app/rules" className="underline">Office rules</Link>.</p>
+      </details>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label={`Morning plan (by ${v.morningPlanBy})`} value={submitted ? formatTime(plan!.planSubmittedAt, tz) : "Not sent"} hint={submitted ? (v.planLate ? "Sent late" : "On time") : now > v.planDueBy && !future ? "Overdue: your Team Lead is told" : "Send it to your Team Lead"} icon={<Send />} tone={submitted ? (v.planLate ? "warn" : "ok") : now > v.planDueBy && !future ? "danger" : "warn"} />
         <Stat label="Team Lead" value={plan?.approvedAt ? "Approved" : submitted ? "Waiting" : "—"} hint={plan?.approvedBy ? `by ${plan.approvedBy.name}${plan.leadEditedAt ? " (with changes)" : ""}` : plan?.leadEditedAt ? "Edited by your Team Lead" : undefined} icon={<ClipboardCheck />} tone={plan?.approvedAt ? "ok" : "neutral"} />

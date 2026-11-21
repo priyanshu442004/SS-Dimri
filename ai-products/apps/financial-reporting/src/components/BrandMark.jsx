@@ -9,7 +9,7 @@ export default function BrandMark() {
       </span>
       <span className="leading-tight">
         <span className="block font-display text-[16px] font-medium text-paper">Trial Balance</span>
-        <span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-mist">Agarwal &amp; Saxena</span>
+        <span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-mist">Workflow automation</span>
       </span>
     </a>
   );

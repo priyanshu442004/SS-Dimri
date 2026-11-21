@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { lineIds, seesFirm } from "@/lib/hierarchy";
 import { formatDate, formatTime, minutesToHhmm } from "@/lib/dates";
 import { can } from "@/lib/permissions";
 import { getContext } from "@/lib/session";
@@ -19,7 +20,8 @@ export async function GET(request: Request) {
   const sp = Object.fromEntries(new URL(request.url).searchParams.entries());
   // "My team" (scope=mine): only the people who report to the caller. Everyone else needs "see team attendance".
   const mine = sp.scope === "mine" || !can(ctx, "attendance.view_all");
-  const team = mine ? await reporteeIds(ctx) : null;
+  // Hierarchy (tracker S.No. 97): a lead without the firm-wide right exports their own line.
+  const team = mine ? await reporteeIds(ctx) : seesFirm(ctx, "attendance.view_all") ? null : await lineIds(ctx);
   if (mine && !team?.length) return new NextResponse("Not found", { status: 404 });
   const f = { ...parseTeamFilters(sp, todayIso(ctx)), ...(team ? { onlyEmployeeIds: team } : {}) };
   const tz = ctx.organization.timezone;

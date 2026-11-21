@@ -16,7 +16,7 @@ function sheet(wb, name, columns, rows) {
 export async function buildWorkbook(result) {
   const { default: ExcelJS } = await import("exceljs");
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Agarwal & Saxena Bank Reconciliation";
+  wb.creator = "Bank Reconciliation";
   const s = result.summary;
 
   const sum = wb.addWorksheet("Summary");

@@ -112,7 +112,7 @@ export default async function RulesPage() {
       points: [
         <>All leave is processed through the <strong>ERP only</strong>. Every employee must raise a leave request in the ERP, and the senior will approve or reject it there. Leave not requested in the ERP is not valid.</>,
         `${n.paidLeavesPerMonth === 1 ? "One leave" : `${n.paidLeavesPerMonth} leaves`} per month ${n.paidLeavesPerMonth === 1 ? "is" : "are"} allowed, with intimation (requested before your reporting time).`,
-        `If no leave is taken in a month, ${n.noLeaveBonusDays} extra days are added to salary. (Any leave, absence or half day in the month — including half days for late arrival or leaving early — means no extra days that month.)`,
+        `If no leave is taken in a month, ${n.noLeaveBonusDays} extra days are added to salary; each day of leave or absence taken in the month takes one day off it (one day of leave: ${Math.max(0, n.noLeaveBonusDays - 1)} extra day${n.noLeaveBonusDays - 1 === 1 ? "" : "s"}). Half days for late arrival or leaving early do not reduce it. It is added automatically in payroll when the month is complete.`,
         `Leave without intimation (no request in the ERP) counts as ${n.unrequestedAbsenceDays === 2 ? "double" : `${n.unrequestedAbsenceDays} times`} absent.`,
         `Planned leave must be requested in the ERP and approved by the senior at least ${p.plannedLeaveNoticeDays} days in advance. It also shows your dedication and commitment to the office.`,
         "Sundays and office holidays that fall within a continuous leave period are counted as leave. For example, leave on Saturday and Monday makes Sunday a leave day too.",

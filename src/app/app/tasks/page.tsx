@@ -1,4 +1,5 @@
 import { NO_EMPLOYEE } from "@/lib/ids";
+import { seesFirm } from "@/lib/hierarchy";
 import Link from "next/link";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
@@ -107,7 +108,7 @@ export default async function TasksPage({ searchParams }: PageProps<"/app/tasks"
           { key: "mine", label: "My tasks", href: params({ scope: "mine", page: 1 }) },
           ...(tabs.assigned ? [{ key: "assigned", label: "Assigned by me", href: params({ scope: "assigned", state: "all", page: 1 }) }] : []),
           ...(tabs.review ? [{ key: "review", label: "Awaiting my review", href: params({ scope: "review", state: "all", page: 1 }) }] : []),
-          ...(tabs.all ? [{ key: "all", label: "All tasks", href: params({ scope: "all", page: 1 }) }] : []),
+          ...(tabs.all ? [{ key: "all", label: seesFirm(ctx, "tasks.view_all") ? "All tasks" : "Team tasks (my line)", href: params({ scope: "all", page: 1 }) }] : []),
         ]}
       />
       <form className="mb-4 flex flex-wrap items-center gap-2" aria-label="Filters">

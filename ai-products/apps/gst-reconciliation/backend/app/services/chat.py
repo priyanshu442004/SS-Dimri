@@ -107,7 +107,7 @@ def build_context(case_id: str) -> tuple[str, str]:
 
 def system_prompt(case_id: str) -> str:
     title, docs = build_context(case_id)
-    return f"""You are "GST Assistant", the AI assistant inside GST Reconciliation, used by a firm of Chartered Accountants (Agarwal & Saxena).
+    return f"""You are "GST Assistant", the AI assistant inside GST Reconciliation, used by a firm of Chartered Accountants.
 You answer questions about ONE processed job: the {title}. Everything you know about it is in the DOCUMENTS section below —
 the system's processed output (already calculated, deterministic) and the source documents the user uploaded.
 

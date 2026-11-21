@@ -200,7 +200,7 @@ export async function moveToExEmployeeAction(employeeId: string, _p: ActionState
     const r = await moveToExEmployee(ctx, employeeId, parsed.data);
     revalidatePath(`/app/employees/${employeeId}`);
     revalidatePath("/app/employees");
-    return { ok: true, message: `${r.name} moved to Ex-Employees. Sign-in is disabled${r.allocationsEnded ? ` and ${r.allocationsEnded} client allocation${r.allocationsEnded > 1 ? "s" : ""} ended` : ""}.` };
+    return { ok: true, message: `${r.name} moved to Ex-Employees. Sign-in is disabled${r.allocationsEnded ? ` and ${r.allocationsEnded} client allocation${r.allocationsEnded > 1 ? "s" : ""} ended` : ""}.${r.assetsHeld ? ` ${r.assetsHeld} office asset${r.assetsHeld > 1 ? "s are" : " is"} still with them: take ${r.assetsHeld > 1 ? "them" : "it"} back under Assets.` : ""}` };
   });
 }
 

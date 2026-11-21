@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { timesheetWho, trackerWho } from "@/lib/services/worklog";
 import { prisma } from "@/lib/db";
 import { dateOnly, isoDateInTz, toIsoDate } from "@/lib/dates";
 import { isLateReview, isLateSubmission, minutesBetween, sessionsText, slaOf } from "@/lib/domain/timesheet";
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
   const tz = ctx.organization.timezone;
   const todayIso = isoDateInTz(new Date(), tz);
   const today = dateOnly(todayIso);
-  if (sp.get("sheet") === "tracker") return trackerSheet(ctx.organization, sp, today);
+  if (sp.get("sheet") === "tracker") return trackerSheet(ctx.organization, sp, today, ctx);
 
   const iso = (k: string) => (ISO.test(sp.get(k) ?? "") ? sp.get(k)! : todayIso);
   const from = iso("from");
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
 
   const [entries, org] = await Promise.all([
     prisma.timesheetEntry.findMany({
-      where: { organizationId: ctx.organization.id, workDate: { gte: dateOnly(from), lte: dateOnly(to) }, ...(employee ? { employeeId: employee } : {}), ...(client ? { clientId: client } : {}) },
+      where: { organizationId: ctx.organization.id, ...timesheetWho(ctx), workDate: { gte: dateOnly(from), lte: dateOnly(to) }, ...(employee ? { employeeId: employee } : {}), ...(client ? { clientId: client } : {}) },
       orderBy: [{ workDate: "asc" }, { employee: { firstName: "asc" } }, { serialNumber: "asc" }],
       take: 20_000,
       include: { employee: { select: { firstName: true, lastName: true } }, reviewedBy: { select: { name: true } }, trackerLine: { select: { refNo: true } } },
@@ -75,13 +76,13 @@ export async function GET(request: Request) {
   ]);
 }
 
-async function trackerSheet(org: { id: string; tradeName: string }, sp: URLSearchParams, today: Date) {
+async function trackerSheet(org: { id: string; tradeName: string }, sp: URLSearchParams, today: Date, ctx: Parameters<typeof trackerWho>[0]) {
   const client = sp.get("client") ?? "";
   const maker = UUID.test(sp.get("maker") ?? "") ? sp.get("maker")! : "";
   const status = sp.get("status") ?? "";
   const flag = sp.get("flag") ?? "";
   const lines = (await prisma.trackerLine.findMany({
-    where: { organizationId: org.id, ...(client ? { clientName: client } : {}), ...(maker ? { OR: [{ makerEmployeeId: maker }, { checkerEmployeeId: maker }] } : {}) },
+    where: { organizationId: org.id, ...trackerWho(ctx), ...(client ? { clientName: client } : {}), ...(maker ? { AND: [{ OR: [{ makerEmployeeId: maker }, { checkerEmployeeId: maker }] }] } : {}) },
     orderBy: [{ clientName: "asc" }, { refNo: "asc" }],
     take: 20_000,
     include: { maker: { select: { firstName: true, lastName: true } }, checker: { select: { firstName: true, lastName: true } } },

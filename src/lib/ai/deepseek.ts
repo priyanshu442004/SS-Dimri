@@ -30,6 +30,49 @@ function friendly(status: number, body: string): string {
   return `The AI service returned an error (${status}).`;
 }
 
+// ---------------------------------------------------------------- tool calls written as text
+//
+// Now and then the model writes a tool call into its answer text in its own internal markup —
+// "<｜DSML｜function_calls><｜DSML｜invoke name=\"query_database\"><｜DSML｜parameter name=\"args\" string=\"false\">{…}…"
+// — instead of sending a real tool call. That markup must never reach the user: it is held back
+// while streaming, turned into real tool calls (so the lookup still runs and the user gets the
+// answer), and stripped from any text.
+
+/** Start of the internal tool-call markup (full-width or ASCII bars, any spacing). */
+const MARKUP = /<\s*\/?\s*[｜|][\s｜|]*(?:DSML|tool[▁_ ]?calls?|function[▁_ ]?calls?)/i;
+const MARKUP_PREFIX = /<\s*[｜|]?\s*[A-Za-z▁_]{0,14}$/;
+
+/** Text with any internal tool-call markup (and everything after it) removed. */
+export function stripToolMarkup(text: string): string {
+  const i = text.search(MARKUP);
+  return i < 0 ? text : text.slice(0, i).trimEnd();
+}
+
+/** Tool calls written as markup in the text → real tool calls. */
+export function parseToolMarkup(text: string): ToolCall[] {
+  const i = text.search(MARKUP);
+  if (i < 0) return [];
+  const body = text.slice(i).replace(/[｜]/g, "|");
+  const calls: ToolCall[] = [];
+  const T = (tag: string, close = false) => String.raw`<\s*${close ? String.raw`\/?\s*` : ""}(?:\|\s*){1,3}DSML\s*(?:\|\s*){1,3}${close ? String.raw`\/?\s*` : ""}` + tag;
+  const invoke = new RegExp(T("invoke") + String.raw`\s+name\s*=\s*"([a-z_]+)"\s*>([\s\S]*?)(?=` + T("invoke", true) + String.raw`\s*>|` + T("invoke") + String.raw`\s|$)`, "gi");
+  const param = new RegExp(T("parameter") + String.raw`\s+name\s*=\s*"([^"]+)"(?:\s+string\s*=\s*"(true|false)")?\s*>([\s\S]*?)` + T("parameter", true) + String.raw`\s*>`, "gi");
+  let m: RegExpExecArray | null;
+  let n = 0;
+  while ((m = invoke.exec(body))) {
+    const args: Record<string, unknown> = {};
+    let p: RegExpExecArray | null;
+    param.lastIndex = 0;
+    while ((p = param.exec(m[2]))) {
+      const raw = p[3].trim();
+      if (p[2] === "true") { args[p[1]] = raw; continue; }
+      try { args[p[1]] = JSON.parse(raw); } catch { args[p[1]] = raw; }
+    }
+    calls.push({ id: `markup_${Date.now().toString(36)}_${n++}`, type: "function", function: { name: m[1], arguments: JSON.stringify(args) } });
+  }
+  return calls;
+}
+
 /**
  * One model step, streamed. `onText` / `onReasoning` get deltas as they arrive. Retries once on
  * 429 / 5xx / network errors before any output was produced.
@@ -85,6 +128,22 @@ export async function streamStep(
   if (!res?.body) throw new AiServiceError("The AI service sent an empty response.");
 
   const out: StepResult = { content: "", reasoning: "", toolCalls: [], finishReason: null };
+  // Text is passed on as it arrives, except a tail that may be the start of tool-call markup.
+  let shown = 0;
+  let markup = false;
+  const flush = (final: boolean) => {
+    if (markup || !opts.onText) return;
+    const at = out.content.search(MARKUP);
+    if (at >= 0) {
+      markup = true;
+      if (at > shown) opts.onText(out.content.slice(shown, at));
+      shown = at;
+      return;
+    }
+    let upto = out.content.length;
+    if (!final) { const tail = out.content.slice(-24).match(MARKUP_PREFIX); if (tail) upto -= tail[0].length; }
+    if (upto > shown) { opts.onText(out.content.slice(shown, upto)); shown = upto; }
+  };
   const calls: { id: string; name: string; args: string }[] = [];
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buf = "";
@@ -115,7 +174,7 @@ export async function streamStep(
       if (!choice) continue;
       const d = choice.delta ?? {};
       if (d.reasoning_content) { out.reasoning += d.reasoning_content; opts.onReasoning?.(d.reasoning_content); }
-      if (d.content) { out.content += d.content; opts.onText?.(d.content); }
+      if (d.content) { out.content += d.content; flush(false); }
       for (const tc of d.tool_calls ?? []) {
         const c = (calls[tc.index] ??= { id: "", name: "", args: "" });
         if (tc.id) c.id = tc.id;
@@ -125,7 +184,15 @@ export async function streamStep(
       if (choice.finish_reason) out.finishReason = choice.finish_reason;
     }
   }
+  flush(true);
   out.toolCalls = calls.filter(Boolean).map((c, i) => ({ id: c.id || `call_${i}`, type: "function", function: { name: c.name, arguments: c.args || "{}" } }));
+  if (MARKUP.test(out.content)) {
+    // Tool calls written as text: run them as real calls (when tools were offered), never show the markup.
+    const written = opts.tools?.length ? parseToolMarkup(out.content).filter((c) => opts.tools!.some((t) => t.function.name === c.function.name)) : [];
+    out.toolCalls = [...out.toolCalls, ...written];
+    out.content = stripToolMarkup(out.content);
+    console.warn("AI: tool-call markup in text", written.length ? `→ ${written.length} call(s)` : "(stripped)");
+  }
   return out;
 }
 

@@ -1,9 +1,8 @@
-// Shared UI for the Agarwal & Saxena Workflow Automation product websites.
+// Shared UI for the Workflow Automation product websites.
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { kb, dateTime } from "./format";
-import logoLight from "./assets/agarwal-saxena-logo-light.svg";
 
 export const EASE = [0.16, 1, 0.3, 1];
 export const rise = (i = 0) => ({ initial: { y: 12 }, animate: { y: 0 }, transition: { delay: 0.05 * i, duration: 0.6, ease: EASE } });
@@ -86,11 +85,8 @@ export function AppShell({ product, nav, cta }) {
       </nav>
       <div className="space-y-1 border-t border-white/10 pt-4">
         <a href="/app/ai-products" target="_top" className="flex h-10 items-center gap-3 rounded-xl px-3 text-[13.5px] text-mist transition-colors hover:text-paper">
-          <Icon name="back" /> AI products
+          <Icon name="back" /> Workflow automation
         </a>
-        <div className="px-3 pt-1">
-          <img src={logoLight} alt="Agarwal & Saxena — Chartered Accountants" className="h-7 w-auto opacity-90" width="2600" height="350" />
-        </div>
       </div>
     </aside>
   );

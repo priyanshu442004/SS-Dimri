@@ -51,7 +51,7 @@ class Doc:
     def __init__(self, path, m):
         self.m = m
         self.c = canvas.Canvas(path, pagesize=(W, H))
-        self.c.setTitle(m["title"]); self.c.setAuthor("Agarwal & Saxena Invoice Automation")
+        self.c.setTitle(m["title"]); self.c.setAuthor("Invoice Automation")
         self.top, self.fresh, self.page = 0.0, False, 1
 
     def draw(self, x, top, text, font, size, color=black, align="left", maxw=None):

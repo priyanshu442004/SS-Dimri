@@ -15,7 +15,7 @@ import Help from "./pages/Help";
 import Settings from "./pages/Settings";
 import Ask from "./pages/Ask";
 
-const product = { name: "Financial Statement Analysis", tagline: "Agarwal & Saxena", icon: "cfo" };
+const product = { name: "Financial Statement Analysis", tagline: "Workflow automation", icon: "cfo" };
 const nav = [
   { to: "/", label: "Overview", icon: "overview", end: true },
   { to: "/new", label: "New analysis", icon: "plus" },

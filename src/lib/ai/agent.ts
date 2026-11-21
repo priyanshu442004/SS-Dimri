@@ -2,7 +2,7 @@ import "server-only";
 import type { AppContext } from "@/lib/session";
 import type { Block, StreamEvent } from "./blocks";
 import { aiConfig } from "./config";
-import { streamStep, type ChatMessage, type ToolCall } from "./deepseek";
+import { streamStep, stripToolMarkup, type ChatMessage, type ToolCall } from "./deepseek";
 import { buildSystemPrompt } from "./prompt";
 import { runTool, toolSpecs, toolLabel } from "./tools";
 
@@ -53,7 +53,7 @@ export function historyMessages(history: HistoryMessage[], thinking: boolean): C
         for (const r of replay) out.push({ role: "tool", tool_call_id: r.call.id, content: r.result });
       }
     }
-    out.push({ role: "assistant", content: stripNotes(m.content) || "(answer shown as visuals)", ...reasoning });
+    out.push({ role: "assistant", content: stripToolMarkup(stripNotes(m.content)) || "(answer shown as visuals)", ...reasoning });
   });
   return out;
 }
@@ -152,7 +152,9 @@ export async function runAgent(
     answer = step.content;
   }
 
-  const cleaned = stripNarration(stripNotes(answer));
+  let cleaned = stripNarration(stripNotes(stripToolMarkup(answer)));
+  // Never an empty bubble: the look-up did not finish in the rounds allowed.
+  if (!cleaned && !blocks.length && !signal.aborted) cleaned = "I could not finish looking this up. Please ask again, or ask in a narrower way (for example one client, one month).";
   if (cleaned !== answer.trim()) emit({ type: "text_set", text: cleaned });
   return {
     content: cleaned,

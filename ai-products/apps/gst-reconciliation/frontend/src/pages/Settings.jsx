@@ -6,7 +6,7 @@ export default function Settings() {
   return (
     <>
       <PageHeader eyebrow="Settings" title="Settings">
-        How GST Reconciliation processes documents. Runtime configuration is managed by the Agarwal &amp; Saxena administrator; keys never reach the browser.
+        How GST Reconciliation processes documents. Runtime configuration is managed by the administrator; keys never reach the browser.
       </PageHeader>
       {loading && <Loading />}
       {error && <ErrorNote>{error}</ErrorNote>}

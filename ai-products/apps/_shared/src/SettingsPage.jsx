@@ -7,7 +7,7 @@ export default function SettingsPage({ productName, rows = [], children }) {
   return (
     <>
       <PageHeader eyebrow="Settings" title="Settings">
-        How {productName} delivers reports and the defaults it runs with. Delivery settings are managed by the Agarwal & Saxena administrator.
+        How {productName} delivers reports and the defaults it runs with. Delivery settings are managed by the administrator.
       </PageHeader>
       {loading && <Loading />}
       {error && <ErrorNote>{error}</ErrorNote>}

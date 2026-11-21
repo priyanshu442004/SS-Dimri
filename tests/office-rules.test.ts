@@ -107,7 +107,8 @@ describe("§6 late arrival", () => {
     const s = scoreMonth(month({ "2026-11-02": at("2026-11-02", "11:00") }), NUM, TZ);
     const pay = computePay({ monthlySalary: 30000, daysInMonth: 30, complete: true, fullMonth: true, score: s, fines: 0 }, NUM);
     expect(pay.perDay).toBe(1000);
-    expect(pay.net).toBe(29500);
+    expect(pay.basePay).toBe(29500);
+    expect(pay.net).toBe(31500); // a late half day is a deduction, not leave: the 2-day bonus stays
   });
 });
 
@@ -202,16 +203,22 @@ describe("§10 leave", () => {
     const t = scoreMonth(month({ "2026-11-14": leave(), "2026-11-16": leave() }, { lastCounted: "2026-11-15" }), NUM, TZ);
     expect(t.days.find((d) => d.iso === "2026-11-15")!.sandwiched).toBe(true);
   });
-  it("no leave in the month adds 2 days' salary; any leave, absence or half day cancels it", () => {
+  it("no leave in the month adds 2 days' salary, one day of leave 1 day, more none (salary-sheet rule, 21 Nov 2026)", () => {
     const clean = scoreMonth(month(), NUM, TZ);
     expect(clean.tookLeave).toBe(false);
     const pay = computePay({ monthlySalary: 30000, daysInMonth: 30, complete: true, fullMonth: true, score: clean, fines: 0 }, NUM);
     expect(pay.bonusDays).toBe(2);
     expect(pay.net).toBe(32000);
+    // Half days for late arrival are a deduction, not leave: the bonus stays.
     const late = scoreMonth(month({ "2026-11-02": at("2026-11-02", "11:00") }), NUM, TZ);
-    expect(computePay({ monthlySalary: 30000, daysInMonth: 30, complete: true, fullMonth: true, score: late, fines: 0 }, NUM).bonusDays).toBe(0);
+    expect(computePay({ monthlySalary: 30000, daysInMonth: 30, complete: true, fullMonth: true, score: late, fines: 0 }, NUM).bonusDays).toBe(2);
     const paidLeave = scoreMonth(month({ "2026-11-03": leave() }), NUM, TZ);
     expect(paidLeave.tookLeave).toBe(true);
+    expect(computePay({ monthlySalary: 30000, daysInMonth: 30, complete: true, fullMonth: true, score: paidLeave, fines: 0 }, NUM).bonusDays).toBe(1);
+    const twoLeaves = scoreMonth(month({ "2026-11-03": leave(), "2026-11-04": leave() }), NUM, TZ);
+    expect(computePay({ monthlySalary: 30000, daysInMonth: 30, complete: true, fullMonth: true, score: twoLeaves, fines: 0 }, NUM).bonusDays).toBe(0);
+    const absentDay = scoreMonth(month({ "2026-11-05": absent }), NUM, TZ);
+    expect(computePay({ monthlySalary: 30000, daysInMonth: 30, complete: true, fullMonth: true, score: absentDay, fines: 0 }, NUM).bonusDays).toBe(1);
     // Not before the month is over, and not for a part month.
     expect(computePay({ monthlySalary: 30000, daysInMonth: 30, complete: false, fullMonth: true, score: clean, fines: 0 }, NUM).bonusDays).toBe(0);
     expect(computePay({ monthlySalary: 30000, daysInMonth: 30, complete: true, fullMonth: false, score: clean, fines: 0 }, NUM).bonusDays).toBe(0);
@@ -320,5 +327,35 @@ describe("who may do what under the rules", () => {
     expect(can({ role: "SENIOR", grantedCapabilities: ["payroll.salaries"] }, "payroll.salaries")).toBe(true);
     // Rule 1: nobody marks or changes attendance by hand, so the old correction right is gone.
     expect(Object.keys(CAPABILITIES)).not.toContain("attendance.correct");
+  });
+});
+
+describe("21 Nov 2026: weekly off, Sunday / holiday work, conveyance and advance in pay", () => {
+  it("an approved weekly off on a weekday is an off day: paid, not absent, not leave", () => {
+    const s = scoreMonth(month({ "2026-11-04": { record: null, off: true } }), NUM, TZ);
+    expect(s.days.find((d) => d.iso === "2026-11-04")!.kind).toBe("OFF");
+    expect(s.absent).toBe(0);
+    expect(s.leaveTaken).toBe(0);
+    expect(s.payableDays).toBe(30);
+  });
+  it("a Sunday worked with approval is an extra day (half a day for a half day); without approval nothing extra", () => {
+    const sunday = { record: { status: "PRESENT" as const, timeIn: ist("2026-11-08T10:15:00"), timeOut: ist("2026-11-08T15:00:00") } };
+    const approved = scoreMonth(month({ "2026-11-08": { ...sunday, offDayWorkApproved: true } }), NUM, TZ);
+    expect(approved.extraDays).toBe(1);
+    expect(approved.lateArrivals + approved.veryLateArrivals).toBe(0); // no late rules on a Sunday worked
+    expect(approved.earlyHalfDays).toBe(0);
+    const pay = computePay({ monthlySalary: 30000, daysInMonth: 30, complete: true, fullMonth: true, score: approved, fines: 0 }, NUM);
+    expect(pay.extraPay).toBe(1000);
+    expect(pay.net).toBe(33000);
+    const half = scoreMonth(month({ "2026-11-08": { record: { status: "HALF_DAY" as const, timeIn: ist("2026-11-08T10:00:00"), timeOut: ist("2026-11-08T14:00:00") }, offDayWorkApproved: true } }), NUM, TZ);
+    expect(half.extraDays).toBe(0.5);
+    expect(scoreMonth(month({ "2026-11-08": sunday }), NUM, TZ).extraDays).toBe(0);
+  });
+  it("conveyance is added and the advance deduction taken off the net pay", () => {
+    const s = scoreMonth(month(), NUM, TZ);
+    const pay = computePay({ monthlySalary: 30000, daysInMonth: 30, complete: false, fullMonth: true, score: s, fines: 0, conveyance: 850, advanceDeduction: 2000 }, NUM);
+    expect(pay.conveyance).toBe(850);
+    expect(pay.advanceDeduction).toBe(2000);
+    expect(pay.net).toBe(28850);
   });
 });

@@ -5,6 +5,7 @@ import { MapPin } from "lucide-react";
 import { buttonClass } from "@/components/ui";
 import { inputCls, useSubmitWithoutReset, type FormState } from "@/components/form";
 import { toast } from "@/components/toaster";
+import { ClientPlacePicker, type PlaceClient } from "./client-place-picker";
 
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
 type Location = "OFFICE" | "CLIENT_OFFICE" | "CLIENT_VISIT";
@@ -14,12 +15,16 @@ type Location = "OFFICE" | "CLIENT_OFFICE" | "CLIENT_VISIT";
  * explains how to allow it instead of marking. The work location (office / client office /
  * client visit) is recorded with the time. Location is read once, only when the button is pressed.
  */
-export function MarkCard({ action, kind, showLateReason, labels, clients, defaultLocation, defaultPlace, warning }: {
+export function MarkCard({ action, kind, showLateReason, labels, clients, defaultLocation, defaultPlace, warning, firmStart = "09:30", photo = "OPTIONAL" }: {
   action: Act;
   kind: "in" | "out";
   showLateReason: boolean;
   labels: Record<Location, string>;
-  clients: string[];
+  clients: PlaceClient[];
+  /** The firm's office start, shown when the client has no opening time of its own. */
+  firmStart?: string;
+  /** Selfie at attendance (Settings): OFF hides it, REQUIRED asks for it (tracker S.No. 94). */
+  photo?: string;
   defaultLocation?: Location | null;
   defaultPlace?: string | null;
   /** Shown above the button, e.g. "Leaving before 17:30 counts as a half day". */
@@ -43,6 +48,10 @@ export function MarkCard({ action, kind, showLateReason, labels, clients, defaul
     setLocError(null);
     if (!where) {
       setLocError("Choose where you are working today.");
+      return;
+    }
+    if (photo === "REQUIRED" && !(form.elements.namedItem("photo") as HTMLInputElement | null)?.files?.length) {
+      setLocError("Take a live photo (selfie) first: it is required for attendance.");
       return;
     }
     if (where !== "OFFICE" && !(form.elements.namedItem("workPlace") as HTMLInputElement).value.trim()) {
@@ -89,11 +98,7 @@ export function MarkCard({ action, kind, showLateReason, labels, clients, defaul
         </div>
       </fieldset>
       {where && where !== "OFFICE" && (
-        <div>
-          <label htmlFor={`${id}-place`} className="mb-1 block text-sm font-medium">{where === "CLIENT_OFFICE" ? "Client office" : "Client you are visiting"}</label>
-          <input id={`${id}-place`} name="workPlace" list={`${id}-clients`} defaultValue={defaultPlace ?? ""} className={inputCls} placeholder="Start typing the client's name" autoComplete="off" />
-          <datalist id={`${id}-clients`}>{clients.map((c) => <option key={c} value={c} />)}</datalist>
-        </div>
+        <ClientPlacePicker clients={clients} defaultValue={defaultPlace} label={where === "CLIENT_OFFICE" ? "Client office" : "Client you are visiting"} firmStart={firmStart} />
       )}
       {showLateReason && (
         <div>
@@ -101,12 +106,15 @@ export function MarkCard({ action, kind, showLateReason, labels, clients, defaul
           <input id={`${id}-late`} name="lateReason" className={inputCls} placeholder="Shown to your Team Lead" />
         </div>
       )}
-      <div>
-        <label htmlFor={`${id}-photo`} className="mb-1 block text-sm font-medium">Live photo (optional)</label>
-        <input id={`${id}-photo`} name="photo" type="file" accept="image/*" capture="user" className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-sm file:transition-colors hover:file:bg-paper" />
-      </div>
+      {photo !== "OFF" && (
+        <div>
+          <label htmlFor={`${id}-photo`} className="mb-1 block text-sm font-medium">Live photo (selfie){photo === "REQUIRED" ? "" : " (optional)"}</label>
+          <input id={`${id}-photo`} name="photo" type="file" accept="image/*" capture="user" required={photo === "REQUIRED"} className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-sm file:transition-colors hover:file:bg-paper" />
+        </div>
+      )}
       {warning && <p className="rounded-lg border border-marigold/40 bg-warn-bg px-3 py-2 text-sm text-warn">{warning}</p>}
-      <button type="button" onClick={submitWithLocation} disabled={pending || locating} className={buttonClass("primary", "md", "relative h-12 w-full px-6 text-base sm:w-auto")}>
+      {/* Check-in green, check-out red (tracker S.No. 93). */}
+      <button type="button" onClick={submitWithLocation} disabled={pending || locating} className={buttonClass("primary", "md", `relative h-12 w-full px-6 text-base sm:w-auto ${kind === "in" ? "!bg-ok hover:!bg-ok/90" : "!bg-danger hover:!bg-danger/90"} !text-white`)}>
         <span className="relative grid size-5 place-items-center">
           {(locating || pending) && <span aria-hidden className="absolute inset-0 animate-ping rounded-full bg-marigold/60" />}
           <MapPin className="relative size-4" aria-hidden />

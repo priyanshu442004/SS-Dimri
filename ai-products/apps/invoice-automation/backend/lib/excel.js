@@ -19,7 +19,7 @@ const d = (iso) => (iso ? new Date(`${iso}T00:00:00Z`) : null);
 export async function buildWorkbook(b) {
   const { default: ExcelJS } = await import("exceljs");
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Agarwal & Saxena Invoice Automation";
+  wb.creator = "Invoice Automation";
 
   sheet(wb, "Register", [
     { h: "#", k: "i", w: 5 }, { h: "File", k: "file", w: 22 }, { h: "Invoice no.", k: "no", w: 14 }, { h: "Invoice date", k: "date", w: 13, date: true },

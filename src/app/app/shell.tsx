@@ -28,7 +28,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   attendance: "Attendance", timesheet: "Timesheet", "day-reports": "Day reports", pending: "Pending tracker", reports: "Reports",
   services: "Services & departments", compliances: "Compliance", payroll: "Payroll", import: "Import from Excel", settings: "Settings", notifications: "Notifications",
   onboarding: "My employee record", profile: "My profile", observations: "Client observations", dues: "Fees & dues", search: "Search", "no-access": "No access", assistant: "AI assistant", reporting: "AI reporting",
-  "ai-products": "AI products",
+  "ai-products": "Workflow automation", report: "Allocation reports", reminders: "Reminders", assets: "Assets",
   ...Object.fromEntries(AI_PRODUCTS.map((p) => [p.slug, p.short])),
 };
 

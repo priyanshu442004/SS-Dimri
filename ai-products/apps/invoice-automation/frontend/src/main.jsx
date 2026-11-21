@@ -15,7 +15,7 @@ import Help from "./pages/Help";
 import Settings from "./pages/Settings";
 import Ask from "./pages/Ask";
 
-const product = { name: "Invoice Automation", tagline: "Agarwal & Saxena", icon: "invoice" };
+const product = { name: "Invoice Automation", tagline: "Workflow automation", icon: "invoice" };
 const nav = [
   { to: "/", label: "Overview", icon: "overview", end: true },
   { to: "/new", label: "Process invoices", icon: "plus" },

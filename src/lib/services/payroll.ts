@@ -8,6 +8,7 @@ import { monthlyAmount } from "@/lib/domain/payroll";
 import { can } from "@/lib/permissions";
 import type { AppContext } from "@/lib/session";
 import { audit } from "./audit";
+import { advanceTotals, conveyanceTotals } from "./claims";
 import { finesForMonth, type Fines } from "./daily-plans";
 import { notifyEmployees } from "./notifications";
 import { getPolicy, holidaySet, isOffDay, scheduleOf } from "./office-rules";
@@ -23,6 +24,9 @@ export type PayrollRow = {
   score: MonthScore;
   pay: Pay;
   fines: Fines;
+  /** Advance balance left after this month's deduction. */
+  advanceBalance: number;
+  conveyanceClaims: number;
 };
 
 export function validMonth(v: unknown, today: string) {
@@ -50,7 +54,7 @@ export async function payrollForMonth(ctx: AppContext, month: string, onlyEmploy
   const owners = await prisma.organizationMembership.findMany({ where: { organizationId, role: "OWNER", employeeId: { not: null } }, select: { employeeId: true } });
   const ownerIds = owners.map((o) => o.employeeId!);
 
-  const [employees, records, leaves, requested, forms, holidays, fines] = await Promise.all([
+  const [employees, records, leaves, requested, forms, holidays, fines, conveyance, advances] = await Promise.all([
     prisma.employee.findMany({
       where: {
         organizationId,
@@ -71,6 +75,8 @@ export async function payrollForMonth(ctx: AppContext, month: string, onlyEmploy
     prisma.attendanceRequest.findMany({ where: { organizationId, requestDate: { gte: from, lte: to }, status: { in: ["PENDING", "APPROVED"] } }, select: { employeeId: true, requestDate: true, kind: true, status: true, inAdvance: true } }),
     holidaySet(organizationId, from, to),
     finesForMonth(organizationId, tz, month, policy),
+    conveyanceTotals(organizationId, month, onlyEmployeeId ? [onlyEmployeeId] : undefined),
+    advanceTotals(organizationId, month, onlyEmployeeId ? [onlyEmployeeId] : undefined),
   ]);
 
   const recBy = new Map(records.map((r) => [`${r.employeeId}|${toIsoDate(r.attendanceDate)}`, r]));
@@ -94,7 +100,8 @@ export async function payrollForMonth(ctx: AppContext, month: string, onlyEmploy
       days.push({
         iso,
         inMonth: d >= start && d <= end,
-        off: isOffDay(iso, holidays),
+        // A Sunday / holiday, or an approved weekly off on another day (tracker S.No. 79).
+        off: isOffDay(iso, holidays) || f.some((x) => x.kind === "WEEKLY_OFF" && x.status === "APPROVED"),
         employed: (!e.dateOfJoining || e.dateOfJoining <= d) && (!e.exitDate || e.exitDate >= d),
         // Today is counted once the person is in, or after the absent cut-off.
         future: iso > todayIso || (iso === todayIso && !rec && nowMin < schedule.absentAt),
@@ -105,6 +112,7 @@ export async function payrollForMonth(ctx: AppContext, month: string, onlyEmploy
         lateIntimated: f.some((x) => x.kind === "LATE_ARRIVAL" && x.inAdvance),
         earlyLeaveApproved: f.some((x) => x.kind === "EARLY_LEAVE" && x.status === "APPROVED"),
         overtimeApproved: f.some((x) => x.kind === "OVERTIME" && x.status === "APPROVED"),
+        offDayWorkApproved: f.some((x) => x.kind === "OFF_DAY_WORK" && x.status === "APPROVED"),
       });
     }
     const score = scoreMonth(days, policy.numbers, tz);
@@ -112,7 +120,9 @@ export async function payrollForMonth(ctx: AppContext, month: string, onlyEmploy
     const monthlySalary = salary ? monthlyAmount(Number(salary.agreedSalary), salary.salaryPeriod) : null;
     const fine = fines.get(e.id) ?? { eodMissed: [], leadMissed: [], amount: 0 };
     const fullMonth = (!e.dateOfJoining || e.dateOfJoining <= start) && (!e.exitDate || e.exitDate >= end);
-    const pay = computePay({ monthlySalary, daysInMonth, complete, fullMonth, score, fines: fine.amount }, policy.numbers);
+    const conv = conveyance.get(e.id);
+    const adv = advances.get(e.id);
+    const pay = computePay({ monthlySalary, daysInMonth, complete, fullMonth, score, fines: fine.amount, conveyance: conv?.amount ?? 0, advanceDeduction: adv?.deduction ?? 0 }, policy.numbers);
     return {
       employeeId: e.id,
       name: `${e.firstName} ${e.lastName ?? ""}`.trim(),
@@ -124,6 +134,8 @@ export async function payrollForMonth(ctx: AppContext, month: string, onlyEmploy
       score,
       pay,
       fines: fine,
+      advanceBalance: adv?.balance ?? 0,
+      conveyanceClaims: conv?.count ?? 0,
     };
   });
 

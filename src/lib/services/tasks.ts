@@ -1,4 +1,5 @@
 import "server-only";
+import { inLine, seesFirm } from "@/lib/hierarchy";
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
@@ -16,13 +17,16 @@ import { dateOnly } from "@/lib/dates";
 
 /** Tasks the caller may see. Team members see tasks they created, or where they are assignee, maker or checker. */
 export function taskScope(ctx: AppContext): Prisma.TaskWhereInput {
-  if (can(ctx, "tasks.view_all")) return { organizationId: ctx.organization.id };
+  // Hierarchy (tracker S.No. 97): the firm for owners / administrators, a lead's own line, else one's own.
+  if (seesFirm(ctx, "tasks.view_all")) return { organizationId: ctx.organization.id };
   const me = ctx.employee?.id ?? "00000000-0000-0000-0000-000000000000";
+  const line = can(ctx, "tasks.view_all") ? inLine(ctx) : null;
   return {
     organizationId: ctx.organization.id,
     OR: [
       { assignments: { some: { employeeId: me, removedAt: null } } }, { makerEmployeeId: me }, { checkerEmployeeId: me }, { createdById: ctx.user.id },
       { assignments: { some: { assignedById: ctx.user.id } } },
+      ...(line ? [{ assignments: { some: { removedAt: null, employee: line } } }, { maker: line }, { checker: line }] : []),
     ],
   };
 }

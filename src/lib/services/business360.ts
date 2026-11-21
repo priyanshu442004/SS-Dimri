@@ -275,7 +275,6 @@ export async function business360(ctx: AppContext, f: BizFilters, range?: { cur:
     prisma.attendanceRequest.findMany({ where: { organizationId: org, kind: { in: ["OVERTIME", "EARLY_LEAVE"] }, createdAt: { lte: now }, OR: [{ status: "PENDING" }, { decidedAt: { gte: startOf(yIso) } }] }, select: { employeeId: true, status: true, createdAt: true, decidedAt: true } }),
     prisma.leaveRequest.findMany({ where: { organizationId: org, OR: [{ status: "PENDING" }, { decidedAt: { gte: startOf(yIso) } }] }, select: { employeeId: true, status: true, createdAt: true, decidedAt: true } }),
     prisma.pendingItem.findMany({ where: { organizationId: org, OR: [{ status: { not: "CLOSED" } }, { closedAt: { gte: startOf(yIso) } }] }, select: { clientId: true, createdAt: true, requestedOn: true, closedAt: true, status: true, pendingWithEmployeeId: true, raisedByEmployeeId: true } }),
-    ctx.employee ? prisma.attendanceRecord.findFirst({ where: { employeeId: ctx.employee.id, attendanceDate: dateOnly(today) }, select: { timeIn: true } }) : Promise.resolve(null),
   ]);
   for (const p of [entriesP, duesP, tasksP, linesP, onboardingP, firstsP, todayP, queuesP]) p.catch(() => undefined); // awaited below
 
@@ -641,7 +640,7 @@ export async function business360(ctx: AppContext, f: BizFilters, range?: { cur:
   const yEnd = endOf(yIso);
   const subjectIds = [...subjects.keys()].filter((id) => inStaff(id));
   const subjectSet = new Set(subjectIds);
-  const [allPlans, reqs, leaves, pendingItems, myRec] = await queuesP;
+  const [allPlans, reqs, leaves, pendingItems] = await queuesP;
   const yPlans = allPlans.filter((p) => subjectSet.has(p.employeeId));
   const yAtt = attStats(att.filter((x) => toIsoDate(x.date) === yIso));
   const tAttRows = att.filter((x) => toIsoDate(x.date) === today);
@@ -723,7 +722,6 @@ export async function business360(ctx: AppContext, f: BizFilters, range?: { cur:
   const alerts = [
     Number(eodCount) > 0 ? `${eodCount} EOD report${eodCount === "1" ? "" : "s"} not filed — escalate today, or a ₹${policy.row.leadPenaltyRupees} fine applies to the Team Lead` : "",
     plansMissing(today) ? `${plansMissing(today)} morning plan${plansMissing(today) === 1 ? "" : "s"} missing (${tt?.planDue === false ? "due" : "were due"} ${policy.row.morningPlanBy})` : "",
-    ctx.employee && !myRec?.timeIn ? "My attendance: not marked" : "",
     ...dueToday.map((d) => `${d.form} due today`),
   ].filter(Boolean);
 

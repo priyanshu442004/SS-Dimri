@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { BusinessRuleError, zCheckbox, zIsoDate, zOptionalText } from "@/lib/actions";
-import { addDays, dateOnly, formatDate, isoDateInTz, minutesOfDayInTz, monthRange, toIsoDate, todayDateOnly } from "@/lib/dates";
+import { addDays, dateOnly, formatDate, hhmmToMinutes, isoDateInTz, minutesOfDayInTz, monthRange, toIsoDate, todayDateOnly } from "@/lib/dates";
 import { hhmm, leaveWithIntimation, noticeDays, scheduleFor, timesOfDay } from "@/lib/domain/attendance-policy";
 import { isMissingTimeOut, lunchAllowanceMinutes, lunchMinutes, lunchOverMinutes, markOutReminderDue } from "@/lib/domain/attendance-extras";
 import type { AppContext } from "@/lib/session";
@@ -98,7 +98,10 @@ export async function markAttendance(ctx: AppContext, kind: "in" | "out", v: z.i
     ]);
     if (!onLeave && !lateForm) throw new BusinessRuleError(AUTO_ABSENT(hhmm(schedule.absentAt)));
   }
-  const photo = fd.get("photo");
+  // Selfie setting (tracker S.No. 94): off = no photo kept; required = no mark without one.
+  const photoRule = policy.row.attendancePhoto;
+  const photo = photoRule === "OFF" ? null : fd.get("photo");
+  if (photoRule === "REQUIRED" && !hasFile(photo)) throw new BusinessRuleError("Take a live photo (selfie): it is required for attendance.");
   const photoId = hasFile(photo) ? (await storeUpload(ctx, photo, { area: "attendance", ownerId: ctx.employee.id, imagesOnly: true })).id : undefined;
   const duplicate = new BusinessRuleError("Attendance for today was already recorded. Refresh the page.");
 
@@ -187,8 +190,12 @@ export const leaveSchema = z.object({
   toDate: zIsoDate,
   leaveType: z.enum(["CASUAL", "SICK", "PLANNED", "UNPAID", "OTHER"]),
   isHalfDay: zCheckbox.optional(),
+  /** Full day(s), or the first / second half of one day (tracker S.No. 76). */
+  duration: z.enum(["FULL", "FIRST", "SECOND"]).optional(),
   reason: zOptionalText(1000),
 });
+
+export const HALF_LABEL = { FIRST: "first half", SECOND: "second half" } as const;
 
 /**
  * Raise a leave request. "With intimation" is worked out, not ticked: asked before the reporting
@@ -197,6 +204,9 @@ export const leaveSchema = z.object({
  */
 export async function requestLeave(ctx: AppContext, v: z.infer<typeof leaveSchema>, opts: { source?: "absent_intimation" } = {}) {
   if (!ctx.employee) throw new BusinessRuleError("Your login is not linked to a staff record.");
+  // "Half day" (older form / the absent form) is the first half unless a half is chosen.
+  const session = v.duration && v.duration !== "FULL" ? v.duration : v.isHalfDay ? "FIRST" : null;
+  v = { ...v, isHalfDay: !!session };
   const tz = ctx.organization.timezone;
   const from = dateOnly(v.fromDate);
   const to = dateOnly(v.toDate);
@@ -219,7 +229,9 @@ export async function requestLeave(ctx: AppContext, v: z.infer<typeof leaveSchem
   });
   if (overlapping) throw new BusinessRuleError("You already have a leave request for these dates.");
   const now = new Date();
-  const withIntimation = leaveWithIntimation(now, v.fromDate, scheduleOf(policy, emp), tz);
+  // Second-half leave is "with intimation" when asked before the second half starts (after lunch).
+  const sched = scheduleOf(policy, emp);
+  const withIntimation = leaveWithIntimation(now, v.fromDate, session === "SECOND" ? { ...sched, start: hhmmToMinutes(policy.row.lunchEnd) } : sched, tz);
 
   // §10: Sundays and holidays inside the leave, or between it and a neighbouring leave, count as leave.
   const holidays = await holidaySet(ctx.organization.id, addDays(from, -7), addDays(to, 7));
@@ -248,6 +260,7 @@ export async function requestLeave(ctx: AppContext, v: z.infer<typeof leaveSchem
         toDate: to,
         leaveType: v.leaveType,
         isHalfDay: !!v.isHalfDay,
+        halfDaySession: session,
         isPaid: v.leaveType !== "UNPAID",
         withIntimation,
         reason: v.reason,
@@ -259,7 +272,7 @@ export async function requestLeave(ctx: AppContext, v: z.infer<typeof leaveSchem
     const note = {
       type: "leave.requested",
       title: opts.source === "absent_intimation" ? `${ctx.employee!.firstName} cannot come today` : `Leave request from ${ctx.employee!.firstName}`,
-      body: `${when}${v.isHalfDay ? " (half day)" : ""}${v.reason ? ` · ${v.reason}` : ""}${withIntimation ? "" : " · asked after the reporting time"}`,
+      body: `${when}${session ? ` (${HALF_LABEL[session]})` : ""}${v.reason ? ` · ${v.reason}` : ""}${withIntimation ? "" : " · asked after the reporting time"}`,
       link: "/app/attendance?tab=leave",
     };
     if (managers.length) await notifyEmployees(tx, ctx.organization.id, managers.map((m) => m.managerId), note);
@@ -385,7 +398,9 @@ export async function teamAttendanceRows(ctx: AppContext, policy: Policy, f: Tea
     for (const e of employees) {
       if (e.dateOfJoining && e.dateOfJoining > d) continue;
       const record = recBy.get(`${e.id}|${iso}`) ?? null;
-      if (!record && off) continue;
+      // An approved weekly off on another day (tracker S.No. 79) is that person's off day.
+      const weeklyOff = (reqBy.get(`${e.id}|${iso}`) ?? []).some((r) => r.kind === "WEEKLY_OFF" && r.status === "APPROVED");
+      if (!record && (off || weeklyOff)) continue;
       const leave = leaves.find((l) => l.employeeId === e.id && l.fromDate <= d && l.toDate >= d);
       const schedule = scheduleOf(policy, e, record);
       const worked = record && (record.status === "PRESENT" || record.status === "HALF_DAY");
@@ -461,17 +476,19 @@ export async function sweepAutoAbsent(organizationId: string, tz: string) {
     }),
     prisma.attendanceRecord.findMany({ where: { organizationId, attendanceDate: day }, select: { employeeId: true } }),
     prisma.leaveRequest.findMany({ where: { organizationId, status: { in: ["APPROVED", "PENDING"] }, fromDate: { lte: day }, toDate: { gte: day } }, select: { employeeId: true } }),
-    prisma.attendanceRequest.findMany({ where: { organizationId, requestDate: day, kind: "LATE_ARRIVAL", status: { in: ["APPROVED", "PENDING"] } }, select: { employeeId: true } }),
+    prisma.attendanceRequest.findMany({ where: { organizationId, requestDate: day, kind: { in: ["LATE_ARRIVAL", "WEEKLY_OFF"] }, status: { in: ["APPROVED", "PENDING"] } }, select: { employeeId: true, kind: true } }),
   ]);
   const has = new Set(records.map((r) => r.employeeId));
   // A late / half-day intimation waiting or approved: no Absent at 12:00 (tracker, 17 Nov 2026). Only
   // if the person still has not come by the end of the day is it marked.
-  const informedLate = new Set(lateForms.map((r) => r.employeeId));
+  const informedLate = new Set(lateForms.filter((r) => r.kind === "LATE_ARRIVAL").map((r) => r.employeeId));
+  // A weekly off asked for today (waiting or approved): never marked Absent; a rejected one is.
+  const weeklyOff = new Set(lateForms.filter((r) => r.kind === "WEEKLY_OFF").map((r) => r.employeeId));
   const onLeave = new Set(leaves.map((l) => l.employeeId));
   const minute = minutesOfDayInTz(now, tz);
   const marked: typeof employees = [];
   for (const e of employees) {
-    if (has.has(e.id) || onLeave.has(e.id)) continue;
+    if (has.has(e.id) || onLeave.has(e.id) || weeklyOff.has(e.id)) continue;
     const s = scheduleOf(policy, e);
     if (minute < s.absentAt) continue;
     if (informedLate.has(e.id) && minute < s.end) continue;

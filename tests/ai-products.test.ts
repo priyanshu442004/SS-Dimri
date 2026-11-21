@@ -22,8 +22,8 @@ describe("AI products access", () => {
     expect(can({ role: "OWNER", user: { email: "owner@firm.in" }, grantedCapabilities: ["ai_products.use"] }, "ai_products.use")).toBe(false);
   });
 
-  it("shows the AI products section in the sidebar for the demo login only", () => {
-    const section = (m: Member) => navFor(m, false, false).filter((n) => n.section === "AI products");
+  it("shows the Workflow automation (AI products) section in the sidebar for the demo login only", () => {
+    const section = (m: Member) => navFor(m, false, false).filter((n) => n.section === "Workflow automation");
     expect(section(demo("ADMIN")).map((n) => n.href)).toEqual(AI_PRODUCTS.map((p) => `/app/ai-products/${p.slug}`));
     expect(section(demo("ADMIN", "someone@else.com"))).toEqual([]);
     expect(section({ role: "OWNER" })).toEqual([]);

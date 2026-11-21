@@ -20,7 +20,7 @@ export function ProductFrame({ name, icon, src }: { name: string; icon: string; 
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-4 sm:px-6">
         <div className="flex min-w-0 items-center gap-2.5 text-sm">
           <span className="grid size-7 shrink-0 place-items-center rounded-md bg-night text-marigold"><ProductIcon name={icon} className="size-4" /></span>
-          <Link href="/app/ai-products" className="hidden text-muted hover:text-ink sm:inline">AI products</Link>
+          <Link href="/app/ai-products" className="hidden text-muted hover:text-ink sm:inline">Workflow automation</Link>
           <span aria-hidden className="hidden text-ink/25 sm:inline">/</span>
           <span className="truncate font-medium text-ink">{name}</span>
         </div>

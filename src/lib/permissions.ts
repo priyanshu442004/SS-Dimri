@@ -98,6 +98,8 @@ export const CAPABILITIES = {
   "assistant.use": LEADS,
   /** AI products (invoice, bank, GST, TDS, ledgers, trial balance, …): released to AI_PRODUCTS_EMAILS only. */
   "ai_products.use": EVERYONE,
+  /** Fixed Assets Register: add assets, issue them to staff and take them back (tracker S.No. 89, 90). */
+  "assets.manage": ADMINS,
   /** Client portal: own business profile, requests, permitted work updates, dues. */
   "portal.use": CLIENTS,
 } as const satisfies Record<string, readonly Role[]>;
@@ -184,6 +186,7 @@ export const GRANTABLE_RIGHTS: { capability: Capability; label: string; group: s
   { capability: "timesheet.review", label: "Review timesheets", group: "Timesheet" },
   { capability: "compliance.manage", label: "Manage the compliance tracker", group: "Compliance" },
   { capability: "services.manage", label: "Manage services & departments", group: "Other" },
+  { capability: "assets.manage", label: "Manage the fixed assets register (issue / return)", group: "Other" },
   { capability: "reports.client", label: "Client reports", group: "Other" },
   { capability: "dues.manage", label: "Fees & dues", group: "Other" },
   { capability: "observations.manage", label: "Manage client observations", group: "Other" },

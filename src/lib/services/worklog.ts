@@ -1,4 +1,5 @@
 import "server-only";
+import { inLine, seesFirm } from "@/lib/hierarchy";
 import { mayLogWorkFor, OFFICE_OTHER } from "./lookups";
 import { NO_EMPLOYEE } from "@/lib/ids";
 import { z } from "zod";
@@ -174,7 +175,7 @@ export async function loadTimesheetEntryForCtx(ctx: AppContext, entryId: string)
     where: {
       id: entryId,
       organizationId: ctx.organization.id,
-      ...(can(ctx, "timesheet.view_all") ? {} : { employeeId: ctx.employee?.id ?? NO_EMPLOYEE }),
+      ...timesheetWho(ctx),
     },
   });
 }
@@ -278,9 +279,24 @@ export async function correctTimesheetEntry(ctx: AppContext, entryId: string, v:
 // ============================================================ Pending items (10B / 12A / 12B)
 
 export function pendingScope(ctx: AppContext): Prisma.PendingItemWhereInput {
-  if (can(ctx, "pending.view_all")) return { organizationId: ctx.organization.id };
+  if (seesFirm(ctx, "pending.view_all")) return { organizationId: ctx.organization.id };
   const me = ctx.employee?.id ?? NO_EMPLOYEE;
+  // A lead sees the items of their line (tracker S.No. 97); others their own.
+  if (can(ctx, "pending.view_all")) return { organizationId: ctx.organization.id, OR: [{ raisedByEmployee: inLine(ctx) }, { pendingWithEmployee: inLine(ctx) }] };
   return { organizationId: ctx.organization.id, OR: [{ raisedByEmployeeId: me }, { pendingWithEmployeeId: me }] };
+}
+
+/** Tracker lines the caller sees as a lead: the firm, or lines whose maker / checker is in their line. */
+export function trackerWho(ctx: AppContext): Prisma.TrackerLineWhereInput {
+  if (seesFirm(ctx, "timesheet.view_all")) return {};
+  return { OR: [{ maker: inLine(ctx) }, { checker: inLine(ctx) }] };
+}
+
+/** Whose timesheet entries the caller sees: the firm, their line (a lead), or their own (tracker S.No. 97). */
+export function timesheetWho(ctx: AppContext): Prisma.TimesheetEntryWhereInput {
+  if (seesFirm(ctx, "timesheet.view_all")) return {};
+  if (can(ctx, "timesheet.view_all")) return { employee: inLine(ctx) };
+  return { employeeId: ctx.employee?.id ?? NO_EMPLOYEE };
 }
 
 export const pendingSchema = z.object({
@@ -314,7 +330,7 @@ export async function createPendingItem(ctx: AppContext, v: z.infer<typeof pendi
       where: {
         id: v.timesheetEntryId,
         organizationId: ctx.organization.id,
-        ...(can(ctx, "timesheet.view_all") ? {} : { employeeId: ctx.employee?.id ?? NO_EMPLOYEE }),
+        ...timesheetWho(ctx),
       },
       select: { id: true },
     });

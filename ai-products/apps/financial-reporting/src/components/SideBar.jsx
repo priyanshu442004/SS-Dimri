@@ -5,7 +5,6 @@ import { LayoutGrid, Upload, Settings, HelpCircle, FileSpreadsheet, Trash2, Bot,
 import BrandMark from "./BrandMark";
 import { useToast } from "../context/ToastContext";
 import { apiUrl } from "../lib/apiPath";
-import logoLight from "../../../_shared/src/assets/agarwal-saxena-logo-light.svg";
 
 // Navy sidebar — same shell as the other Agarwal & Saxena product apps (apps/_shared AppShell).
 
@@ -164,11 +163,8 @@ const SideBar = () => {
       <div className="mt-6 space-y-1 border-t border-white/10 pt-4">
         <a href="/app/ai-products" target="_top" className="flex h-10 items-center gap-3 rounded-xl px-3 text-[13.5px] text-mist transition-colors hover:text-paper">
           <svg viewBox="0 0 20 20" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12.5 4.5 7 10l5.5 5.5" /></svg>
-          AI products
+          Workflow automation
         </a>
-        <div className="px-3 pt-1">
-          <img src={logoLight} alt="Agarwal & Saxena — Chartered Accountants" className="h-7 w-auto opacity-90" width="2600" height="350" />
-        </div>
       </div>
     </aside>
   );

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { can, parseExpiries, ROLE_LABELS, type Role } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import Link from "next/link";
+import { assetsOf } from "@/lib/services/assets";
 import { dateOnly, formatDate, formatDateTime, isoDateInTz, minutesToHhmm, monthRange } from "@/lib/dates";
 import { OPEN_STATUSES } from "@/lib/domain/task-workflow";
 import { employeeFiles, loadEmployeeProfile, onboardingDefaults } from "@/lib/services/employee-view";
@@ -242,6 +243,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
                   </Card>
                 ) : (
                   <Card title="Resigned or terminated?">
+                    <EmployeeAssets employeeId={e.id} exit />
                     <ExitForm action={moveToExEmployeeAction.bind(null, e.id)} today={isoDateInTz(new Date(), ctx.organization.timezone)} />
                   </Card>
                 )
@@ -279,5 +281,18 @@ async function WorkSummary({ employeeId, timezone }: { employeeId: string; timez
         ["Open tasks", tasks.length ? <ul key="t" className="space-y-0.5">{tasks.map((t) => <li key={t.id}><Link href={`/app/tasks/${t.id}`} className="text-brand-700 hover:underline">{t.title}</Link>{t.dueAt && <span className="text-xs text-muted"> · due {formatDate(t.dueAt)}</span>}</li>)}</ul> : "None"],
       ]} />
     </Card>
+  );
+}
+
+/** Office assets with the person (tracker S.No. 90): listed before the exit form, so they are taken back. */
+async function EmployeeAssets({ employeeId, exit = false }: { employeeId: string; exit?: boolean }) {
+  const rows = (await assetsOf(employeeId)).filter((r) => !r.returnedOn);
+  if (!rows.length) return exit ? <p className="mb-3 text-xs text-muted">No office assets are with this person.</p> : null;
+  return (
+    <div className="mb-3 rounded-md border border-warn/30 bg-warn-bg/50 p-3 text-sm">
+      <p className="font-medium">{rows.length} office asset{rows.length > 1 ? "s are" : " is"} with this person{exit ? " — take them back before the last day" : ""}:</p>
+      <ul className="mt-1 list-disc pl-5 text-xs">{rows.map((r) => <li key={r.id}>{r.asset.description} ({r.asset.code}) · since {formatDate(r.issuedOn)}</li>)}</ul>
+      <Link href="/app/assets" className="mt-1 inline-block text-xs font-medium text-brand-700 hover:underline">Open the assets register</Link>
+    </div>
   );
 }

@@ -1,4 +1,5 @@
 import { NO_EMPLOYEE } from "@/lib/ids";
+import { lineIds, seesFirm } from "@/lib/hierarchy";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
@@ -7,7 +8,7 @@ import { DownloadButton } from "@/components/ui";
 import { DeleteButton } from "@/components/delete-dialog";
 import { canDelete } from "@/lib/services/deletions";
 import { CalendarCheck2, CalendarOff, Camera, CircleSlash, Clock4, LogOut, MapPin, MoonStar, UserCheck, Users, UtensilsCrossed } from "lucide-react";
-import { hhmm, noticeDays } from "@/lib/domain/attendance-policy";
+import { hhmm, noLeaveBonusDays, noticeDays } from "@/lib/domain/attendance-policy";
 import { leaveUsedThisMonth, parseTeamFilters, teamAttendanceRows, todayIso, type AttendanceFilter } from "@/lib/services/attendance";
 import { getPolicy, hasAcceptedRules, holidaySet, isOffDay, reporteeIds, scheduleOf, workLocationLabels } from "@/lib/services/office-rules";
 import { ownWorkClientOptions } from "@/lib/services/lookups";
@@ -21,7 +22,7 @@ import Link from "next/link";
 import { cancelRequestAction, decideLeaveAction, decideRequestAction, endVisitAction, lunchAction, markAction, raiseRequestAction, requestLeaveAction, setScheduleAction, shiftLunchAction, startVisitAction } from "./actions";
 import { lunchAllowanceMinutes, lunchMinutes, lunchOverMinutes, markOutReminderDue } from "@/lib/domain/attendance-extras";
 import { pendingPhotoChecks } from "@/lib/services/attendance-proxy";
-import { clientPendency, myVisitsToday, visitClientOptions } from "@/lib/services/client-visits";
+import { myVisitsToday, pendencyIfVisible, visitClientOptions } from "@/lib/services/client-visits";
 import { LunchButton, VisitEndForm, VisitStartForm } from "./extra-forms";
 import { OthersTab, PhotosTab, ReviewBadge, Thumb, VisitsTab, WorkersTab } from "./extra-tabs";
 import { LeaveDecisionForm, LeaveRequestForm, LunchShiftForm, RequestDecisionForm, RequestForm, ScheduleForm } from "./forms";
@@ -36,6 +37,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
   const ctx = await requireCapability("attendance.mark_own");
   const sp = await searchParams;
   const viewAll = can(ctx, "attendance.view_all");
+  const firmAttendance = seesFirm(ctx, "attendance.view_all");
   // Team Lead = the person others report to (or an administrator, for everyone).
   const myTeam = await reporteeIds(ctx);
   const lead = can(ctx, "org.manage") || myTeam.length > 0;
@@ -66,7 +68,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
           { key: "requests", label: lead ? "Requests & intimations" : "Inform / request", href: "/app/attendance?tab=requests", ...(requestCount ? { count: requestCount } : {}) },
           { key: "leave", label: "Leave", href: "/app/attendance?tab=leave" },
           ...(myTeam.length ? [{ key: "myteam", label: "My team", href: "/app/attendance?tab=myteam" }] : []),
-          ...(viewAll ? [{ key: "team", label: myTeam.length ? "All attendance" : "Team attendance", href: "/app/attendance?tab=team" }] : []),
+          ...(viewAll ? [{ key: "team", label: firmAttendance ? (myTeam.length ? "All attendance" : "Team attendance") : "My line (all levels)", href: "/app/attendance?tab=team" }] : []),
           ...(lead ? [{ key: "schedules", label: "Team timings", href: "/app/attendance?tab=schedules" }] : []),
           ...(markOthers ? [{ key: "others", label: "Mark for others", href: "/app/attendance?tab=others" }] : []),
           ...(seePhotos ? [{ key: "photos", label: "Photo check", href: "/app/attendance?tab=photos", ...(photoChecks ? { count: photoChecks } : {}) }] : []),
@@ -87,14 +89,23 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
   );
 
   async function Mine() {
-    const clientNames = (await ownWorkClientOptions(ctx, dateOnly(today))).map((c) => c.label);
+    // Every active client of the firm for "Client office / Client visit", the person's allocated ones first
+    // (tracker S.No. 77: the list was empty for anyone not allocated that day), with its opening time.
+    const [mineToday, allClients] = await Promise.all([
+      ownWorkClientOptions(ctx, dateOnly(today)),
+      prisma.client.findMany({ where: { organizationId: ctx.organization.id, status: { in: ["ACTIVE", "ON_HOLD"] } }, orderBy: { tradeName: "asc" }, select: { id: true, tradeName: true, officeOpensAt: true } }),
+    ]);
+    const allocatedIds = new Set(can(ctx, "org.manage") ? [] : mineToday.map((c) => c.value));
+    const clientNames = allClients
+      .map((c) => ({ name: c.tradeName, opens: c.officeOpensAt, mine: allocatedIds.has(c.id) }))
+      .sort((x, y) => Number(y.mine) - Number(x.mine) || x.name.localeCompare(y.name));
     if (!ctx.employee) {
       // The owner and administrators get their attendance record at their first mark-in.
       if (!can(ctx, "org.manage")) return <EmptyState kind="people" title="No staff record">Your login is not linked to an employee, so there is no attendance to mark.</EmptyState>;
       return (
         <Card title={`Today · ${formatDate(dateOnly(today))}`} className="max-w-xl">
           <div className="mb-4 border-b border-line pb-4"><LiveClock timeZone={tz} /></div>
-          <MarkCard action={markAction.bind(null, "in")} kind="in" showLateReason={false} labels={labels} clients={clientNames} />
+          <MarkCard action={markAction.bind(null, "in")} kind="in" showLateReason={false} labels={labels} clients={clientNames} firmStart={policyRow.officeStart} photo={policyRow.attendancePhoto} />
           <p className="mt-4 border-t border-line pt-3 text-xs text-muted">Marking in here works exactly as it does for your team, so you can try it yourself. Your name then also appears in Team attendance.</p>
         </Card>
       );
@@ -127,7 +138,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
     const markedInOpen = !!todayRec?.timeIn && !todayRec.timeOut;
     const currentVisit = visits.find((v) => !v.endedAt) ?? null;
     const [clients, pendency] = markedInOpen
-      ? await Promise.all([visitClientOptions(ctx), currentVisit?.clientId ? clientPendency(ctx.organization.id, currentVisit.clientId, me) : Promise.resolve(null)])
+      ? await Promise.all([visitClientOptions(ctx), currentVisit?.clientId ? pendencyIfVisible(ctx, currentVisit.clientId, me) : Promise.resolve(null)])
       : [[], null];
     const lunchTaken = todayRec ? lunchMinutes(todayRec.lunchOutAt, todayRec.lunchInAt, now) : null;
     const lunchFrom = todayRec?.lunchShiftedTo ?? policyRow.lunchStart;
@@ -142,7 +153,8 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
     const row = pay.rows[0];
     const s = row?.score;
     const scoreBy = new Map((s?.days ?? []).map((d) => [d.iso, d]));
-    const off = isOffDay(today, holidays);
+    const weeklyOff = form("WEEKLY_OFF")?.status === "APPROVED";
+    const off = isOffDay(today, holidays) || weeklyOff;
     const outWarning = !markedInOpen ? null
       : nowMin < schedule.halfDayBefore ? `It is before ${hhmm(schedule.halfDayBefore)}: leaving now counts as a half day${early?.status === "APPROVED" ? "" : ", and leaving early needs your Team Lead's permission"}.`
       : nowMin < schedule.end && early?.status !== "APPROVED" ? `Your day ends at ${hhmm(schedule.end)}. Leaving before that needs your Team Lead's permission.`
@@ -175,7 +187,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
             ) : todayRec?.status === "LEAVE" || (leaveToday && !todayRec?.timeIn && !leaveToday.isHalfDay) ? (
               <Notice tone="info">You are on leave today{leaveToday?.status === "PENDING" ? " (request waiting for your Team Lead)" : ""}.</Notice>
             ) : off && !todayRec?.timeIn ? (
-              <Notice tone="info">Today is a Sunday or office holiday. If you are working, you can still mark in.</Notice>
+              <Notice tone="info">{weeklyOff ? "Today is your weekly off (approved)." : "Today is a Sunday or office holiday."} If you are working, you can still mark in{weeklyOff ? "" : " — send the “Worked on Sunday / holiday” form to have it paid as an extra day"}.</Notice>
             ) : null}
             {!todayRec?.timeIn ? (
               !todayRec?.autoAbsentAt && todayRec?.status !== "LEAVE" && (!pastCutoff || leaveToday || lateOk) ? (
@@ -184,7 +196,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                     <p className="mb-3 text-sm">Running late? <Link href="/app/attendance?tab=requests&kind=LATE_ARRIVAL" className="font-medium text-brand-700 hover:underline">Inform your Team Lead before {hhmm(schedule.start)}</Link>.</p>
                   )}
                   {lateForm && <p className="mb-3 text-sm text-muted">You told your Team Lead you would arrive at {lateForm.atTime}{lateForm.status === "REJECTED" ? " (not accepted)" : ""}.</p>}
-                  <MarkCard action={markAction.bind(null, "in")} kind="in" showLateReason={lateNow} labels={labels} clients={clientNames} defaultLocation={emp.attendanceProfile === "ONSITE" ? "CLIENT_OFFICE" : null} defaultPlace={emp.siteName}
+                  <MarkCard action={markAction.bind(null, "in")} kind="in" showLateReason={lateNow} labels={labels} clients={clientNames} firmStart={policyRow.officeStart} photo={policyRow.attendancePhoto} defaultLocation={emp.attendanceProfile === "ONSITE" ? "CLIENT_OFFICE" : null} defaultPlace={emp.siteName}
                     warning={lateNow ? `It is past ${hhmm(schedule.graceUntil)}, so this counts as a late arrival${nowMin - schedule.start > policy.numbers.veryLateAfterMinutes ? " of more than an hour (a half day)" : ""}.` : null} />
                 </>
               ) : !todayRec && pastCutoff && !off ? (
@@ -215,7 +227,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                   {ot ? <span className="text-muted">Overtime{ot.atTime ? ` till ${ot.atTime}` : ""}: <StatusBadge status={ot.status} /></span>
                     : nowMin < schedule.overtimeAfter && <Link href="/app/attendance?tab=requests&kind=OVERTIME" className="font-medium text-brand-700 hover:underline">Need to stay after {hhmm(schedule.overtimeAfter)}?</Link>}
                 </div>
-                <MarkCard action={markAction.bind(null, "out")} kind="out" showLateReason={false} labels={labels} clients={clientNames} defaultLocation={todayRec.workLocation} defaultPlace={todayRec.workPlace} warning={outWarning} />
+                <MarkCard action={markAction.bind(null, "out")} kind="out" showLateReason={false} labels={labels} clients={clientNames} firmStart={policyRow.officeStart} photo={policyRow.attendancePhoto} defaultLocation={todayRec.workLocation} defaultPlace={todayRec.workPlace} warning={outWarning} />
               </>
             ) : (
               <div className="space-y-2">
@@ -238,7 +250,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                 <Stat label="Approved overtime" value={minutesToHhmm(s.overtimeMinutes)} hint={s.stayedUnapprovedMinutes ? `${minutesToHhmm(s.stayedUnapprovedMinutes)} not approved` : "Real minutes after 6:45 PM"} icon={<MoonStar />} />
                 <Stat label="Absent" value={s.absent} hint={s.absentUnrequested ? `${s.absentUnrequested} without a request (counts double)` : undefined} tone={s.absent ? "danger" : "neutral"} />
                 {plans && <Stat label="EOD fines" value={`₹${row.fines.eodMissed.length * policyRow.eodPenaltyRupees}`} hint={row.fines.eodMissed.length ? `${row.fines.eodMissed.length} not filed in time` : "All filed in time"} tone={row.fines.eodMissed.length ? "danger" : "neutral"} href="/app/timesheet?tab=plan" />}
-                <Stat label="No-leave bonus" value={s.tookLeave ? "—" : `+${policy.numbers.noLeaveBonusDays} days`} hint={s.tookLeave ? "Not this month (leave or a deduction)" : "On track: no leave so far"} tone={s.tookLeave ? "neutral" : "ok"} />
+                {(() => { const b = noLeaveBonusDays(s, policy.numbers); return <Stat label="No-leave bonus" value={b ? `+${b} day${b === 1 ? "" : "s"}` : "—"} hint={!s.leaveTaken ? "On track: no leave so far" : b ? `${s.leaveTaken} day${s.leaveTaken === 1 ? "" : "s"} of leave so far` : "Not this month (leave taken)"} tone={b === policy.numbers.noLeaveBonusDays ? "ok" : "neutral"} />; })()}
               </div>
             )}
             {plans && (
@@ -354,7 +366,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
           {ctx.employee && (
             <Card title="Inform or ask your Team Lead">
               <RequestForm action={raiseRequestAction} today={today} initialKind={kind}
-                defaults={{ arrival: hhmm(s.start + 30), leaving: hhmm(s.halfDayBefore), overtimeUntil: hhmm(s.overtimeAfter + 60) }} />
+                defaults={{ arrival: hhmm(s.start + 30), leaving: hhmm(s.halfDayBefore), overtimeUntil: hhmm(s.overtimeAfter + 60), monthBack: toIsoDate(addDays(dateOnly(today), -31)) }} />
             </Card>
           )}
           <Card title="My requests">
@@ -420,7 +432,8 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
   }
 
   async function Team({ scope }: { scope: "team" | "myteam" }) {
-    const f = { ...parseTeamFilters(sp, today), ...(scope === "myteam" ? { onlyEmployeeIds: myTeam } : {}) };
+    // Hierarchy (tracker S.No. 97): a lead without the firm-wide right sees everyone in their line.
+    const f = { ...parseTeamFilters(sp, today), ...(scope === "myteam" ? { onlyEmployeeIds: myTeam } : !firmAttendance ? { onlyEmployeeIds: await lineIds(ctx) } : {}) };
     const [{ rows, counts, employeeCount }, departments, visitGroups] = await Promise.all([
       teamAttendanceRows(ctx, policy, f),
       prisma.department.findMany({ where: { organizationId: ctx.organization.id, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -657,7 +670,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
             <Card title="Request leave">
               <ul className="mb-4 space-y-1 rounded-lg border border-line bg-paper p-3 text-xs text-muted">
                 <li>This month: <strong className="text-ink">{used} of {policy.numbers.paidLeavesPerMonth}</strong> leave used. One leave a month is paid when asked for before your reporting time.</li>
-                <li>No leave all month adds <strong className="text-ink">{policy.numbers.noLeaveBonusDays} days</strong> to your salary.</li>
+                <li>No leave all month adds <strong className="text-ink">{policy.numbers.noLeaveBonusDays} days</strong> to your salary; each day of leave takes one day off it (one day of leave: {Math.max(0, policy.numbers.noLeaveBonusDays - 1)} day{policy.numbers.noLeaveBonusDays - 1 === 1 ? "" : "s"}).</li>
                 <li>Absent without a request in the ERP counts as <strong className="text-ink">double</strong> absent.</li>
                 <li>Planned leave: request it at least {notice} days ahead. Sundays and holidays inside a continuous leave count as leave (Sat + Mon makes Sunday leave too).</li>
               </ul>
@@ -669,7 +682,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
               <ul className="divide-y divide-line text-sm">
                 {mine.map((l) => (
                   <li key={l.id} className="flex items-center justify-between gap-2 py-2">
-                    <span>{formatDate(l.fromDate)}{l.toDate.getTime() !== l.fromDate.getTime() && ` – ${formatDate(l.toDate)}`} · {humanize(l.leaveType)}{l.isHalfDay && " (half day)"}{!l.withIntimation && <> · <Badge tone="warn">without prior intimation</Badge></>}</span>
+                    <span>{formatDate(l.fromDate)}{l.toDate.getTime() !== l.fromDate.getTime() && ` – ${formatDate(l.toDate)}`} · {humanize(l.leaveType)}{l.isHalfDay && ` (half day${l.halfDaySession === "SECOND" ? " – second half" : l.halfDaySession === "FIRST" ? " – first half" : ""})`}{!l.withIntimation && <> · <Badge tone="warn">without prior intimation</Badge></>}</span>
                     <span className="flex items-center gap-1"><StatusBadge status={l.status} />{canDelete(ctx, "leave") && <DeleteButton entity="leave" id={l.id} variant="ghost" />}</span>
                   </li>
                 ))}
@@ -688,7 +701,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                     <li key={l.id} className="rounded-md border border-line p-3 text-sm">
                       <p className="font-medium">{l.employee.firstName} {l.employee.lastName}</p>
                       <p className="text-muted">
-                        {formatDate(l.fromDate)} – {formatDate(l.toDate)} · {humanize(l.leaveType)}{l.isHalfDay && " · half day"}{!l.withIntimation && " · asked after the reporting time"}
+                        {formatDate(l.fromDate)} – {formatDate(l.toDate)} · {humanize(l.leaveType)}{l.isHalfDay && ` · half day${l.halfDaySession === "SECOND" ? " (second half)" : l.halfDaySession === "FIRST" ? " (first half)" : ""}`}{!l.withIntimation && " · asked after the reporting time"}
                       </p>
                       {l.leaveType === "PLANNED" && (
                         <p className={`mt-1 text-xs ${days < notice ? "text-danger" : "text-muted"}`}>Planned leave should be approved {notice} days ahead: decide by {formatDate(decideBy)}{days < notice ? " (already past)" : ""}.</p>

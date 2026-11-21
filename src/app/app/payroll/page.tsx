@@ -4,10 +4,13 @@ import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import { dateOnly, formatDate, formatDateTime, isoDateInTz, minutesToHhmm, toIsoDate } from "@/lib/dates";
 import { payrollForMonth, salaryHistory, salaryOverview, salaryScope, validMonth, type PayrollRow } from "@/lib/services/payroll";
+import { advancesOf, conveyanceForMonth, monthLabel, myConveyance } from "@/lib/services/claims";
+import { visibleClientOptions } from "@/lib/services/lookups";
+import { prisma } from "@/lib/db";
 import { ActionButton } from "@/components/action-button";
-import { Badge, Card, DetailList, DownloadButton, EmptyState, Notice, PageHeader, Stat, TabNav, Table, Td, Th } from "@/components/ui";
-import { deleteSalaryAction, editSalaryAction, setSalaryAction } from "./actions";
-import { SalaryEditForm, SalaryForm } from "./forms";
+import { Badge, Card, DetailList, DownloadButton, EmptyState, Notice, PageHeader, Stat, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
+import { addAdvanceAction, cancelConveyanceAction, decideConveyanceAction, deleteAdvanceAction, deleteSalaryAction, editAdvanceAction, editSalaryAction, setSalaryAction, submitConveyanceAction } from "./actions";
+import { AdvanceEditForm, AdvanceForm, ConveyanceDecisionForm, ConveyanceForm, SalaryEditForm, SalaryForm } from "./forms";
 import { PrintButton } from "./print-button";
 
 const inr = (n: number | null) => (n === null ? "—" : `₹ ${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
@@ -22,7 +25,7 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
   const tz = ctx.organization.timezone;
   const today = isoDateInTz(new Date(), tz);
   const month = validMonth(sp.month, today);
-  const tab = sp.tab === "team" && manage ? "team" : sp.tab === "salaries" && salaries ? "salaries" : "mine";
+  const tab = sp.tab === "team" && manage ? "team" : sp.tab === "salaries" && salaries ? "salaries" : sp.tab === "conveyance" ? "conveyance" : sp.tab === "advances" && manage ? "advances" : "mine";
 
   return (
     <>
@@ -37,16 +40,16 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
           </span>
         }
       />
-      {(manage || salaries) && (
-        <TabNav current={tab} tabs={[
-          { key: "mine", label: "My payslip", href: `/app/payroll?month=${month}` },
-          ...(manage ? [{ key: "team", label: "Team payroll", href: `/app/payroll?tab=team&month=${month}` }] : []),
-          ...(salaries ? [{ key: "salaries", label: "Salaries", href: "/app/payroll?tab=salaries" }] : []),
-        ]} />
-      )}
+      <TabNav current={tab} tabs={[
+        { key: "mine", label: "My payslip", href: `/app/payroll?month=${month}` },
+        ...(manage ? [{ key: "team", label: "Team payroll", href: `/app/payroll?tab=team&month=${month}` }] : []),
+        ...(salaries ? [{ key: "salaries", label: "Salaries", href: "/app/payroll?tab=salaries" }] : []),
+        { key: "conveyance", label: "Conveyance", href: `/app/payroll?tab=conveyance&month=${month}` },
+        ...(manage ? [{ key: "advances", label: "Advances", href: `/app/payroll?tab=advances&month=${month}` }] : []),
+      ]} />
       {tab !== "salaries" && (
         <form className="mb-4 flex flex-wrap items-end gap-2 print:hidden">
-          {tab === "team" && <input type="hidden" name="tab" value="team" />}
+          {tab !== "mine" && <input type="hidden" name="tab" value={tab} />}
           <label className="text-sm">
             <span className="mb-1 block font-medium">Month</span>
             <input type="month" name="month" defaultValue={month} max={today.slice(0, 7)} className="h-10 rounded-md border border-line bg-surface px-3 text-sm" />
@@ -54,7 +57,7 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
           <button className="h-10 rounded-md border border-line bg-surface px-4 text-sm hover:bg-subtle">Show</button>
         </form>
       )}
-      {tab === "team" ? <Team /> : tab === "salaries" ? <Salaries /> : <Mine />}
+      {tab === "team" ? <Team /> : tab === "salaries" ? <Salaries /> : tab === "conveyance" ? <Conveyance /> : tab === "advances" ? <Advances /> : <Mine />}
     </>
   );
 
@@ -93,7 +96,10 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
           ["Days counted so far / payable", `${s.countedDays} / ${s.payableDays}`],
           ["Pay for payable days", inr(r.pay.basePay)],
           [`Approved overtime (${minutesToHhmm(s.overtimeMinutes)})`, r.pay.overtimePay ? `+ ${inr(r.pay.overtimePay)}` : "—"],
-          [`No-leave bonus${r.pay.bonusDays ? ` (${days(r.pay.bonusDays)})` : ""}`, r.pay.bonus ? `+ ${inr(r.pay.bonus)}` : s.tookLeave ? "Not this month" : "Added when the month is complete"],
+          [`No-leave bonus${r.pay.bonusDays ? ` (${days(r.pay.bonusDays)})` : ""}`, r.pay.bonus ? `+ ${inr(r.pay.bonus)}` : s.leaveTaken >= 2 ? "Not this month (2 or more days of leave)" : "Added when the month is complete (2 days with no leave, 1 day with one)"],
+          [`Worked on Sunday / holiday (approved)${s.extraDays ? ` · ${days(s.extraDays)}` : ""}`, r.pay.extraPay ? `+ ${inr(r.pay.extraPay)}` : "—"],
+          [`Any other: conveyance (${r.conveyanceClaims} approved claim${r.conveyanceClaims === 1 ? "" : "s"})`, r.pay.conveyance ? `+ ${inr(r.pay.conveyance)}` : "—"],
+          [`Advance recovered${r.pay.advanceDeduction || r.advanceBalance ? ` · balance after this month ${inr(r.advanceBalance)}` : ""}`, r.pay.advanceDeduction ? `− ${inr(r.pay.advanceDeduction)}` : "—"],
           [`Fines: EOD not filed (${r.fines.eodMissed.length})${r.fines.leadMissed.length ? `, not escalated as Team Lead (${r.fines.leadMissed.length})` : ""}`, r.fines.amount ? `− ${inr(r.fines.amount)}` : "—"],
           ["Net pay", <strong key="n">{inr(r.pay.net)}</strong>],
         ]} />
@@ -131,6 +137,7 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
           <div className="mt-4"><Breakdown r={r} perDayLabel per={p.policy.numbers.lateArrivalsPerHalfDay} /></div>
           <p className="mt-4 text-xs text-muted print:hidden">How each rule works is on the <Link href="/app/rules" className="underline">office rules</Link> page; your day-by-day record is under <Link href={`/app/attendance?month=${month}`} className="underline">My attendance</Link>.</p>
         </Card>
+        <MyAdvances />
         {history.length > 0 && (
           <Card title="My salary history" icon={<TrendingUp />} className="print:hidden" padded={false}>
             <Table minWidth={520}>
@@ -149,6 +156,24 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
           </Card>
         )}
       </div>
+    );
+  }
+
+  async function MyAdvances() {
+    if (!ctx.employee) return null;
+    const rows = await advancesOf(ctx.organization.id, ctx.employee.id, month);
+    if (!rows.length) return null;
+    return (
+      <Card title="My advances" className="print:hidden" padded={false}>
+        <Table minWidth={520}>
+          <thead><tr><Th>Given</Th><Th>Advance</Th><Th>Per month</Th><Th>{monthName(month)}</Th><Th>Balance</Th></tr></thead>
+          <tbody>
+            {rows.map((a) => (
+              <tr key={a.id}><Td className="whitespace-nowrap">{formatDate(a.givenOn)}</Td><Td>{inr(a.amount)}</Td><Td>{inr(a.monthlyDeduction)}</Td><Td>{a.thisMonth ? `−${inr(a.thisMonth)}` : "—"}</Td><Td>{a.settled ? <Badge tone="ok">{a.closedMonth ? "Closed" : "Recovered"}</Badge> : inr(a.balanceAfter)}</Td></tr>
+            ))}
+          </tbody>
+        </Table>
+      </Card>
     );
   }
 
@@ -172,8 +197,8 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
             <Breakdown r={open} per={p.policy.numbers.lateArrivalsPerHalfDay} />
           </Card>
         )}
-        <Table minWidth={1260}>
-          <thead><tr><Th>Team member</Th><Th>Monthly salary</Th><Th>Present</Th><Th>Leave (paid / unpaid)</Th><Th>Absent</Th><Th>Late</Th><Th>½ days (late / early)</Th><Th>Days deducted</Th><Th>Payable days</Th><Th>Overtime</Th><Th>Bonus</Th><Th>Fines</Th><Th>{p.complete ? "Net pay" : "Earned so far"}</Th></tr></thead>
+        <Table minWidth={1480}>
+          <thead><tr><Th>Team member</Th><Th>Monthly salary</Th><Th>Present</Th><Th>Leave (paid / unpaid)</Th><Th>Absent</Th><Th>Late</Th><Th>½ days (late / early)</Th><Th>Days deducted</Th><Th>Payable days</Th><Th>Overtime</Th><Th>Bonus / extra days</Th><Th>Conveyance</Th><Th>Advance</Th><Th>Fines</Th><Th>{p.complete ? "Net pay" : "Earned so far"}</Th></tr></thead>
           <tbody>
             {p.rows.map((r) => {
               const s = r.score;
@@ -189,7 +214,9 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
                   <Td className={s.unpaidDays ? "font-medium text-danger" : ""}>{s.unpaidDays}</Td>
                   <Td>{s.payableDays}</Td>
                   <Td className="text-xs">{s.overtimeMinutes ? <>{minutesToHhmm(s.overtimeMinutes)}<div>{inr(r.pay.overtimePay)}</div></> : "—"}</Td>
-                  <Td className="text-xs">{r.pay.bonus ? inr(r.pay.bonus) : "—"}</Td>
+                  <Td className="text-xs">{r.pay.bonus ? inr(r.pay.bonus) : "—"}{r.pay.extraPay ? <div>+{inr(r.pay.extraPay)} ({r.pay.extraDays} d)</div> : null}</Td>
+                  <Td className="text-xs">{r.pay.conveyance ? inr(r.pay.conveyance) : "—"}</Td>
+                  <Td className="text-xs">{r.pay.advanceDeduction ? <span className="text-danger">−{inr(r.pay.advanceDeduction)}</span> : "—"}{r.advanceBalance ? <div className="text-muted">bal. {inr(r.advanceBalance)}</div> : null}</Td>
                   <Td className="text-xs">{r.fines.amount ? <span className="text-danger">{inr(r.fines.amount)}</span> : "—"}</Td>
                   <Td className="font-medium">{inr(r.pay.net)}</Td>
                 </tr>
@@ -198,6 +225,124 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
           </tbody>
         </Table>
         <p className="text-xs text-muted">Click a name for the full breakdown. Payroll follows the office rules in Settings → Leave &amp; timing policy. The firm owner is not on the payroll.</p>
+      </div>
+    );
+  }
+
+  /** Conveyance claims (tracker S.No. 84): everyone claims; administrators approve; approved claims are paid with that month's salary. */
+  async function Conveyance() {
+    const [mine, clients, all] = await Promise.all([
+      myConveyance(ctx),
+      visibleClientOptions(ctx),
+      manage ? conveyanceForMonth(ctx, month) : Promise.resolve([]),
+    ]);
+    const waiting = all.filter((c) => c.status === "PENDING");
+    const decided = all.filter((c) => c.status !== "PENDING");
+    const monthBack = toIsoDate(new Date(Date.now() - 62 * 86_400_000));
+    const place = (c: { client: { tradeName: string } | null; place: string | null }) => [c.client?.tradeName, c.place].filter(Boolean).join(" · ") || "—";
+    return (
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-6">
+          {ctx.employee && (
+            <Card title="Claim conveyance">
+              <p className="mb-3 text-sm text-muted">Claim each day&apos;s travel for office work. Once an administrator approves it, it is added to that month&apos;s salary as &ldquo;Any other&rdquo; — no separate sheet needed.</p>
+              <ConveyanceForm action={submitConveyanceAction} clients={clients} today={today} minDate={monthBack} />
+            </Card>
+          )}
+          <Card title="My claims" padded={false}>
+            {mine.length === 0 ? <p className="p-4 text-sm text-muted">No claims yet.</p> : (
+              <Table minWidth={560}>
+                <thead><tr><Th>Date</Th><Th>Where</Th><Th>Amount</Th><Th>Status</Th><Th /></tr></thead>
+                <tbody>
+                  {mine.map((c) => (
+                    <tr key={c.id}>
+                      <Td className="whitespace-nowrap">{formatDate(c.claimDate)}</Td>
+                      <Td className="text-xs">{place(c)}{c.km ? ` · ${Number(c.km)} km` : ""}{c.mode ? ` · ${c.mode}` : ""}{c.billFileId && <> · <a href={`/api/files/${c.billFileId}`} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:underline">bill</a></>}{c.decisionNote && <div className="text-muted">{c.decidedBy?.name}: {c.decisionNote}</div>}</Td>
+                      <Td>{inr(Number(c.amount))}</Td>
+                      <Td><StatusBadge status={c.status} />{c.status === "APPROVED" && <div className="text-xs text-muted">paid with {monthLabel(toIsoDate(c.claimDate).slice(0, 7))}</div>}</Td>
+                      <Td>{c.status === "PENDING" && <ActionButton variant="ghost" action={cancelConveyanceAction.bind(null, c.id)} confirm="Withdraw this claim?">Withdraw</ActionButton>}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+          </Card>
+        </div>
+        {manage && (
+          <div className="space-y-6">
+            <Card title={`Waiting for approval (${waiting.length})`}>
+              {waiting.length === 0 ? <p className="text-sm text-muted">No claim is waiting.</p> : (
+                <ul className="space-y-4">
+                  {waiting.map((c) => (
+                    <li key={c.id} className="rounded-md border border-line p-3 text-sm">
+                      <p className="font-medium">{c.employee.firstName} {c.employee.lastName ?? ""} · {formatDate(c.claimDate)} · {inr(Number(c.amount))}</p>
+                      <p className="text-xs text-muted">{place(c)}{c.km ? ` · ${Number(c.km)} km` : ""}{c.mode ? ` · ${c.mode}` : ""}{c.purpose ? ` · ${c.purpose}` : ""}</p>
+                      {c.billFileId ? <a href={`/api/files/${c.billFileId}`} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-brand-700 hover:underline">View bill</a> : <p className="text-xs text-warn">No bill attached</p>}
+                      <div className="mt-2"><ConveyanceDecisionForm action={decideConveyanceAction.bind(null, c.id)} amount={Number(c.amount)} /></div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+            <Card title={`Decided · ${monthName(month)}`} padded={false}>
+              {decided.length === 0 ? <p className="p-4 text-sm text-muted">Nothing decided for this month.</p> : (
+                <Table minWidth={560}>
+                  <thead><tr><Th>Team member</Th><Th>Date</Th><Th>Amount</Th><Th>Status</Th></tr></thead>
+                  <tbody>
+                    {decided.map((c) => (
+                      <tr key={c.id}><Td>{c.employee.firstName} {c.employee.lastName ?? ""}</Td><Td className="whitespace-nowrap">{formatDate(c.claimDate)}</Td><Td>{inr(Number(c.amount))}</Td><Td><StatusBadge status={c.status} /></Td></tr>
+                    ))}
+                  </tbody>
+                </Table>
+              )}
+              <p className="p-3 text-xs text-muted">Approved: {inr(decided.filter((c) => c.status === "APPROVED").reduce((t, c) => t + Number(c.amount), 0))} — added to {monthName(month)} salaries.</p>
+            </Card>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /** Salary advances (tracker S.No. 85): recorded with a monthly deduction; the balance updates every month. */
+  async function Advances() {
+    const [rows, employees] = await Promise.all([
+      advancesOf(ctx.organization.id, null, month),
+      prisma.employee.findMany({ where: { organizationId: ctx.organization.id, approvalStatus: "APPROVED", employmentStatus: { not: "EXITED" } }, orderBy: { firstName: "asc" }, select: { id: true, firstName: true, lastName: true } }),
+    ]);
+    const open = rows.filter((r) => !r.settled);
+    const editId = typeof sp.edit === "string" ? sp.edit : "";
+    return (
+      <div className="grid gap-6 xl:grid-cols-[3fr_2fr]">
+        <Card title={`Advances · ${monthName(month)}`} padded={false}>
+          {rows.length === 0 ? <p className="p-4 text-sm text-muted">No advance recorded.</p> : (
+            <Table minWidth={760}>
+              <thead><tr><Th>Team member</Th><Th>Given</Th><Th>Advance</Th><Th>Per month</Th><Th>Deducted in {monthName(month)}</Th><Th>Balance after</Th><Th /></tr></thead>
+              <tbody>
+                {rows.map((a) => (
+                  <tr key={a.id}>
+                    <Td><span className="font-medium">{a.employee.firstName} {a.employee.lastName ?? ""}</span>{a.note && <div className="text-xs text-muted">{a.note}</div>}</Td>
+                    <Td className="whitespace-nowrap text-xs">{formatDate(a.givenOn)}<div className="text-muted">from {monthLabel(a.startMonth)}</div></Td>
+                    <Td>{inr(a.amount)}</Td>
+                    <Td>{inr(a.monthlyDeduction)}</Td>
+                    <Td>{a.thisMonth ? <span className="text-danger">−{inr(a.thisMonth)}</span> : "—"}</Td>
+                    <Td>{a.settled ? <Badge tone="ok">{a.closedMonth ? "Closed" : "Recovered"}</Badge> : inr(a.balanceAfter)}</Td>
+                    <Td>
+                      <span className="flex gap-1">
+                        <Link href={`/app/payroll?tab=advances&month=${month}&edit=${a.id}`} className="rounded px-2 py-1 text-xs font-medium text-brand-700 hover:bg-subtle">Change</Link>
+                        <ActionButton variant="ghost" action={deleteAdvanceAction.bind(null, a.id)} confirm="Remove this advance? Use this only for a mistake: its deductions disappear from payroll.">Remove</ActionButton>
+                      </span>
+                      {editId === a.id && <div className="mt-2 rounded-md border border-line bg-paper p-2"><AdvanceEditForm action={editAdvanceAction.bind(null, a.id, month)} emi={a.monthlyDeduction} closed={!!a.closedMonth} /></div>}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+          <p className="p-3 text-xs text-muted">{open.length} open · recovered in {monthName(month)}: {inr(rows.reduce((t, r) => t + r.thisMonth, 0))}. Each month&apos;s deduction appears on the payslip with the balance left; the team member sees it on their payslip.</p>
+        </Card>
+        <Card title="Record an advance">
+          <AdvanceForm action={addAdvanceAction} employees={employees.map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName ?? ""}`.trim() }))} today={today} month={month} />
+        </Card>
       </div>
     );
   }

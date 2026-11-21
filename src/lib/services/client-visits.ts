@@ -29,13 +29,19 @@ export const visitSchema = z
 export const visitEndSchema = z.object({ latitude: coord(-90, 90), longitude: coord(-180, 180) });
 
 /** Clients this person may check in at: the ones they can see, active or on hold. */
+/**
+ * Clients to check in at: every active client of the firm (a team member may visit a client they are
+ * not allocated to — tracker S.No. 77), the person's own clients first.
+ */
 export async function visitClientOptions(ctx: AppContext) {
-  const rows = await prisma.client.findMany({
-    where: { AND: [clientScope(ctx), { status: { in: ["ACTIVE", "ON_HOLD"] } }] },
-    orderBy: { tradeName: "asc" },
-    select: { id: true, tradeName: true },
-  });
-  return rows.map((c) => ({ value: c.id, label: c.tradeName }));
+  const [all, mine] = await Promise.all([
+    prisma.client.findMany({ where: { organizationId: ctx.organization.id, status: { in: ["ACTIVE", "ON_HOLD"] } }, orderBy: { tradeName: "asc" }, select: { id: true, tradeName: true } }),
+    prisma.client.findMany({ where: { AND: [clientScope(ctx), { status: { in: ["ACTIVE", "ON_HOLD"] } }] }, select: { id: true } }),
+  ]);
+  const own = new Set(mine.map((c) => c.id));
+  return all
+    .sort((x, y) => Number(own.has(y.id)) - Number(own.has(x.id)) || x.tradeName.localeCompare(y.tradeName))
+    .map((c) => ({ value: c.id, label: own.has(c.id) && own.size < all.length ? `${c.tradeName} · allocated` : c.tradeName }));
 }
 
 async function todaysOpenRecord(ctx: AppContext) {
@@ -74,12 +80,14 @@ export async function startVisit(ctx: AppContext, v: z.infer<typeof visitSchema>
   const org = ctx.organization.id;
   let client: { id: string; tradeName: string } | null = null;
   if (v.clientId) {
-    client = await prisma.client.findFirst({ where: { AND: [clientScope(ctx), { id: v.clientId }] }, select: { id: true, tradeName: true } });
+    client = await prisma.client.findFirst({ where: { organizationId: ctx.organization.id, id: v.clientId, status: { in: ["ACTIVE", "ON_HOLD"] } }, select: { id: true, tradeName: true } });
     if (!client) throw new BusinessRuleError("Client not found.");
   }
   const place = client?.tradeName ?? v.placeName!.trim();
   const now = new Date();
-  const pendency = client ? await clientPendency(org, client.id, me.id) : null;
+  // What is pending for the client is shown only to people who may open that client.
+  const inScope = client ? !!(await prisma.client.findFirst({ where: { AND: [clientScope(ctx), { id: client.id }] }, select: { id: true } })) : false;
+  const pendency = client && inScope ? await clientPendency(org, client.id, me.id) : null;
   await prisma.$transaction(async (tx) => {
     await tx.clientVisit.updateMany({ where: { employeeId: me.id, endedAt: null }, data: { endedAt: now, endLatitude: v.latitude, endLongitude: v.longitude } });
     const visit = await tx.clientVisit.create({
@@ -138,4 +146,10 @@ export async function teamVisits(ctx: AppContext, day: Date, employeeId?: string
     byPerson.set(v.employeeId, g);
   }
   return [...byPerson.values()].sort((a, b) => a.employee.firstName.localeCompare(b.employee.firstName));
+}
+
+/** What is pending for a visited client, only for people who may open that client (else null). */
+export async function pendencyIfVisible(ctx: AppContext, clientId: string, employeeId: string) {
+  const ok = await prisma.client.findFirst({ where: { AND: [clientScope(ctx), { id: clientId }] }, select: { id: true } });
+  return ok ? clientPendency(ctx.organization.id, clientId, employeeId) : null;
 }

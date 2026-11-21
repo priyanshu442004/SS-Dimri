@@ -122,6 +122,7 @@ const policySchema = z.object({
   paidLeavesPerMonth: z.coerce.number().min(0).max(31), plannedLeaveNoticeDays: zInt(0, 365),
   noLeaveBonusDays: z.coerce.number().min(0).max(31), unrequestedAbsenceDays: z.coerce.number().min(1).max(5),
   eodPenaltyRupees: zInt(0, 100_000), leadPenaltyRupees: zInt(0, 100_000),
+  attendancePhoto: z.enum(["OFF", "OPTIONAL", "REQUIRED"]).default("OPTIONAL"),
 })
   // The times must follow each other through the day, or every rule built on them misbehaves.
   .refine((v) => toMin(v.officeStart) < toMin(v.reportingGraceUntil) && toMin(v.reportingGraceUntil) < toMin(v.autoAbsentAt), { message: "Office start, grace and the absent time must be in that order", path: ["autoAbsentAt"] })

@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     "Employee ID", "Name", "Designation", "Department", "Monthly salary", "Paid by", "Per-day rate", "Days counted", "Present", "Half days",
     "Paid leave", "Leave beyond allowance", "Unpaid leave", "Absent", "Absent without request (x2)", "Sundays/holidays inside leave",
     "Late 15 min-1 h", "Late over 1 h", "Late excused", "Half days from late", "Half days from leaving early", "Days deducted", "Payable days",
-    "Pay for payable days", "Overtime (minutes)", "Overtime pay", "No-leave bonus", "EOD fines (days)", "Team Lead fines (cases)", "Fines", p.complete ? "Net pay" : "Earned so far",
+    "Pay for payable days", "Overtime (minutes)", "Overtime pay", "No-leave bonus (days)", "No-leave bonus", "Sunday / holiday worked (days)", "Sunday / holiday pay", "Any other: conveyance", "Advance deducted", "Advance balance", "EOD fines (days)", "Team Lead fines (cases)", "Fines", p.complete ? "Net pay" : "Earned so far",
   ];
   const rows = p.rows.map((r) => {
     const s = r.score;
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
       r.code, r.name, r.designation ?? "", r.department ?? "", r.monthlySalary, r.salaryMode === "CASH" ? "Cash" : r.salaryMode === "TRANSFER" ? "Bank transfer" : "", r.pay.perDay,
       s.employedDays, s.worked, s.halfDays, s.paidLeave, s.excessLeave, s.unpaidLeave, s.absent, s.absentUnrequested, s.sandwichDays,
       s.lateArrivals, s.veryLateArrivals, s.lateExcused, s.lateHalfDays, s.earlyHalfDays, s.unpaidDays, s.payableDays,
-      r.pay.basePay, s.overtimeMinutes, r.pay.overtimePay, r.pay.bonus, r.fines.eodMissed.length, r.fines.leadMissed.length, r.fines.amount, r.pay.net,
+      r.pay.basePay, s.overtimeMinutes, r.pay.overtimePay, r.pay.bonusDays, r.pay.bonus, r.pay.extraDays, r.pay.extraPay, r.pay.conveyance, r.pay.advanceDeduction, r.advanceBalance, r.fines.eodMissed.length, r.fines.leadMissed.length, r.fines.amount, r.pay.net,
     ];
   });
   return xlsxResponse(`payroll-${month}.xlsx`, [

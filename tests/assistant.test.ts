@@ -20,7 +20,7 @@ vi.mock("@/lib/db", () => {
 vi.mock("@/lib/auth", () => ({ auth: { api: {} } }));
 
 const streamStep = vi.fn();
-vi.mock("@/lib/ai/deepseek", () => ({ streamStep: (...a: unknown[]) => streamStep(...a), quickCompletion: vi.fn() }));
+vi.mock("@/lib/ai/deepseek", () => ({ streamStep: (...a: unknown[]) => streamStep(...a), quickCompletion: vi.fn(), stripToolMarkup: (t: string) => t }));
 
 import type { AppContext } from "@/lib/session";
 import { runDbQuery, QueryError, schemaText, accessibleModels, plain } from "@/lib/ai/db-query";

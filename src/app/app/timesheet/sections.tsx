@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { trackerWho } from "@/lib/services/worklog";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { dateOnly, formatDate, isoDateInTz, minutesToHhmm } from "@/lib/dates";
@@ -49,8 +50,9 @@ export async function TrackerTab({ ctx, sp }: { ctx: AppContext; sp: SP }) {
   const fresh = sp.new === "1";
   const where: Prisma.TrackerLineWhereInput = {
     organizationId,
+    ...trackerWho(ctx),
     ...(client ? { clientName: client } : {}),
-    ...(maker ? { OR: [{ makerEmployeeId: maker }, { checkerEmployeeId: maker }] } : {}),
+    ...(maker ? { AND: [{ OR: [{ makerEmployeeId: maker }, { checkerEmployeeId: maker }] }] } : {}),
     ...(fresh ? { reviewedAt: null } : {}),
   };
   const [all, clientNames, people, clients, workTypes, newCount] = await Promise.all([

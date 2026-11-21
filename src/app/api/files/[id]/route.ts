@@ -36,6 +36,7 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/files/[i
       clientEsiCertificate: { select: { id: true } },
       clientPfCertificate: { select: { id: true } },
       followUp: { select: { clientVisible: true, pendingItem: { select: { clientId: true, clientVisible: true } } } },
+      conveyanceBill: { select: { employeeId: true } },
     },
   });
   if (!file) return new NextResponse("Not found", { status: 404 });
@@ -67,6 +68,9 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/files/[i
   } else if (file.workerDayInPhoto || file.workerDayOutPhoto) {
     // Daily workers' photos: those who manage the workers or see the team, and the person who took it.
     allowed = can(ctx, "attendance.workers") || can(ctx, "attendance.view_all") || file.uploadedById === ctx.user.id;
+  } else if (file.conveyanceBill) {
+    // A conveyance bill: the person who claimed it and those who approve claims.
+    allowed = file.conveyanceBill.employeeId === me || can(ctx, "payroll.manage");
   } else if (file.taskAttachment) {
     const task = file.taskAttachment.task;
     allowed = can(ctx, "tasks.view_all") || task.createdById === ctx.user.id || task.makerEmployeeId === me || task.checkerEmployeeId === me || task.assignments.some((a) => a.employeeId === me);

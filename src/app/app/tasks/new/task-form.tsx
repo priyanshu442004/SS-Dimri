@@ -34,7 +34,9 @@ function useStart(initialNow: string, timezone: string) {
   return { now, start, tooEarly, change: (v: string) => { setStart(v); setEdited(true); } };
 }
 
-export function TaskForm({ employees, clients, defaultClient, now: initialNow, timezone = "Asia/Kolkata", canShare = true }: {
+export function TaskForm({ employees, clients, defaultClient, now: initialNow, timezone = "Asia/Kolkata", canShare = true, standardTasks = [] }: {
+  /** Standard tasks to pick instead of typing (tracker S.No. 95): grouped, e.g. GST → GSTR-1 (monthly). */
+  standardTasks?: { group: string; items: string[] }[];
   employees: Option[];
   clients: Option[];
   defaultClient: string;
@@ -50,6 +52,7 @@ export function TaskForm({ employees, clients, defaultClient, now: initialNow, t
   const [makerEdited, setMakerEdited] = useState(false);
   const onAssignees = useCallback((v: string[]) => setAssignees(v), []);
   const shownMaker = makerEdited ? maker : assignees.length === 1 ? assignees[0] : "";
+  const [title, setTitle] = useState("");
 
   return (
     // Capture phase: a start in the past stops the submission before it reaches the server.
@@ -63,7 +66,16 @@ export function TaskForm({ employees, clients, defaultClient, now: initialNow, t
     >
       <ActionForm action={createTaskAction}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <TextField label="Task" name="title" className="sm:col-span-2" placeholder="e.g. GSTR-3B for September" hint="Can be left blank if you record a voice note" />
+          {standardTasks.length > 0 && (
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-sm font-medium text-ink">Standard task</span>
+              <select value="" onChange={(e) => e.target.value && setTitle(e.target.value)} className="h-10 w-full rounded-md border border-line bg-surface px-2 text-sm" aria-label="Pick a standard task">
+                <option value="">Pick a standard task (fills the task name) — or type your own below</option>
+                {standardTasks.map((g) => <optgroup key={g.group} label={g.group}>{g.items.map((i) => <option key={i} value={i}>{i}</option>)}</optgroup>)}
+              </select>
+            </label>
+          )}
+          <TextField label="Task" name="title" className="sm:col-span-2" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. GSTR-3B for September" hint="Pick a standard task above or type it; add the month / period. Can be left blank if you record a voice note." />
           <div className="sm:col-span-2">
             <span className="mb-1 block text-sm font-medium text-ink">Voice note</span>
             <VoiceRecorder />

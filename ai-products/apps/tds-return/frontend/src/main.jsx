@@ -15,7 +15,7 @@ import Help from "./pages/Help";
 import Settings from "./pages/Settings";
 import Ask from "./pages/Ask";
 
-const product = { name: "TDS Returns", tagline: "Agarwal & Saxena", icon: "tds" };
+const product = { name: "TDS Returns", tagline: "Workflow automation", icon: "tds" };
 const nav = [
   { to: "/", label: "Overview", icon: "overview", end: true },
   { to: "/new", label: "New TDS run", icon: "plus" },

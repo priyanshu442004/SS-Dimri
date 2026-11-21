@@ -19,11 +19,15 @@ import { actsAsLeadFor, getPolicy, holidaySet, isOffDay, leadScopeIds, scheduleO
 //   - "Leave early": the Team Lead's permission to leave before the scheduled time (§8).
 //   - "Overtime": prior permission to stay after 18:45, stating the task and why it cannot wait
 //     till tomorrow (§8, §9). Only approved overtime is counted.
+//   - "Weekly off" (tracker S.No. 79): for clients without a fixed weekly off, a day off on another
+//     day; once approved the day is a weekly off — not leave, not absent.
+//   - "Worked on a Sunday / holiday" (tracker S.No. 82): once approved, a day actually worked on a
+//     Sunday or office holiday is paid as an extra day (half a day for a half day).
 
 const hhmmField = z.string().regex(/^\d{2}:\d{2}$/, "Enter a time");
 
 export const requestSchema = z.object({
-  kind: z.enum(["LATE_ARRIVAL", "ABSENT", "EARLY_LEAVE", "OVERTIME"], { error: "Choose what you are informing" }),
+  kind: z.enum(["LATE_ARRIVAL", "ABSENT", "EARLY_LEAVE", "OVERTIME", "WEEKLY_OFF", "OFF_DAY_WORK"], { error: "Choose what you are informing" }),
   requestDate: zIsoDate,
   atTime: hhmmField.optional(),
   reason: z.string({ error: "Give the reason" }).trim().min(3, "Give the reason").max(1000),
@@ -31,14 +35,20 @@ export const requestSchema = z.object({
   whyNotTomorrow: zOptionalText(1000),
 });
 
-export const KIND_LABEL = { LATE_ARRIVAL: "Late arrival", EARLY_LEAVE: "Leave early", OVERTIME: "Overtime" } as const;
+export const KIND_LABEL = { LATE_ARRIVAL: "Late arrival", EARLY_LEAVE: "Leave early", OVERTIME: "Overtime", WEEKLY_OFF: "Weekly off", OFF_DAY_WORK: "Worked on Sunday / holiday" } as const;
+/** Permissions that wait for the Team Lead's decision (late intimations need none). */
+export const DECIDED_KINDS = ["EARLY_LEAVE", "OVERTIME", "WEEKLY_OFF", "OFF_DAY_WORK"] as const;
 
 export async function raiseRequest(ctx: AppContext, v: z.infer<typeof requestSchema>): Promise<string> {
   if (!ctx.employee) throw new BusinessRuleError("Your login is not linked to a staff record.");
   const tz = ctx.organization.timezone;
   const today = todayDateOnly(tz);
   const day = dateOnly(v.requestDate);
-  if (day < today) throw new BusinessRuleError("This form is for today or a later day. For a past day, speak to your Team Lead.");
+  const backDays = Math.round((today.getTime() - day.getTime()) / 86_400_000);
+  // A weekly off or Sunday work may be asked afterwards (within a month); the rest are for today onwards.
+  if (v.kind === "WEEKLY_OFF" || v.kind === "OFF_DAY_WORK") {
+    if (backDays > 31) throw new BusinessRuleError("This can be asked for at most a month back.");
+  } else if (day < today) throw new BusinessRuleError("This form is for today or a later day. For a past day, speak to your Team Lead.");
   if (v.kind === "ABSENT") {
     const r = await requestLeave(ctx, { fromDate: v.requestDate, toDate: v.requestDate, leaveType: "CASUAL", reason: v.reason }, { source: "absent_intimation" });
     return `Your Team Lead is informed and a leave request for ${formatDate(day)} is raised${r.withIntimation ? "" : " (after the reporting time, so it counts as leave without prior intimation)"}.`;
@@ -48,7 +58,10 @@ export async function raiseRequest(ctx: AppContext, v: z.infer<typeof requestSch
     prisma.employee.findUniqueOrThrow({ where: { id: ctx.employee.id }, select: { attendanceProfile: true, siteReportingTime: true } }),
     holidaySet(ctx.organization.id, day, day),
   ]);
-  if (isOffDay(v.requestDate, holidays)) throw new BusinessRuleError(`${formatDate(day)} is a Sunday or office holiday.`);
+  const off = isOffDay(v.requestDate, holidays);
+  if (v.kind === "OFF_DAY_WORK") {
+    if (!off) throw new BusinessRuleError(`${formatDate(day)} is a working day. This form is for work on a Sunday or an office holiday.`);
+  } else if (off) throw new BusinessRuleError(`${formatDate(day)} is a Sunday or office holiday.`);
   const record = await prisma.attendanceRecord.findFirst({ where: { employeeId: ctx.employee.id, attendanceDate: day } });
   const s = scheduleOf(policy, emp, record);
   const isToday = day.getTime() === today.getTime();
@@ -71,6 +84,22 @@ export async function raiseRequest(ctx: AppContext, v: z.infer<typeof requestSch
     if (record?.timeOut) throw new BusinessRuleError("You have already marked out today.");
     inAdvance = !isToday || nowMin < hhmmToMinutes(v.atTime);
     data.atTime = v.atTime;
+  } else if (v.kind === "WEEKLY_OFF") {
+    if (record?.timeIn) throw new BusinessRuleError(`You marked in on ${formatDate(day)}: it cannot be a weekly off.`);
+    const leave = await prisma.leaveRequest.findFirst({ where: { employeeId: ctx.employee.id, status: { in: ["PENDING", "APPROVED"] }, fromDate: { lte: day }, toDate: { gte: day } } });
+    if (leave) throw new BusinessRuleError(`You already have a leave request for ${formatDate(day)}.`);
+    // One weekly off a week (Monday to Sunday).
+    const monday = new Date(day.getTime() - ((day.getUTCDay() + 6) % 7) * 86_400_000);
+    const sunday = new Date(monday.getTime() + 6 * 86_400_000);
+    const other = await prisma.attendanceRequest.findFirst({ where: { employeeId: ctx.employee.id, kind: "WEEKLY_OFF", status: { in: ["PENDING", "APPROVED"] }, requestDate: { gte: monday, lte: sunday, not: day } } });
+    if (other) throw new BusinessRuleError(`You already asked for ${formatDate(other.requestDate)} as this week's weekly off. Withdraw that one first.`);
+    inAdvance = !isToday || nowMin < s.start;
+  } else if (v.kind === "OFF_DAY_WORK") {
+    if (day > today || (isToday && !record?.timeIn)) {
+      inAdvance = true; // permission asked before the day
+    } else if (!record?.timeIn) {
+      throw new BusinessRuleError(`There is no mark-in on ${formatDate(day)}. Mark in and out on the day you work, then send this form.`);
+    }
   } else {
     if (!v.task?.trim()) throw new BusinessRuleError("Say what task you will be doing.");
     if (!v.whyNotTomorrow?.trim()) throw new BusinessRuleError("Say why it cannot wait till tomorrow.");
@@ -82,19 +111,21 @@ export async function raiseRequest(ctx: AppContext, v: z.infer<typeof requestSch
 
   const existing = await prisma.attendanceRequest.findUnique({ where: { employeeId_requestDate_kind: { employeeId: ctx.employee.id, requestDate: day, kind: v.kind } } });
   // Waiting or not accepted: the person may send it again (updated reason / time, Team Lead told again).
-  if (existing?.status === "APPROVED") throw new BusinessRuleError(`Your ${KIND_LABEL[v.kind].toLowerCase()} form for ${formatDate(day)} is already approved.`);
+  if (existing?.status === "APPROVED") throw new BusinessRuleError(`Your “${KIND_LABEL[v.kind]}” request for ${formatDate(day)} is already approved.`);
   const resent = !!existing && existing.status !== "CANCELLED";
   await prisma.$transaction(async (tx) => {
     const fields = { reason: v.reason, inAdvance, ...data, status: "PENDING" as const, decidedById: null, decidedAt: null, decisionNote: null };
     const r = existing
       ? await tx.attendanceRequest.update({ where: { id: existing.id }, data: fields })
-      : await tx.attendanceRequest.create({ data: { organizationId: ctx.organization.id, employeeId: ctx.employee!.id, kind: v.kind as "LATE_ARRIVAL" | "EARLY_LEAVE" | "OVERTIME", requestDate: day, ...fields } });
+      : await tx.attendanceRequest.create({ data: { organizationId: ctx.organization.id, employeeId: ctx.employee!.id, kind: v.kind as Exclude<typeof v.kind, "ABSENT">, requestDate: day, ...fields } });
     await audit(tx, ctx, `attendance_request.${v.kind.toLowerCase()}`, "attendance_request", r.id);
     const who = ctx.employee!.firstName;
     const when = isToday ? "today" : formatDate(day);
     const title = (resent ? "Sent again: " : "") + (
       v.kind === "LATE_ARRIVAL" ? `${who} will be late ${when} (arriving ${v.atTime})`
       : v.kind === "EARLY_LEAVE" ? `${who} asks to leave at ${v.atTime} ${when}`
+      : v.kind === "WEEKLY_OFF" ? `${who} asks for a weekly off ${isToday ? "today" : `on ${formatDate(day)}`}`
+      : v.kind === "OFF_DAY_WORK" ? `${who} ${day > today ? "asks to work" : "worked"} on ${formatDate(day)} (Sunday / holiday): extra day`
       : `${who} asks to stay late ${when}${v.atTime ? ` (till ${v.atTime})` : ""}`);
     const body = v.kind === "OVERTIME" ? `Task: ${v.task} · Why it can't wait: ${v.whyNotTomorrow}` : v.reason;
     await notifyLeads(tx, ctx, { type: "attendance.request", title, body, link: "/app/attendance?tab=requests" });
@@ -102,6 +133,8 @@ export async function raiseRequest(ctx: AppContext, v: z.infer<typeof requestSch
   if (v.kind === "LATE_ARRIVAL" && record?.autoAbsentAt) return "Sent to your Team Lead. The ERP has marked today Absent; once your Team Lead approves, you can mark in with your actual time (late, or a half day).";
   if (v.kind === "LATE_ARRIVAL") return inAdvance ? "Your Team Lead is informed. One late arrival a month informed in advance is a warning only." : "Your Team Lead is informed. This was after your reporting time, so it does not count as informed in advance.";
   if (v.kind === "EARLY_LEAVE") return `Request sent to your Team Lead.${hhmmToMinutes(v.atTime!) < s.halfDayBefore ? ` Leaving before ${hhmm(s.halfDayBefore)} counts as a half day even with permission.` : ""}`;
+  if (v.kind === "WEEKLY_OFF") return `Sent to your Team Lead. Once approved, ${formatDate(day)} is your weekly off (not leave).`;
+  if (v.kind === "OFF_DAY_WORK") return `Sent to your Team Lead. Once approved, the day you work on ${formatDate(day)} is paid as an extra day in that month's salary (half a day for a half day).`;
   return "Overtime request sent to your Team Lead. Only approved overtime is counted.";
 }
 
@@ -133,6 +166,10 @@ export async function decideRequest(ctx: AppContext, id: string, v: z.infer<type
     await tx.attendanceRequest.update({ where: { id }, data: { status: approve ? "APPROVED" : "REJECTED", decidedById: ctx.user.id, decidedAt: new Date(), decisionNote: v.note } });
     await audit(tx, ctx, approve ? "attendance_request.approved" : "attendance_request.rejected", "attendance_request", id);
     // Approved after the 12:00 sweep: the ERP's Absent mark goes, so the person can mark the actual in-time.
+    if (approve && r.kind === "WEEKLY_OFF") {
+      const removed = await tx.attendanceRecord.deleteMany({ where: { employeeId: r.employeeId, attendanceDate: r.requestDate, autoAbsentAt: { not: null }, timeIn: null } });
+      if (removed.count) await audit(tx, ctx, "attendance.auto_absent_reversed", "attendance_request", id);
+    }
     if (approve && r.kind === "LATE_ARRIVAL") {
       const removed = await tx.attendanceRecord.deleteMany({ where: { employeeId: r.employeeId, attendanceDate: r.requestDate, autoAbsentAt: { not: null }, timeIn: null } });
       if (removed.count) {
@@ -180,7 +217,7 @@ export async function pendingRequestCount(ctx: AppContext) {
   const scope = await leadScopeIds(ctx);
   if (scope !== "ALL" && !scope.length) return 0;
   return prisma.attendanceRequest.count({
-    where: { organizationId: ctx.organization.id, status: "PENDING", kind: { in: ["EARLY_LEAVE", "OVERTIME"] }, employeeId: scope === "ALL" ? { not: ctx.employee?.id ?? NO_EMPLOYEE } : { in: scope } },
+    where: { organizationId: ctx.organization.id, status: "PENDING", kind: { in: [...DECIDED_KINDS] }, employeeId: scope === "ALL" ? { not: ctx.employee?.id ?? NO_EMPLOYEE } : { in: scope } },
   });
 }
 

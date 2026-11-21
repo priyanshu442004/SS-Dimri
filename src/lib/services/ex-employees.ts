@@ -56,7 +56,9 @@ export async function moveToExEmployee(ctx: AppContext, employeeId: string, v: z
     await audit(tx, ctx, "employee.exited", "employee", e.id, { exitType: v.exitType, exitDate: v.exitDate, allocationsEnded: open.length });
     return open.length;
   });
-  return { name: `${e.firstName} ${e.lastName ?? ""}`.trim(), allocationsEnded: ended };
+  // Office assets still with the person (tracker S.No. 90): to be taken back in Assets.
+  const assetsHeld = await prisma.assetIssue.count({ where: { employeeId: e.id, returnedOn: null } });
+  return { name: `${e.firstName} ${e.lastName ?? ""}`.trim(), allocationsEnded: ended, assetsHeld };
 }
 
 /** Undo: back to Active with sign-in allowed. Ended allocations are not reopened (allocate again if needed). */

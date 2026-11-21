@@ -15,7 +15,7 @@ import Help from "./pages/Help";
 import Settings from "./pages/Settings";
 import Ask from "./pages/Ask";
 
-const product = { name: "Payroll & Compliance", tagline: "Agarwal & Saxena", icon: "payroll" };
+const product = { name: "Payroll & Compliance", tagline: "Workflow automation", icon: "payroll" };
 const nav = [
   { to: "/", label: "Overview", icon: "overview", end: true },
   { to: "/new", label: "New payroll run", icon: "plus" },

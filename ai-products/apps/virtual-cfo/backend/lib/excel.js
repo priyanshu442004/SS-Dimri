@@ -32,7 +32,7 @@ function head(ws, cols) {
 export async function buildWorkbook(a) {
   const { default: ExcelJS } = await import("exceljs");
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Agarwal & Saxena Financial Statement Analysis";
+  wb.creator = "Financial Statement Analysis";
   const m = a.model;
 
   const s = wb.addWorksheet("Summary");

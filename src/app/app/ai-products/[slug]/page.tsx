@@ -6,7 +6,7 @@ import { ProductFrame } from "./product-frame";
 
 export async function generateMetadata({ params }: PageProps<"/app/ai-products/[slug]">): Promise<Metadata> {
   const { slug } = await params;
-  return { title: aiProductBySlug(slug)?.name ?? "AI products" };
+  return { title: aiProductBySlug(slug)?.name ?? "Workflow automation" };
 }
 
 // One AI product, embedded full-size. Its site is served by nginx at /ai-products/<slug>/, which
