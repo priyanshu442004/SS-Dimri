@@ -90,8 +90,11 @@ export async function runAgent(
   let answer = "";
   let reasoning = "";
 
+  const FINISH = "No more look-ups now: answer the question from the data you already have. If a list is long, give the total count and the names you have, and say where the full list is in the ERP (for example Team allocation → Allocation reports for clients without a team). Plain text, no tool calls.";
   for (let round = 0; round < cfg.maxToolRounds; round++) {
     const last = round === cfg.maxToolRounds - 1;
+    // Out of look-up rounds: ask for the answer instead of another look-up (else the model may write one as text).
+    if (last && round > 0) messages.push({ role: "user", content: FINISH });
     let stepText = "";
     const step = await streamStep(messages, {
       tools: last ? undefined : tools,
@@ -153,7 +156,16 @@ export async function runAgent(
   }
 
   let cleaned = stripNarration(stripNotes(stripToolMarkup(answer)));
-  // Never an empty bubble: the look-up did not finish in the rounds allowed.
+  // Never an empty bubble: one more pass, without tools, to answer from what was found.
+  if (!cleaned && !blocks.length && !signal.aborted && contextNotes.length) {
+    try {
+      messages.push({ role: "user", content: FINISH });
+      const step = await streamStep(messages, { signal, onText: (t) => emit({ type: "text", text: t }) });
+      cleaned = stripNarration(stripToolMarkup(step.content)).trim();
+    } catch (e) {
+      console.error("AI: final answer pass failed", e instanceof Error ? e.message : e);
+    }
+  }
   if (!cleaned && !blocks.length && !signal.aborted) cleaned = "I could not finish looking this up. Please ask again, or ask in a narrower way (for example one client, one month).";
   if (cleaned !== answer.trim()) emit({ type: "text_set", text: cleaned });
   return {

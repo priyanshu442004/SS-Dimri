@@ -290,6 +290,20 @@ describe("agent", () => {
     expect(second.at(-1)).toMatchObject({ role: "tool", content: expect.stringContaining("not available") });
     expect(r.content).toBe("I can't share Aadhaar numbers.");
   });
+
+  it("asks once more, without tools, when the answer came back empty after look-ups", async () => {
+    streamStep.mockReset();
+    streamStep
+      .mockResolvedValueOnce({ content: "", reasoning: "", finishReason: "tool_calls", toolCalls: [{ id: "a", type: "function", function: { name: "query_database", arguments: JSON.stringify({ model: "Client", operation: "count" }) } }] })
+      .mockResolvedValueOnce({ content: "", reasoning: "", finishReason: "stop", toolCalls: [] })
+      .mockResolvedValueOnce({ content: "3 clients have no team.", reasoning: "", finishReason: "stop", toolCalls: [] });
+    const r = await runAgent(ctx("OWNER"), [], { text: "clients without a team" }, () => {}, new AbortController().signal);
+    expect(streamStep).toHaveBeenCalledTimes(3);
+    const third = streamStep.mock.calls[2] as [{ role: string; content: string }[], { tools?: unknown }];
+    expect(third[1].tools).toBeUndefined();
+    expect(third[0].at(-1)).toMatchObject({ role: "user", content: expect.stringContaining("No more look-ups") });
+    expect(r.content).toBe("3 clients have no team.");
+  });
 });
 
 describe("KPI format guess", () => {
