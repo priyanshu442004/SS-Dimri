@@ -80,11 +80,16 @@ async function copyPlain(text: string, what = "Copied.") {
 
 // ============================================================================ history grouping
 
+const IST_OFFSET = 5.5 * 3_600_000;
+/** Hour of the day in IST: the same on the server render and in the browser. */
+function istHour() {
+  return new Date(Date.now() + IST_OFFSET).getUTCHours();
+}
+
 function groupConversations(list: ConversationSummary[]) {
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const t = startOfToday.getTime();
+  // Days in IST (not the runtime's zone) so the server render and the browser agree.
   const day = 86_400_000;
+  const t = Math.floor((Date.now() + IST_OFFSET) / day) * day - IST_OFFSET;
   const groups: { label: string; items: ConversationSummary[] }[] = [
     { label: "Pinned", items: [] }, { label: "Today", items: [] }, { label: "Yesterday", items: [] },
     { label: "Previous 7 days", items: [] }, { label: "Previous 30 days", items: [] }, { label: "Older", items: [] },
@@ -705,7 +710,7 @@ function MenuItem({ icon, children, onClick, danger }: { icon: React.ReactNode; 
 // ============================================================================ empty state
 
 function EmptyState({ name, firm, suggestions, onPick, configured }: { name: string; firm: string; suggestions: Suggestion[]; onPick: (q: string) => void; configured: boolean }) {
-  const hour = new Date().getHours();
+  const hour = istHour();
   const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   return (
     <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-center px-4 py-10">
