@@ -44,4 +44,28 @@ test("a client document uploads to private storage and downloads through a short
   // The same object without a signature is refused (bucket is private).
   const unsigned = await page.request.get(location.split("?")[0]);
   expect(unsigned.status()).toBe(403);
+
+  // The owner may delete it: the entry goes, the link stops working, the client stays.
+  const clientPage = page.url();
+  const row = page.getByRole("listitem").filter({ has: page.locator(`a[href="${href}"]`) });
+  await expect(row).toHaveCount(1);
+  page.once("dialog", (d) => d.accept());
+  await row.getByRole("button", { name: "Delete this document" }).click();
+  await expect(page.getByText(/Deleted “/)).toBeVisible();
+  await expect(page.locator(`a[href="${href}"]`)).toHaveCount(0);
+  expect((await page.request.get(href, { maxRedirects: 0 })).status()).toBe(404);
+  await page.goto(clientPage);
+  await expect(page.getByRole("heading", { name: clientName }).first()).toBeVisible();
+});
+
+test("the client portal shows documents without any delete button", async ({ page }) => {
+  test.skip(!run, "set LIVE_RUN to the run id used by live.spec.ts");
+  await page.goto("/login");
+  await page.getByLabel("Login ID or email").fill(`live-client-${run}@e2e.invalid`);
+  await page.locator("#password").fill("LiveC-Pass-12345");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL((u) => !u.pathname.startsWith("/login"));
+  await page.goto("/client/documents");
+  await expect(page.getByRole("main")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Delete this/ })).toHaveCount(0);
 });
