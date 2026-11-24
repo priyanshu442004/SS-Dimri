@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { actionContext, AuthorizationError } from "@/lib/session";
-import { runAgent, titleMessages, type HistoryMessage } from "@/lib/ai/agent";
+import { fallbackTitle, runAgent, titleMessages, type HistoryMessage } from "@/lib/ai/agent";
 import { aiConfig } from "@/lib/ai/config";
 import { rateLimit } from "@/lib/ai/cache";
 import { AiServiceError, quickCompletion } from "@/lib/ai/deepseek";
@@ -103,8 +103,10 @@ export async function POST(request: Request) {
 
       // Name a new chat from its first question, in parallel with the answer.
       const titleJob = isFirst
-        ? quickCompletion(titleMessages(body.text), 24, AbortSignal.timeout(15_000)).then(async (t) => {
-            const title = (t ?? body.text).replace(/^["'\s]+|["'.\s]+$/g, "").slice(0, 80) || "New chat";
+        ? quickCompletion(titleMessages(body.text, body.quote), 24, AbortSignal.timeout(15_000)).then(async (t) => {
+            let title = (t ?? "").split("\n")[0].replace(/^["'\s#*]+|["'.*\s]+$/g, "").replace(/^title:\s*/i, "").slice(0, 80);
+            // No usable title from the model: name it from the question, or from the selection it asks about.
+            if (!title || (title.toLowerCase() === "new chat" && body.quote)) title = fallbackTitle(body.text, body.quote);
             if (title.toLowerCase() === "new chat") return;
             await prisma.aiConversation.update({ where: { id: conversationId }, data: { title } });
             emit({ type: "title", title });

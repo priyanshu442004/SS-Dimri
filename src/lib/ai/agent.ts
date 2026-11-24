@@ -179,11 +179,31 @@ export async function runAgent(
 }
 
 /** A 3–6 word title for a new chat, made from the first question (runs alongside the answer). */
-export function titleMessages(question: string): ChatMessage[] {
+export function titleMessages(question: string, quote?: string | null): ChatMessage[] {
+  const q = quote?.trim();
   return [
-    { role: "system", content: "Write a 2–6 word title for a chat that starts with the user's question. Title case, no quotes, no trailing punctuation. Reply with the title only. If the message is only a greeting, thanks or small talk with no real question, reply exactly: New chat" },
-    { role: "user", content: question.slice(0, 500) },
+    {
+      role: "system",
+      content:
+        "Write a 2–6 word title for a chat that starts with the user's question. Title case, no quotes, no trailing punctuation. Reply with the title only. " +
+        "When the user quotes something they selected (a dashboard figure, report line, chart or table), name the chat after what the question is about in that selection, e.g. \"Overdue Tasks Breakdown\" or \"Monthly Revenue Trend\". " +
+        "Only if there is no quoted selection and the message is just a greeting, thanks or small talk with no real question, reply exactly: New chat",
+    },
+    { role: "user", content: q ? `Selected: """${q.slice(0, 600)}"""\nQuestion: ${question.slice(0, 400)}` : question.slice(0, 500) },
   ];
+}
+
+/** A plain title from the question (and quoted selection) when the model gives none. */
+export function fallbackTitle(question: string, quote?: string | null): string {
+  const clean = (s: string) => s.replace(/\s+/g, " ").replace(/^["'\s]+|["'.,:;\s]+$/g, "").trim();
+  const q = clean(question);
+  const sel = clean(quote ?? "");
+  // A short question about a selection ("explain this") reads better as the selection itself.
+  const base = sel && q.split(" ").length <= 4 ? sel : q || sel;
+  if (!base) return "New chat";
+  const words = base.split(" ").slice(0, 7).join(" ");
+  const t = words.length > 60 ? `${words.slice(0, 57).trimEnd()}…` : words;
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 /** Drops opening process lines the model sometimes writes ("I have what I need. Let me compare…"). */

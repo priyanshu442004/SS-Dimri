@@ -24,9 +24,21 @@ export function s3() {
     client = new S3Client({
       region: env.AWS_REGION,
       credentials: { accessKeyId: env.AWS_ACCESS_KEY_ID, secretAccessKey: env.AWS_SECRET_ACCESS_KEY },
+      // S3-compatible stores (DigitalOcean Spaces): own endpoint, and only the checksums they require.
+      ...(env.S3_ENDPOINT
+        ? { endpoint: env.S3_ENDPOINT, requestChecksumCalculation: "WHEN_REQUIRED" as const, responseChecksumValidation: "WHEN_REQUIRED" as const }
+        : {}),
     });
   }
   return client;
+}
+
+/**
+ * Server-side encryption parameter for PutObject. AWS S3 takes SSE-S3 (AES256);
+ * DigitalOcean Spaces encrypts at rest itself and does not accept the header.
+ */
+export function sseParams(): { ServerSideEncryption?: "AES256" } {
+  return serverEnv().S3_ENDPOINT ? {} : { ServerSideEncryption: "AES256" };
 }
 
 /**
@@ -54,7 +66,7 @@ export async function createUploadUrl(objectKey: string, contentType: string) {
     Bucket: serverEnv().AWS_BUCKET_NAME,
     Key: objectKey,
     ContentType: contentType,
-    ServerSideEncryption: "AES256",
+    ...sseParams(),
   });
   return getSignedUrl(s3(), command, { expiresIn: UPLOAD_URL_TTL_SECONDS });
 }

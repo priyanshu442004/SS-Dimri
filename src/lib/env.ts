@@ -13,6 +13,8 @@ const serverEnvSchema = z.object({
   AWS_SECRET_ACCESS_KEY: z.string().min(1),
   AWS_REGION: z.string().min(1),
   AWS_BUCKET_NAME: z.string().min(1),
+  // S3-compatible endpoint, e.g. https://blr1.digitaloceanspaces.com (DigitalOcean Spaces). Empty = AWS S3.
+  S3_ENDPOINT: z.string().url().optional().or(z.literal("").transform(() => undefined)),
   S3_KEY_PREFIX: z
     .string()
     .regex(/^[a-z0-9][a-z0-9-]*$/, "lowercase letters, digits and hyphens only")

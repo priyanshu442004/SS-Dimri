@@ -4,7 +4,7 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { prisma } from "@/lib/db";
 import { serverEnv } from "@/lib/env";
 import { BusinessRuleError } from "@/lib/actions";
-import { buildObjectKey, s3, type StorageArea } from "@/lib/storage/s3";
+import { buildObjectKey, s3, sseParams, type StorageArea } from "@/lib/storage/s3";
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
@@ -96,7 +96,7 @@ export async function storeUpload(
       Key: objectKey,
       Body: buf,
       ContentType: type.mime,
-      ServerSideEncryption: "AES256",
+      ...sseParams(),
     }),
   );
   return prisma.storedFile.create({
@@ -121,7 +121,7 @@ export async function storeGenerated(
 ) {
   const objectKey = buildObjectKey({ organizationId: ctx.organization.id, area: opts.area, ownerId: opts.ownerId, fileName: opts.fileName });
   await s3().send(
-    new PutObjectCommand({ Bucket: serverEnv().AWS_BUCKET_NAME, Key: objectKey, Body: buf, ContentType: opts.mimeType, ServerSideEncryption: "AES256" }),
+    new PutObjectCommand({ Bucket: serverEnv().AWS_BUCKET_NAME, Key: objectKey, Body: buf, ContentType: opts.mimeType, ...sseParams() }),
   );
   return prisma.storedFile.create({
     data: {

@@ -8,7 +8,7 @@ How to set up, deploy, operate, back up and recover the SS Dimri practice portal
 |---|---|
 | Node.js | 20.9+ (LTS); the app is built with Next.js 16 |
 | Database | Neon PostgreSQL (pooled URL for the app, direct URL for migrations) |
-| File storage | Private AWS S3 bucket; objects live under `S3_KEY_PREFIX` (default `ss-dimri/`) |
+| File storage | Private DigitalOcean Spaces bucket (S3-compatible; AWS S3 also works); objects live under `S3_KEY_PREFIX` (default `ss-dimri/`) |
 | HTTPS | Required in production (HSTS and `upgrade-insecure-requests` are sent) |
 
 ## 2. Environment variables
@@ -23,7 +23,8 @@ Set these in the hosting provider's secret store. Do **not** commit them or put 
 | `BETTER_AUTH_URL` | ✔ | Public origin, e.g. `https://portal.example.in`. Must match the URL users open (origin checks) |
 | `DATA_ENCRYPTION_KEY` | ✔ | 32 random bytes, base64 — encrypts Aadhaar and bank numbers. **Back it up separately; losing it makes those fields unreadable.** Never rotate it without a re-encryption script |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | ✔ | IAM user limited to `s3:GetObject`, `s3:PutObject`, `s3:ListBucket` on the bucket/prefix |
-| `AWS_REGION`, `AWS_BUCKET_NAME` | ✔ | Bucket location |
+| `AWS_REGION`, `AWS_BUCKET_NAME` | ✔ | Bucket location (for Spaces the region slug, e.g. `blr1`) |
+| `S3_ENDPOINT` | | S3-compatible endpoint, e.g. `https://blr1.digitaloceanspaces.com` for DigitalOcean Spaces. Empty = AWS S3. With an endpoint set, the SSE-S3 header is not sent (Spaces encrypts at rest itself) |
 | `S3_KEY_PREFIX` | | Folder inside the bucket (default `ss-dimri`) |
 | `PUBLIC_ORGANIZATION_ID` | | Firm whose confirmed services the public website lists (default: the standard service list) |
 | `ALLOW_FIRM_REGISTRATION` | | `false` pauses new firm registrations at `/register/firm` (default open: many firms) |

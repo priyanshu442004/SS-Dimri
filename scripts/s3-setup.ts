@@ -17,6 +17,9 @@ async function main() {
   const s3 = new S3Client({
     region: AWS_REGION,
     credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY },
+    ...(process.env.S3_ENDPOINT
+      ? { endpoint: process.env.S3_ENDPOINT, requestChecksumCalculation: "WHEN_REQUIRED" as const, responseChecksumValidation: "WHEN_REQUIRED" as const }
+      : {}),
   });
 
   await s3.send(new HeadBucketCommand({ Bucket: AWS_BUCKET_NAME }));
@@ -34,7 +37,7 @@ async function main() {
     console.log("Project folder does not exist yet. Run with --create to create it.");
     return;
   }
-  await s3.send(new PutObjectCommand({ Bucket: AWS_BUCKET_NAME, Key: prefix, Body: new Uint8Array(0), ContentLength: 0, ServerSideEncryption: "AES256" }));
+  await s3.send(new PutObjectCommand({ Bucket: AWS_BUCKET_NAME, Key: prefix, Body: new Uint8Array(0), ContentLength: 0, ...(process.env.S3_ENDPOINT ? {} : { ServerSideEncryption: "AES256" as const }) }));
   console.log(`Created folder marker "${prefix}".`);
 }
 

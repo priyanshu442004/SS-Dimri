@@ -66,7 +66,7 @@ function Spark({ values, stroke, animate }: { values: number[]; stroke: string; 
   const pts = values.map((v, i) => `${((i / (values.length - 1)) * 60 + 2).toFixed(1)},${(20 - ((v - min) / span) * 16).toFixed(1)}`).join(" ");
   const last = pts.split(" ").at(-1)!.split(",");
   return (
-    <svg viewBox="0 0 64 24" className="h-7 w-16 shrink-0" aria-hidden>
+    <svg viewBox="0 0 64 24" className="ml-auto block h-7 w-16 min-w-0 max-w-full shrink overflow-hidden" aria-hidden>
       <polyline key={values.join(",")} points={pts} fill="none" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" className={clsx(stroke, animate && "ops-spark")} />
       <circle cx={last[0]} cy={last[1]} r="1.8" className={clsx(stroke.replace("stroke-", "fill-"))} />
     </svg>
@@ -83,10 +83,11 @@ function KpiTile({ k, animate, compare, i, busy }: { k: Kpi; animate: boolean; c
   const tone = TONE[k.tone];
   const value = useAnimatedText(k.display, animate);
   return (
-    <div className={clsx("ops-rise min-w-0 rounded-lg border border-line border-l-[3px] bg-surface px-3 py-2.5", tone.border)} style={{ "--d": `${i * 25}ms` } as CSSProperties}>
+    <div className={clsx("ops-rise min-w-0 overflow-hidden rounded-lg border border-line border-l-[3px] bg-surface px-3 py-2.5", tone.border)} style={{ "--d": `${i * 25}ms` } as CSSProperties}>
       <p className="truncate text-[10.5px] font-semibold uppercase tracking-wide text-muted" title={k.label}>{k.label}</p>
-      <div className="mt-0.5 flex items-end justify-between gap-1">
-        <p className={clsx("whitespace-nowrap font-editorial text-[26px] leading-none tabular-nums", tone.text, busy && "opacity-50 transition-opacity")}>{value}</p>
+      {/* The trend line sits beside the figure; when the tile is too narrow for both it drops below, never outside the box. */}
+      <div className="mt-0.5 flex min-w-0 flex-wrap items-end justify-between gap-x-1 gap-y-1">
+        <p className={clsx("min-w-0 max-w-full truncate font-editorial text-[22px] leading-none tabular-nums sm:text-[26px]", tone.text, busy && "opacity-50 transition-opacity")} title={k.display}>{value}</p>
         <Spark values={k.spark} stroke={tone.stroke} animate={animate} />
       </div>
       <p className={clsx("mt-1 truncate text-[11px] font-semibold", deltaTone(k))}>{k.deltaDisplay}{k.delta !== null && k.key !== "lateLeave" ? ` ${compare}` : ""}</p>
