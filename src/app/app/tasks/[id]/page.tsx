@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { DeleteFileButton } from "@/components/delete-file-button";
+import { canDeleteFiles } from "@/lib/services/file-removal";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
@@ -101,7 +103,10 @@ export default async function TaskDetailPage({ params, searchParams }: PageProps
                   {voiceNotes.map((a, i) => (
                     <li key={a.id} className="rounded-lg border border-line bg-paper/60 p-2">
                       <VoicePlayer fileId={a.file.id} seconds={a.durationSeconds} label={`Voice note ${i + 1}`} />
-                      <p className="mt-1 px-1 text-xs text-muted">{a.file.uploadedBy?.name ?? "—"} · {formatDateTime(a.createdAt)}</p>
+                      <p className="mt-1 flex items-center justify-between gap-2 px-1 text-xs text-muted">
+                        <span>{a.file.uploadedBy?.name ?? "—"} · {formatDateTime(a.createdAt)}</span>
+                        {canDeleteFiles(ctx) && <DeleteFileButton fileId={a.file.id} what="voice note" />}
+                      </p>
                     </li>
                   ))}
                 </ul>
@@ -110,10 +115,11 @@ export default async function TaskDetailPage({ params, searchParams }: PageProps
             {files.length > 0 && (
               <ul className="mt-4 flex flex-wrap gap-2">
                 {files.map((a) => (
-                  <li key={a.id}>
+                  <li key={a.id} className="inline-flex items-center gap-1">
                     <a href={`/api/files/${a.file.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-xs transition-colors hover:bg-subtle">
                       {a.kind === "IMAGE" ? <ImageIcon className="size-3.5" aria-hidden /> : <FileText className="size-3.5" aria-hidden />} {a.caption ?? a.file.originalFileName}
                     </a>
+                    {canDeleteFiles(ctx) && <DeleteFileButton fileId={a.file.id} what="attachment" />}
                   </li>
                 ))}
               </ul>

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { DeleteFileButton } from "@/components/delete-file-button";
+import { canDeleteFiles } from "@/lib/services/file-removal";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
@@ -138,7 +140,7 @@ export default async function PendingPage({ searchParams }: PageProps<"/app/pend
                         <li key={f.id} className={fromClient ? "text-ink" : undefined}>
                           {formatDateTime(f.createdAt)} · {f.actor?.name}{fromClient && <> <Badge tone="warn">Client reply</Badge></>}{f.clientVisible && !fromClient && <> <Badge tone="info">Shared</Badge></>}: {f.note}
                           {f.nextFollowUpOn && ` (next: ${formatDate(f.nextFollowUpOn)})`}
-                          {f.fileId && <> · <a href={`/api/files/${f.fileId}`} className="text-brand-700 underline" target="_blank" rel="noopener noreferrer">document</a></>}
+                          {f.fileId && <> · <a href={`/api/files/${f.fileId}`} className="text-brand-700 underline" target="_blank" rel="noopener noreferrer">document</a>{canDeleteFiles(ctx) && <DeleteFileButton fileId={f.fileId} compact />}</>}
                         </li>
                       );
                     })}

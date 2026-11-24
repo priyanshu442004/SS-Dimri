@@ -1,4 +1,6 @@
 import { NO_EMPLOYEE } from "@/lib/ids";
+import { DeleteFileButton } from "@/components/delete-file-button";
+import { canDeleteFiles } from "@/lib/services/file-removal";
 import { lineIds, seesFirm } from "@/lib/hierarchy";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
@@ -578,11 +580,11 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                       <Td>
                         {r?.photoReview ? (
                           <div className="space-y-1">
-                            <span className="flex gap-1"><Thumb fileId={r.timeInPhotoFileId} label={`${e.firstName} – time in`} size="sm" />{r.timeOutPhotoFileId && <Thumb fileId={r.timeOutPhotoFileId} label={`${e.firstName} – time out`} size="sm" />}</span>
+                            <span className="flex gap-1"><Thumb fileId={r.timeInPhotoFileId} label={`${e.firstName} – time in`} size="sm" canDelete={canDeleteFiles(ctx)} />{r.timeOutPhotoFileId && <Thumb fileId={r.timeOutPhotoFileId} label={`${e.firstName} – time out`} size="sm" canDelete={canDeleteFiles(ctx)} />}</span>
                             <div className="text-xs text-muted">by {r.timeInProxyBy?.name ?? r.timeOutProxyBy?.name ?? "a colleague"}</div>
                             <Link href={`/app/attendance?tab=photos&show=ALL&employee=${e.id}&from=${toIsoDate(date)}&to=${toIsoDate(date)}`} className="inline-block"><ReviewBadge review={r.photoReview} /></Link>
                           </div>
-                        ) : r?.timeInPhotoFileId ? <a href={`/api/files/${r.timeInPhotoFileId}`} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-700 hover:underline">View</a> : "—"}
+                        ) : r?.timeInPhotoFileId ? <span className="inline-flex items-center gap-1"><a href={`/api/files/${r.timeInPhotoFileId}`} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-700 hover:underline">View</a>{canDeleteFiles(ctx) && <DeleteFileButton fileId={r.timeInPhotoFileId} what="photo" compact />}</span> : "—"}
                       </Td>
                       <Td className="max-w-48 text-xs text-muted">{r?.lateReason ?? (r?.autoAbsentAt ? "" : r?.remarks) ?? ""}</Td>
                     </tr>

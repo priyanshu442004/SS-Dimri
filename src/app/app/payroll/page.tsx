@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { DeleteFileButton } from "@/components/delete-file-button";
+import { canDeleteFiles } from "@/lib/services/file-removal";
 import { IndianRupee, TrendingUp, Wallet } from "lucide-react";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
@@ -257,7 +259,7 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
                   {mine.map((c) => (
                     <tr key={c.id}>
                       <Td className="whitespace-nowrap">{formatDate(c.claimDate)}</Td>
-                      <Td className="text-xs">{place(c)}{c.km ? ` · ${Number(c.km)} km` : ""}{c.mode ? ` · ${c.mode}` : ""}{c.billFileId && <> · <a href={`/api/files/${c.billFileId}`} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:underline">bill</a></>}{c.decisionNote && <div className="text-muted">{c.decidedBy?.name}: {c.decisionNote}</div>}</Td>
+                      <Td className="text-xs">{place(c)}{c.km ? ` · ${Number(c.km)} km` : ""}{c.mode ? ` · ${c.mode}` : ""}{c.billFileId && <> · <a href={`/api/files/${c.billFileId}`} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:underline">bill</a>{canDeleteFiles(ctx) && <DeleteFileButton fileId={c.billFileId} what="bill" compact />}</>}{c.decisionNote && <div className="text-muted">{c.decidedBy?.name}: {c.decisionNote}</div>}</Td>
                       <Td>{inr(Number(c.amount))}</Td>
                       <Td><StatusBadge status={c.status} />{c.status === "APPROVED" && <div className="text-xs text-muted">paid with {monthLabel(toIsoDate(c.claimDate).slice(0, 7))}</div>}</Td>
                       <Td>{c.status === "PENDING" && <ActionButton variant="ghost" action={cancelConveyanceAction.bind(null, c.id)} confirm="Withdraw this claim?">Withdraw</ActionButton>}</Td>
@@ -277,7 +279,7 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
                     <li key={c.id} className="rounded-md border border-line p-3 text-sm">
                       <p className="font-medium">{c.employee.firstName} {c.employee.lastName ?? ""} · {formatDate(c.claimDate)} · {inr(Number(c.amount))}</p>
                       <p className="text-xs text-muted">{place(c)}{c.km ? ` · ${Number(c.km)} km` : ""}{c.mode ? ` · ${c.mode}` : ""}{c.purpose ? ` · ${c.purpose}` : ""}</p>
-                      {c.billFileId ? <a href={`/api/files/${c.billFileId}`} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-brand-700 hover:underline">View bill</a> : <p className="text-xs text-warn">No bill attached</p>}
+                      {c.billFileId ? <><a href={`/api/files/${c.billFileId}`} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-brand-700 hover:underline">View bill</a>{canDeleteFiles(ctx) && <DeleteFileButton fileId={c.billFileId} what="bill" className="ml-2" />}</> : <p className="text-xs text-warn">No bill attached</p>}
                       <div className="mt-2"><ConveyanceDecisionForm action={decideConveyanceAction.bind(null, c.id)} amount={Number(c.amount)} /></div>
                     </li>
                   ))}

@@ -91,6 +91,8 @@ export const CAPABILITIES = {
   "compliance.manage": LEADS,
   /** Delete other entries: allocations, timesheet and attendance entries, pending items, dues, observations, compliance rows. */
   "records.delete": ADMINS,
+  /** Delete a stored document, photo, bill or attachment wherever it is shown (the record it belongs to stays). */
+  "documents.delete": ADMINS,
   /**
    * AI assistant: ask questions about the firm's data in plain language. What it can read is
    * still limited by the person's other rights (salaries only with payroll rights, and so on).
@@ -193,6 +195,7 @@ export const GRANTABLE_RIGHTS: { capability: Capability; label: string; group: s
   { capability: "pending.view_all", label: "See everyone's pending items", group: "Other" },
   { capability: "dayreport.view_all", label: "See everyone's day reports", group: "Other" },
   { capability: "records.delete", label: "Delete other entries", group: "Other" },
+  { capability: "documents.delete", label: "Delete documents, photos and attachments", group: "Other" },
   { capability: "assistant.use", label: "Use AI reporting (sees only what their other rights allow)", group: "Other" },
 ];
 

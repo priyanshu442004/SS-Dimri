@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { DeleteFileButton } from "@/components/delete-file-button";
+import { canDeleteFiles } from "@/lib/services/file-removal";
 import { Camera, CheckCircle2, Clock4, MapPin, Navigation, ShieldAlert, Users, Wallet } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { addDays, dateOnly, formatDate, formatDateTime, formatTime, minutesToHhmm, toIsoDate } from "@/lib/dates";
@@ -19,9 +21,17 @@ const rupees = (n: number) => `₹${n.toLocaleString("en-IN", { minimumFractionD
 const nameOf = (p: { firstName: string; lastName: string | null }) => `${p.firstName} ${p.lastName ?? ""}`.trim();
 
 /** A small photo that opens full size in a new tab. */
-export function Thumb({ fileId, label, size = "md" }: { fileId: string | null | undefined; label: string; size?: "sm" | "md" | "lg" }) {
+export function Thumb({ fileId, label, size = "md", canDelete }: { fileId: string | null | undefined; label: string; size?: "sm" | "md" | "lg"; canDelete?: boolean }) {
   if (!fileId) return <span className="text-xs text-muted">—</span>;
   const cls = size === "lg" ? "size-32 sm:size-36" : size === "md" ? "size-14" : "size-10";
+  if (canDelete) {
+    return (
+      <span className="inline-flex shrink-0 flex-col items-start gap-0.5">
+        <Thumb fileId={fileId} label={label} size={size} />
+        <DeleteFileButton fileId={fileId} what="photo" compact={size === "sm"} />
+      </span>
+    );
+  }
   return (
     <a href={`/api/files/${fileId}`} target="_blank" rel="noopener noreferrer" title={`${label} (opens full size)`} className="inline-block shrink-0">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -60,8 +70,8 @@ export async function OthersTab({ ctx }: { ctx: AppContext }) {
           <ul className="divide-y divide-line">
             {mine.map((m) => (
               <li key={m.id} className="flex items-center gap-3 p-3 text-sm">
-                <Thumb fileId={m.inPhoto} label={`${m.name} – time in`} size="sm" />
-                <Thumb fileId={m.outPhoto} label={`${m.name} – time out`} size="sm" />
+                <Thumb fileId={m.inPhoto} label={`${m.name} – time in`} size="sm" canDelete={canDeleteFiles(ctx)} />
+                <Thumb fileId={m.outPhoto} label={`${m.name} – time out`} size="sm" canDelete={canDeleteFiles(ctx)} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{m.name} <span className="text-xs font-normal text-muted">· {m.kind}</span></p>
                   <p className="text-xs text-muted">In {formatTime(m.timeIn, tz)}{m.timeOut ? ` · out ${formatTime(m.timeOut, tz)}` : " · still in"}</p>
@@ -147,7 +157,7 @@ export async function PhotosTab({ ctx, sp, today }: { ctx: AppContext; sp: SP; t
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-3">
                   <figure>
-                    <Thumb fileId={r.timeInPhotoFileId} label={`${nameOf(r.employee)} – time in`} size="lg" />
+                    <Thumb fileId={r.timeInPhotoFileId} label={`${nameOf(r.employee)} – time in`} size="lg" canDelete={canDeleteFiles(ctx)} />
                     <figcaption className="mt-1 text-xs text-muted">
                       In <strong className="text-ink">{formatTime(r.timeIn, tz)}</strong>
                       {r.timeInProxyBy ? <> · by {r.timeInProxyBy.name}</> : r.timeIn ? <> · by themself</> : null}
@@ -155,7 +165,7 @@ export async function PhotosTab({ ctx, sp, today }: { ctx: AppContext; sp: SP; t
                     </figcaption>
                   </figure>
                   <figure>
-                    <Thumb fileId={r.timeOutPhotoFileId} label={`${nameOf(r.employee)} – time out`} size="lg" />
+                    <Thumb fileId={r.timeOutPhotoFileId} label={`${nameOf(r.employee)} – time out`} size="lg" canDelete={canDeleteFiles(ctx)} />
                     <figcaption className="mt-1 text-xs text-muted">
                       Out <strong className="text-ink">{formatTime(r.timeOut, tz)}</strong>
                       {r.timeOutProxyBy ? <> · by {r.timeOutProxyBy.name}</> : r.timeOut ? <> · by themself</> : null}
@@ -322,7 +332,7 @@ async function WorkerSheet({ ctx, sp, today }: { ctx: AppContext; sp: SP; today:
                 <Td>{formatTime(d?.timeIn, tz)}</Td>
                 <Td>{formatTime(d?.timeOut, tz)}</Td>
                 <Td>{d?.timeIn && d.timeOut ? minutesToHhmm((d.timeOut.getTime() - d.timeIn.getTime()) / 60000) : "—"}</Td>
-                <Td><span className="flex gap-1"><Thumb fileId={d?.inPhotoFileId} label={`${w.name} – in`} size="sm" />{d?.outPhotoFileId && <Thumb fileId={d.outPhotoFileId} label={`${w.name} – out`} size="sm" />}</span></Td>
+                <Td><span className="flex gap-1"><Thumb fileId={d?.inPhotoFileId} label={`${w.name} – in`} size="sm" canDelete={canDeleteFiles(ctx)} />{d?.outPhotoFileId && <Thumb fileId={d.outPhotoFileId} label={`${w.name} – out`} size="sm" canDelete={canDeleteFiles(ctx)} />}</span></Td>
                 <Td className="text-xs">{d?.markedBy?.name ?? "—"}{d && map(d.inLatitude, d.inLongitude) && <> · <a href={map(d.inLatitude, d.inLongitude)!} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:underline">Map</a></>}</Td>
                 <Td>{d ? rupees(Number(d.wage)) : "—"}{d?.paidAt && <div><Badge tone="ok">Paid</Badge></div>}</Td>
                 <Td className="text-xs text-muted">{d?.remarks ?? ""}</Td>

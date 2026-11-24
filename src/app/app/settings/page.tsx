@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { DeleteFileButton } from "@/components/delete-file-button";
+import { canDeleteFiles } from "@/lib/services/file-removal";
 import { prisma } from "@/lib/db";
 import { requireCapability } from "@/lib/session";
 import { CAPABILITIES, can, ROLE_LABELS, type Capability, type Role } from "@/lib/permissions";
@@ -125,7 +127,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/set
             <DetailList items={[
               ["Constitution", org.constitution?.name],
               ["GSTIN verification", org.gstVerificationStatus === "VERIFIED" ? `Verified ${formatDateTime(org.gstVerifiedAt)}` : "Not verified (GST portal integration pending)"],
-              ["Profile picture", org.profilePictureFileId ? <a key="p" href={`/api/files/${org.profilePictureFileId}`} className="text-brand-700 hover:underline" target="_blank" rel="noopener noreferrer">View</a> : null],
+              ["Profile picture", org.profilePictureFileId ? <span key="p" className="inline-flex items-center gap-2"><a href={`/api/files/${org.profilePictureFileId}`} className="text-brand-700 hover:underline" target="_blank" rel="noopener noreferrer">View</a>{canDeleteFiles(ctx) && <DeleteFileButton fileId={org.profilePictureFileId} what="picture" />}</span> : null],
             ]} />
           </Card>
           <Card title={`${org.constitution?.name ?? "Constitution"}: associated people`}>
@@ -144,6 +146,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/set
             {cert && (
               <p className="mb-3 text-sm">
                 Current: <a href={`/api/files/${cert.file.id}`} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-700 hover:underline">{cert.certificateName ?? cert.file.originalFileName}</a>
+                {canDeleteFiles(ctx) && <DeleteFileButton fileId={cert.file.id} what="certificate" className="ml-1" />}
                 {cert.expiresOn && <span className="text-muted"> · expires {formatDate(cert.expiresOn)}</span>}
               </p>
             )}
@@ -155,7 +158,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/set
           </Card>
           <Card title="Leave policy documents">
             <ul className="mb-3 space-y-1 text-sm">
-              {docs.map((d) => <li key={d.id}><a href={`/api/files/${d.file.id}`} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:underline">{d.title ?? d.file.originalFileName}</a>{d.effectiveFrom && <span className="text-muted"> · from {formatDate(d.effectiveFrom)}</span>}</li>)}
+              {docs.map((d) => <li key={d.id}><a href={`/api/files/${d.file.id}`} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:underline">{d.title ?? d.file.originalFileName}</a>{d.effectiveFrom && <span className="text-muted"> · from {formatDate(d.effectiveFrom)}</span>}{canDeleteFiles(ctx) && <DeleteFileButton fileId={d.file.id} className="ml-1" />}</li>)}
               {docs.length === 0 && <li className="text-muted">None uploaded.</li>}
             </ul>
             <LeavePolicyDocForm action={uploadLeavePolicyAction} />

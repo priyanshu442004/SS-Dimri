@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { DeleteFileButton } from "@/components/delete-file-button";
+import { canDeleteFiles } from "@/lib/services/file-removal";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
@@ -160,7 +162,10 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
                   {rows.map((r) => (
                     <li key={r.fid} className="flex items-center justify-between py-2">
                       <span>{r.label}{r.when && <span className="ml-2 text-xs text-muted">{formatDate(r.when)}</span>}</span>
-                      <a href={`/api/files/${r.fid}`} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-700 hover:underline">View / download</a>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <a href={`/api/files/${r.fid}`} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-700 hover:underline">View / download</a>
+                        {canDeleteFiles(ctx) && <DeleteFileButton fileId={r.fid} />}
+                      </span>
                     </li>
                   ))}
                 </ul>

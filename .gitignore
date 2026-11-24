@@ -57,3 +57,6 @@ ai-products/**/*.pyc
 ai-products/apps/*/backend/data/
 ai-products/apps/*/backend/uploads/
 **/firebaseServiceAccount.json
+
+# Local data backups (may hold personal data)
+backups/

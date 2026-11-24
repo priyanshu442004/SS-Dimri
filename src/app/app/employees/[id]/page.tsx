@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { DeleteFileButton } from "@/components/delete-file-button";
+import { canDeleteFiles } from "@/lib/services/file-removal";
 import { prisma } from "@/lib/db";
 import { can, parseExpiries, ROLE_LABELS, type Role } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
@@ -143,9 +145,12 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
                     {files.map(([label, fileId]) => (
                       <li key={fileId} className="flex items-center justify-between py-2">
                         <span>{label}</span>
-                        <a href={`/api/files/${fileId}`} className="font-medium text-brand-700 hover:underline" target="_blank" rel="noopener noreferrer">
-                          View
-                        </a>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <a href={`/api/files/${fileId}`} className="font-medium text-brand-700 hover:underline" target="_blank" rel="noopener noreferrer">
+                            View
+                          </a>
+                          {canDeleteFiles(ctx) && <DeleteFileButton fileId={fileId} />}
+                        </span>
                       </li>
                     ))}
                   </ul>
