@@ -72,7 +72,13 @@ export async function validateUpload(file: File, opts: { imagesOnly?: boolean; a
   const type = detectFileType(buf, file.name) ?? (opts.allowAudio ? detectAudioType(buf) : null);
   if (!type) throw new BusinessRuleError(`“${file.name}” is not a supported file. Upload a PDF, JPG, PNG, WEBP, DOCX or XLSX file.`);
   if (opts.imagesOnly && !type.mime.startsWith("image/")) throw new BusinessRuleError(`“${file.name}” must be an image (JPG, PNG or WEBP).`);
-  return { buf, type };
+  return { buf: type.ext === "pdf" ? trimPdfPrefix(buf) : buf, type };
+}
+
+/** Drops anything before "%PDF-" (the income-tax portal wraps its PDFs in server data), so the stored copy is a clean PDF. */
+export function trimPdfPrefix(buf: Buffer) {
+  const at = buf.indexOf("%PDF-", 0, "latin1");
+  return at > 0 ? buf.subarray(at) : buf;
 }
 
 /**
