@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { NO_EMPLOYEE } from "@/lib/ids";
-import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import { addDays, dateOnly, formatDate, formatDateTime, isoDateInTz, minutesToHhmm } from "@/lib/dates";
 import { capacityFromPolicy, describeHours } from "@/lib/domain/allocation";
@@ -12,18 +10,20 @@ import { OPEN_STATUSES } from "@/lib/domain/task-workflow";
 import { getPolicy } from "@/lib/services/attendance";
 import { DeleteButton } from "@/components/delete-dialog";
 import { canDelete } from "@/lib/services/deletions";
+import { allocationScope } from "@/lib/services/allocation-views";
 import { Card, DetailList, humanize, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
 
 /** Allocation detail: current assignment, full change history, related tasks and timesheet entries. */
 export default async function AllocationDetail({ params }: PageProps<"/app/allocations/[id]">) {
   const ctx = await requireCapability("allocations.use");
   const { id } = await params;
+  const scope = await allocationScope(ctx);
   const a = await prisma.teamAllocation.findFirst({
     where: {
       id,
       organizationId: ctx.organization.id,
-      // Team members may only open their own allocations.
-      ...(can(ctx, "allocations.view_all") ? {} : { employeeId: ctx.employee?.id ?? NO_EMPLOYEE }),
+      // Same view as the list: own allocations, a lead's line, or the whole firm (tracker S.No. 110).
+      ...scope.where,
     },
     include: {
       client: { select: { id: true, tradeName: true, contacts: { where: { isPrimary: true }, take: 1, select: { name: true, mobile: true } } } },

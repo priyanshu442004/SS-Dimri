@@ -62,7 +62,7 @@ async function markEmployee(ctx: AppContext, employeeId: string, v: z.infer<type
   if (v.kind === "in" && existing?.timeIn) throw new BusinessRuleError(`${name} is already marked in today (${formatTime(existing.timeIn, tz)}).`);
   if (v.kind === "in" && existing && existing.status !== "PRESENT") throw new BusinessRuleError(`${name} is recorded as ${existing.autoAbsentAt ? "absent by the ERP" : existing.status.toLowerCase().replace("_", " ")} today; it cannot be changed to present.`);
   const policy = await getPolicy(org);
-  const schedule = scheduleOf(policy, await prisma.employee.findUniqueOrThrow({ where: { id: emp.id }, select: { attendanceProfile: true, siteReportingTime: true } }), existing);
+  const schedule = scheduleOf(policy, await prisma.employee.findUniqueOrThrow({ where: { id: emp.id }, select: { attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true } }), existing);
   if (v.kind === "in" && minutesOfDayInTz(now, tz) >= schedule.absentAt) {
     const onLeave = await prisma.leaveRequest.count({ where: { employeeId: emp.id, status: { in: ["APPROVED", "PENDING"] }, fromDate: { lte: day }, toDate: { gte: day } } });
     if (!onLeave) throw new BusinessRuleError(`It is past ${hhmm(schedule.absentAt)}: ${name} cannot be marked present today (office rule 3).`);

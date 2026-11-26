@@ -3,7 +3,7 @@
 // Excel exports all score days with `scoreMonth`, so a figure never differs between pages.
 //
 //   §5  Office 9:30–18:30, grace till 9:45. Client-site team: reporting time fixed by the Team
-//       Lead, 8 hours in all.
+//       Lead, and the length of their day (8 hours unless the Team Lead sets other hours, 25 Nov 2026).
 //   §6  ≤15 min late: grace. 15 min–1 h late on 3 days in a month: half day. Over 1 h: half day.
 //       One late arrival a month is excused when the Team Lead was told in the ERP beforehand.
 //   §8  Leaving before 17:30 (one hour before the scheduled end) counts as a half day.
@@ -39,7 +39,7 @@ export type Schedule = {
   site: boolean;
 };
 
-export type ScheduleOwner = { attendanceProfile: string; siteReportingTime: string | null };
+export type ScheduleOwner = { attendanceProfile: string; siteReportingTime: string | null; siteDayMinutes?: number | null };
 
 /** Has this person a client-site schedule set by the Team Lead? */
 export const isSiteSchedule = (e: ScheduleOwner) => e.attendanceProfile === "ONSITE" && !!e.siteReportingTime;
@@ -66,7 +66,7 @@ export function scheduleFor(p: PolicyTimes, e: ScheduleOwner | null, recorded?: 
     site = start !== officeStart || end !== officeEnd;
   } else if (e && isSiteSchedule(e)) {
     start = hhmmToMinutes(e.siteReportingTime!);
-    end = start + p.onsiteRequiredMinutes;
+    end = start + (e.siteDayMinutes && e.siteDayMinutes > 0 ? e.siteDayMinutes : p.onsiteRequiredMinutes);
     site = true;
   }
   return {
@@ -134,6 +134,8 @@ export type PolicyNumbers = {
   unrequestedAbsenceDays: number; // 2 ("double absent")
   noLeaveBonusDays: number; // 2
   overtimeMinutesPerDay: number; // minutes that make one day's pay of overtime
+  /** Days a month attendance may be marked on the person's request; each later one is a half day (25 Nov 2026). */
+  requestMarksPerMonth?: number; // 3
 };
 
 export type DayInput = {
@@ -144,7 +146,7 @@ export type DayInput = {
   employed: boolean;
   /** After the last day counted (today before the cut-off, or a future day): only known leave matters. */
   future: boolean;
-  record: { status: "PRESENT" | "ABSENT" | "LEAVE" | "HALF_DAY"; timeIn: Date | null; timeOut: Date | null; autoAbsent?: boolean } | null;
+  record: { status: "PRESENT" | "ABSENT" | "LEAVE" | "HALF_DAY"; timeIn: Date | null; timeOut: Date | null; autoAbsent?: boolean; markedOnRequest?: boolean } | null;
   schedule: Schedule;
   /** Approved leave covering the day. */
   leave: { paid: boolean; halfDay: boolean; withIntimation: boolean } | null;
@@ -183,6 +185,10 @@ export type DayScore = {
   stayedUnapproved: number;
   /** Marked in, never marked out: hours and overtime can't be counted. */
   noTimeOut: boolean;
+  /** Marked by a senior / administrator on the person's request (forgot / could not mark). */
+  requestMarked: boolean;
+  /** A request-marked day beyond the monthly allowance: counted as a half day. */
+  requestHalfDay: boolean;
 };
 
 export type MonthScore = {
@@ -216,6 +222,9 @@ export type MonthScore = {
   leaveTaken: number;
   /** Sundays / holidays worked with approval: paid as extra days (½ for a half day). */
   extraDays: number;
+  /** Days marked on the person's request this month, and those beyond the allowance (½ day each). */
+  requestMarked: number;
+  requestHalfDays: number;
 };
 
 const isFullWorking = (d: DayInput) => d.record && (d.record.status === "PRESENT" || d.record.status === "HALF_DAY");
@@ -269,6 +278,8 @@ export function scoreMonth(days: (DayInput & { inMonth: boolean })[], p: PolicyN
       overtimeMinutes: worked && d.overtimeApproved ? (times?.stayedMinutes ?? 0) : 0,
       stayedUnapproved: worked && !d.overtimeApproved ? (times?.stayedMinutes ?? 0) : 0,
       noTimeOut: worked && !!d.record?.timeIn && !d.record.timeOut,
+      requestMarked: worked && !!d.record?.markedOnRequest,
+      requestHalfDay: false,
       inMonth: d.inMonth,
       input: d,
     };
@@ -286,17 +297,28 @@ export function scoreMonth(days: (DayInput & { inMonth: boolean })[], p: PolicyN
 
   const month = scored.filter((s) => s.inMonth);
 
+  // 25 Nov 2026: attendance marked on the person's request is fine on up to N days a month (3); each
+  // later one counts as a half day. That half day replaces the day's late / early penalties.
+  let requestAllowance = p.requestMarksPerMonth ?? 3;
+  for (const s of month) {
+    if (!s.requestMarked || s.kind !== "WORKED" || s.input.off) continue;
+    if (requestAllowance > 0) { requestAllowance--; continue; }
+    s.requestHalfDay = true;
+    s.veryLateHalfDay = false;
+    s.earlyHalfDay = false;
+  }
+
   // §6: one late arrival a month (the first one told in advance) is a warning only.
   let excusable = p.lateGracePerMonth;
   for (const s of month) {
-    const band = s.kind === "WORKED" && !s.input.off ? s.times?.lateBand : undefined;
+    const band = s.kind === "WORKED" && !s.input.off && !s.requestHalfDay ? s.times?.lateBand : undefined;
     if (excusable > 0 && (band === "LATE" || band === "VERY_LATE") && s.input.lateIntimated) {
       s.lateExcused = true;
       s.veryLateHalfDay = false;
       excusable--;
     }
   }
-  const lateArrivals = month.filter((s) => s.kind === "WORKED" && !s.input.off && s.times?.lateBand === "LATE" && !s.lateExcused).length;
+  const lateArrivals = month.filter((s) => s.kind === "WORKED" && !s.input.off && !s.requestHalfDay && s.times?.lateBand === "LATE" && !s.lateExcused).length;
   const veryLate = month.filter((s) => s.veryLateHalfDay).length;
   const lateHalfDays = Math.floor(lateArrivals / Math.max(1, p.lateArrivalsPerHalfDay)) * 0.5 + veryLate * 0.5;
 
@@ -331,7 +353,8 @@ export function scoreMonth(days: (DayInput & { inMonth: boolean })[], p: PolicyN
   const employedDays = month.filter((s) => s.kind !== "NOT_EMPLOYED").length;
   const counted = month.filter((s) => s.kind !== "NOT_EMPLOYED" && s.kind !== "FUTURE").length;
 
-  const unpaidDays = round2(unpaidLeave + absentDaysCharged + sandwichDays + halfDays * 0.5 + lateHalfDays + earlyHalfDays);
+  const requestHalfDays = month.filter((s) => s.requestHalfDay).length;
+  const unpaidDays = round2(unpaidLeave + absentDaysCharged + sandwichDays + halfDays * 0.5 + lateHalfDays + earlyHalfDays + requestHalfDays * 0.5);
   const tookLeave = unpaidDays > 0 || paidLeave > 0;
   // Leave actually taken (not the late / early penalties): leave days, absences (counted once), half days.
   const leaveTaken = round2(month.reduce((t, s) => t + (s.kind === "LEAVE" ? 1 : s.kind === "HALF_LEAVE" ? 0.5 : 0), 0) + absentDays.length + halfLeaveAbsent + halfDays * 0.5 + sandwichDays);
@@ -361,6 +384,8 @@ export function scoreMonth(days: (DayInput & { inMonth: boolean })[], p: PolicyN
     tookLeave,
     leaveTaken,
     extraDays,
+    requestMarked: month.filter((s) => s.requestMarked).length,
+    requestHalfDays,
   };
 }
 
@@ -387,6 +412,8 @@ export type PayInput = {
   conveyance?: number;
   /** Salary advance recovered this month (tracker S.No. 85). */
   advanceDeduction?: number;
+  /** Fixed monthly allowance on top of the salary (SSDA salary slip, 25 Nov 2026). */
+  fixedAllowance?: number;
 };
 
 export type Pay = {
@@ -400,6 +427,14 @@ export type Pay = {
   conveyance: number;
   advanceDeduction: number;
   fines: number;
+  /** Fixed allowance paid this month (in full for a complete month, pro rata while it runs or for part of a month). */
+  fixedAllowance: number;
+  /** Approved overtime expressed in days (minutes ÷ minutes per day), for the salary slip. */
+  overtimeDays: number;
+  /** Salary slip: payable days + overtime days + no-leave bonus days + extra days worked. */
+  payableDaysTotal: number;
+  /** Salary for those days: monthly salary ÷ days in month × payableDaysTotal (= base + overtime + bonus + extra pay). */
+  salaryForDays: number | null;
   net: number | null;
 };
 
@@ -408,12 +443,20 @@ export function computePay(i: PayInput, p: PolicyNumbers): Pay {
   const conveyance = round2(i.conveyance ?? 0);
   const advanceDeduction = round2(i.advanceDeduction ?? 0);
   const extraDays = i.score.extraDays ?? 0;
-  if (i.monthlySalary === null) return { perDay: null, basePay: null, overtimePay: null, bonusDays, bonus: null, extraDays, extraPay: null, conveyance, advanceDeduction, fines: i.fines, net: null };
+  const overtimeDaysExact = p.overtimeMinutesPerDay > 0 ? i.score.overtimeMinutes / p.overtimeMinutesPerDay : 0;
+  const overtimeDays = round2(overtimeDaysExact);
+  const payableDaysTotal = round2(i.score.payableDays + overtimeDaysExact + bonusDays + extraDays);
+  // The allowance is a monthly amount, paid for the payable days (in full for a full month with nothing deducted).
+  const allowanceMonthly = i.fixedAllowance ?? 0;
+  const fixedAllowance = round2((allowanceMonthly * Math.min(i.score.payableDays, i.daysInMonth)) / Math.max(1, i.daysInMonth));
+  if (i.monthlySalary === null) return { perDay: null, basePay: null, overtimePay: null, bonusDays, bonus: null, extraDays, extraPay: null, conveyance, advanceDeduction, fines: i.fines, fixedAllowance, overtimeDays, payableDaysTotal, salaryForDays: null, net: null };
   const perDay = i.monthlySalary / i.daysInMonth;
   const basePay = perDay * i.score.payableDays;
-  const overtimePay = p.overtimeMinutesPerDay > 0 ? (perDay * i.score.overtimeMinutes) / p.overtimeMinutesPerDay : 0;
+  const overtimePay = perDay * overtimeDaysExact;
   const bonus = perDay * bonusDays;
   const extraPay = perDay * extraDays;
+  // One rounding, as on the slip ("27,500.00 ÷ 31 days × 38 days"); the net is the sum of the slip's lines.
+  const salaryForDays = round2(basePay + overtimePay + bonus + extraPay);
   return {
     perDay: round2(perDay),
     basePay: round2(basePay),
@@ -425,7 +468,11 @@ export function computePay(i: PayInput, p: PolicyNumbers): Pay {
     conveyance,
     advanceDeduction,
     fines: i.fines,
-    net: round2(Math.max(0, basePay + overtimePay + bonus + extraPay + conveyance - i.fines - advanceDeduction)),
+    fixedAllowance,
+    overtimeDays,
+    payableDaysTotal,
+    salaryForDays,
+    net: round2(Math.max(0, salaryForDays + fixedAllowance + conveyance - i.fines - advanceDeduction)),
   };
 }
 

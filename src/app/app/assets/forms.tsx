@@ -41,6 +41,22 @@ export function IssueForm({ action, employees, conditions, today }: { action: Ac
   );
 }
 
+/** Issue any asset in stock to a team member, from the Asset allocation tab. */
+export function AllocateForm({ action, assets, employees, conditions, today }: { action: Act; assets: Option[]; employees: Option[]; conditions: Option[]; today: string }) {
+  return (
+    <ActionForm action={action} resetOnSuccess>
+      <SearchSelect label="Asset (in stock)" name="assetId" options={assets} required placeholder="Search code or description…" />
+      <SearchSelect label="Issue to" name="employeeId" options={employees} required placeholder="Search the team member…" />
+      <div className="grid gap-2 sm:grid-cols-2">
+        <TextField label="Issue (out) date" name="issuedOn" type="date" required defaultValue={today} />
+        <SelectField label="Condition at issue" name="issueCondition" options={conditions} />
+      </div>
+      <TextField label="Notes" name="notes" placeholder="e.g. with charger and bag" />
+      <SubmitButton>Issue asset</SubmitButton>
+    </ActionForm>
+  );
+}
+
 export function ReturnForm({ action, conditions, today }: { action: Act; conditions: Option[]; today: string }) {
   return (
     <ActionForm action={action}>

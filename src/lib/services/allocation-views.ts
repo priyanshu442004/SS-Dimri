@@ -1,6 +1,24 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { FREQUENCY_KEYS, type Frequency } from "@/lib/domain/allocation-schedule";
+import { lineIds, seesFirm } from "@/lib/hierarchy";
+import { NO_EMPLOYEE } from "@/lib/ids";
+import { can } from "@/lib/permissions";
+import type { AppContext } from "@/lib/session";
+
+/**
+ * Who sees which allocations (tracker S.No. 110, hierarchy rule of S.No. 97): the owner / administrators
+ * (or "see everyone's allocation" given by name) everything; a Team Leader / Manager their own line
+ * (everyone reporting to them, all levels); anyone else only their own — where they are the team member,
+ * the reviewer (Reports to) or the Team Leader.
+ */
+export async function allocationScope(ctx: AppContext): Promise<{ where: Prisma.TeamAllocationWhereInput; firm: boolean; line: string[] | null }> {
+  if (seesFirm(ctx, "allocations.view_all")) return { where: {}, firm: true, line: null };
+  const me = ctx.employee?.id ?? NO_EMPLOYEE;
+  const line = can(ctx, "allocations.view_all") ? await lineIds(ctx) : [me];
+  const ids = line.length ? line : [me];
+  return { where: { OR: [{ employeeId: { in: ids } }, { reportsToEmployeeId: { in: ids } }, { teamLeaderEmployeeId: { in: ids } }] }, firm: false, line: ids };
+}
 
 // Filters of the Team allocation page, shared with its Excel export so both show the same rows.
 
@@ -38,13 +56,11 @@ export function parseAllocationFilters(sp: Record<string, string | string[] | un
   };
 }
 
-export function allocationWhere(organizationId: string, f: AllocationFilters, onlyEmployeeId?: string): Prisma.TeamAllocationWhereInput {
+export function allocationWhere(organizationId: string, f: AllocationFilters, scope: Prisma.TeamAllocationWhereInput = {}): Prisma.TeamAllocationWhereInput {
   return {
     organizationId,
-    // A person sees allocations where they are the team member, the reviewer (Reports to) or the Team Leader.
-    ...(onlyEmployeeId
-      ? { AND: [{ OR: [{ employeeId: onlyEmployeeId }, { reportsToEmployeeId: onlyEmployeeId }, { teamLeaderEmployeeId: onlyEmployeeId }] }, f.person ? { employeeId: f.person } : {}] }
-      : f.person ? { employeeId: f.person } : {}),
+    // The person's view (see allocationScope) AND the filters.
+    AND: [scope, f.person ? { employeeId: f.person } : {}],
     ...(f.client ? { clientId: f.client } : {}),
     ...(f.type ? { resourceType: f.type } : {}),
     ...(f.frequency ? { frequency: f.frequency } : {}),

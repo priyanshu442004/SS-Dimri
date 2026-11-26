@@ -110,6 +110,8 @@ export const fullRegistrationSchema = z.object({
   incomeTaxPassword: zOptionalText(200),
   tracesUserId: zOptionalText(120),
   tracesPassword: zOptionalText(200),
+  ewayBillUserId: zOptionalText(120),
+  ewayBillPassword: zOptionalText(200),
   masterRemark: zOptionalText(1000),
   ...clientComplianceFields,
 });
@@ -197,6 +199,8 @@ export async function registerClient(ctx: AppContext, v: z.infer<typeof fullRegi
           gstPasswordEncrypted: v.gstPassword ? encryptField(v.gstPassword) : null,
           incomeTaxPasswordEncrypted: v.incomeTaxPassword ? encryptField(v.incomeTaxPassword) : null,
           tracesPasswordEncrypted: v.tracesPassword ? encryptField(v.tracesPassword) : null,
+          ewayBillUserId: v.ewayBillUserId,
+          ewayBillPasswordEncrypted: v.ewayBillPassword ? encryptField(v.ewayBillPassword) : null,
           status: "PENDING_APPROVAL",
           registrationChannel: "STAFF",
           createdById: ctx.user.id,

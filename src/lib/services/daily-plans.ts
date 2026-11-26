@@ -71,7 +71,7 @@ export async function dayView(ctx: AppContext, employeeId: string, iso: string) 
   const day = dateOnly(iso);
   const [policy, emp, plan, record, holidays] = await Promise.all([
     getPolicy(ctx.organization.id),
-    prisma.employee.findUniqueOrThrow({ where: { id: employeeId }, select: { id: true, firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true } }),
+    prisma.employee.findUniqueOrThrow({ where: { id: employeeId }, select: { id: true, firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true } }),
     prisma.dailyPlan.findUnique({ where: { employeeId_planDate: { employeeId, planDate: day } }, include }),
     prisma.attendanceRecord.findFirst({ where: { employeeId, attendanceDate: day }, select: { status: true, timeIn: true, timeOut: true, scheduledStart: true, scheduledEnd: true } }),
     holidaySet(ctx.organization.id, day, addDays(day, 14)),
@@ -287,7 +287,7 @@ async function plansFor(organizationId: string, tz: string, ids: string[], iso: 
   const day = dateOnly(iso);
   const [policy, employees, plans, records, holidays] = await Promise.all([
     getPolicy(organizationId),
-    prisma.employee.findMany({ where: { id: { in: ids }, OR: [{ dateOfJoining: null }, { dateOfJoining: { lte: day } }] }, orderBy: { firstName: "asc" }, select: { id: true, firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true } }),
+    prisma.employee.findMany({ where: { id: { in: ids }, OR: [{ dateOfJoining: null }, { dateOfJoining: { lte: day } }] }, orderBy: { firstName: "asc" }, select: { id: true, firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true } }),
     prisma.dailyPlan.findMany({ where: { employeeId: { in: ids }, planDate: day }, include }),
     prisma.attendanceRecord.findMany({ where: { employeeId: { in: ids }, attendanceDate: day }, select: { employeeId: true, status: true, scheduledStart: true, scheduledEnd: true } }),
     holidaySet(organizationId, day, addDays(day, 14)),
@@ -350,7 +350,7 @@ export async function finesForMonth(organizationId: string, tz: string, month: s
     prisma.attendanceRecord.findMany({ where: { employeeId: { in: ids }, attendanceDate: { gte: start, lte: end }, status: { in: ["PRESENT", "HALF_DAY"] } }, select: { employeeId: true, attendanceDate: true, scheduledStart: true, scheduledEnd: true } }),
     prisma.dailyPlan.findMany({ where: { employeeId: { in: ids }, planDate: { gte: start, lte: end } }, select: { employeeId: true, planDate: true, eodSubmittedAt: true, escalatedAt: true } }),
     holidaySet(organizationId, start, addDays(end, 14)),
-    prisma.employee.findMany({ where: { id: { in: ids } }, select: { id: true, firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true } }),
+    prisma.employee.findMany({ where: { id: { in: ids } }, select: { id: true, firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true } }),
     leadsOf(ids),
   ]);
   const now = new Date();
@@ -426,7 +426,7 @@ export async function sweepPlanFlags(organizationId: string, tz: string) {
   // 2. EOD not filed by the next working day's reporting time (last 7 days).
   const worked = await prisma.attendanceRecord.findMany({
     where: { employeeId: { in: ids }, attendanceDate: { gte: addDays(today, -7), lt: today }, status: { in: ["PRESENT", "HALF_DAY"] } },
-    select: { employeeId: true, attendanceDate: true, scheduledStart: true, scheduledEnd: true, employee: { select: { attendanceProfile: true, siteReportingTime: true } } },
+    select: { employeeId: true, attendanceDate: true, scheduledStart: true, scheduledEnd: true, employee: { select: { attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true } } },
   });
   for (const r of worked) {
     const day = toIsoDate(r.attendanceDate);

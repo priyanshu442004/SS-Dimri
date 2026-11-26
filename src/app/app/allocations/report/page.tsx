@@ -4,6 +4,7 @@ import { ClipboardList } from "lucide-react";
 import { requireCapability } from "@/lib/session";
 import { formatDate, isoDateInTz } from "@/lib/dates";
 import { clientAllocationReport, parseReportFilters, reportQuery, teamAllocationReport } from "@/lib/services/allocation-report";
+import { allocationScope } from "@/lib/services/allocation-views";
 import { Badge, DownloadButton, EmptyState, PageHeader, Stat, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Allocation reports" };
@@ -14,6 +15,8 @@ export default async function AllocationReportPage({ searchParams }: { searchPar
   const ctx = await requireCapability("allocations.view_all");
   const f = parseReportFilters(await searchParams);
   const today = isoDateInTz(new Date(), ctx.organization.timezone);
+  // A Team Leader sees the reports for their own line only (tracker S.No. 110).
+  const { line } = await allocationScope(ctx);
   return (
     <>
       <PageHeader icon={<ClipboardList />} title="Allocation reports" back={{ href: "/app/allocations", label: "Team allocation" }}
@@ -28,13 +31,13 @@ export default async function AllocationReportPage({ searchParams }: { searchPar
   );
 
   async function Clients() {
-    const r = await clientAllocationReport(ctx.organization.id, f, today);
+    const r = await clientAllocationReport(ctx.organization.id, f, today, line);
     return (
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           <Stat label="Clients" value={r.total} hint={f.status === "all" ? "Any status" : `Status: ${f.status.toLowerCase().replace("_", " ")}`} />
           <Stat label="Allocated" value={r.allocatedCount} tone="ok" href={`/app/allocations/report${reportQuery({ ...f, allocated: "yes" })}`} />
-          <Stat label="Not allocated to anyone" value={r.notAllocated} tone={r.notAllocated ? "warn" : "ok"} href={`/app/allocations/report${reportQuery({ ...f, allocated: "no" })}`} />
+          {!line && <Stat label="Not allocated to anyone" value={r.notAllocated} tone={r.notAllocated ? "warn" : "ok"} href={`/app/allocations/report${reportQuery({ ...f, allocated: "no" })}`} />}
         </div>
         <form className="flex flex-wrap items-end gap-2" role="search">
           <input type="hidden" name="tab" value="clients" />
@@ -74,7 +77,7 @@ export default async function AllocationReportPage({ searchParams }: { searchPar
   }
 
   async function Team() {
-    const r = await teamAllocationReport(ctx.organization.id, f, today);
+    const r = await teamAllocationReport(ctx.organization.id, f, today, line);
     const groups = new Map<string, typeof r.rows>();
     for (const row of r.rows) groups.set(row.employeeId, [...(groups.get(row.employeeId) ?? []), row]);
     return (

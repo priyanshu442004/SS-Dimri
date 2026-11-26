@@ -21,6 +21,9 @@ export type PayrollRow = {
   department: string | null;
   monthlySalary: number | null;
   salaryMode: string | null;
+  /** Fixed monthly allowance in force for the month (SSDA salary slip). */
+  fixedAllowance: number;
+  dateOfJoining: Date | null;
   score: MonthScore;
   pay: Pay;
   fines: Fines;
@@ -64,12 +67,12 @@ export async function payrollForMonth(ctx: AppContext, month: string, onlyEmploy
       orderBy: { firstName: "asc" },
       select: {
         id: true, firstName: true, lastName: true, permanentEmployeeCode: true, temporaryEmployeeCode: true, dateOfJoining: true, exitDate: true,
-        attendanceProfile: true, siteReportingTime: true,
+        attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true,
         designation: { select: { name: true } }, department: { select: { name: true } },
-        salaryRecords: { where: { effectiveFrom: { lte: end } }, orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }], take: 1, select: { agreedSalary: true, salaryPeriod: true, salaryMode: true } },
+        salaryRecords: { where: { effectiveFrom: { lte: end } }, orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }], take: 1, select: { agreedSalary: true, salaryPeriod: true, salaryMode: true, fixedAllowance: true } },
       },
     }),
-    prisma.attendanceRecord.findMany({ where: { organizationId, attendanceDate: { gte: from, lte: to } }, select: { employeeId: true, attendanceDate: true, status: true, timeIn: true, timeOut: true, autoAbsentAt: true, scheduledStart: true, scheduledEnd: true } }),
+    prisma.attendanceRecord.findMany({ where: { organizationId, attendanceDate: { gte: from, lte: to } }, select: { employeeId: true, attendanceDate: true, status: true, timeIn: true, timeOut: true, autoAbsentAt: true, markedOnRequest: true, scheduledStart: true, scheduledEnd: true } }),
     prisma.leaveRequest.findMany({ where: { organizationId, status: "APPROVED", fromDate: { lte: to }, toDate: { gte: from } }, select: { employeeId: true, fromDate: true, toDate: true, isPaid: true, isHalfDay: true, withIntimation: true } }),
     prisma.leaveRequest.findMany({ where: { organizationId, status: { in: ["PENDING", "REJECTED"] }, fromDate: { lte: to }, toDate: { gte: from } }, select: { employeeId: true, fromDate: true, toDate: true } }),
     prisma.attendanceRequest.findMany({ where: { organizationId, requestDate: { gte: from, lte: to }, status: { in: ["PENDING", "APPROVED"] } }, select: { employeeId: true, requestDate: true, kind: true, status: true, inAdvance: true } }),
@@ -105,10 +108,11 @@ export async function payrollForMonth(ctx: AppContext, month: string, onlyEmploy
         employed: (!e.dateOfJoining || e.dateOfJoining <= d) && (!e.exitDate || e.exitDate >= d),
         // Today is counted once the person is in, or after the absent cut-off.
         future: iso > todayIso || (iso === todayIso && !rec && nowMin < schedule.absentAt),
-        record: rec ? { status: rec.status, timeIn: rec.timeIn, timeOut: rec.timeOut, autoAbsent: !!rec.autoAbsentAt } : null,
+        record: rec ? { status: rec.status, timeIn: rec.timeIn, timeOut: rec.timeOut, autoAbsent: !!rec.autoAbsentAt, markedOnRequest: rec.markedOnRequest } : null,
         schedule,
         leave: leave ? { paid: leave.isPaid, halfDay: leave.isHalfDay, withIntimation: leave.withIntimation } : null,
-        requested: requested.some((l) => l.employeeId === e.id && l.fromDate <= d && l.toDate >= d),
+        // A leave request, or a "please mark my attendance" request: the absence was raised in the ERP.
+        requested: requested.some((l) => l.employeeId === e.id && l.fromDate <= d && l.toDate >= d) || f.some((x) => x.kind === "MARK_ATTENDANCE"),
         lateIntimated: f.some((x) => x.kind === "LATE_ARRIVAL" && x.inAdvance),
         earlyLeaveApproved: f.some((x) => x.kind === "EARLY_LEAVE" && x.status === "APPROVED"),
         overtimeApproved: f.some((x) => x.kind === "OVERTIME" && x.status === "APPROVED"),
@@ -122,7 +126,8 @@ export async function payrollForMonth(ctx: AppContext, month: string, onlyEmploy
     const fullMonth = (!e.dateOfJoining || e.dateOfJoining <= start) && (!e.exitDate || e.exitDate >= end);
     const conv = conveyance.get(e.id);
     const adv = advances.get(e.id);
-    const pay = computePay({ monthlySalary, daysInMonth, complete, fullMonth, score, fines: fine.amount, conveyance: conv?.amount ?? 0, advanceDeduction: adv?.deduction ?? 0 }, policy.numbers);
+    const fixedAllowance = salary?.fixedAllowance ? Number(salary.fixedAllowance) : 0;
+    const pay = computePay({ monthlySalary, daysInMonth, complete, fullMonth, score, fines: fine.amount, conveyance: conv?.amount ?? 0, advanceDeduction: adv?.deduction ?? 0, fixedAllowance }, policy.numbers);
     return {
       employeeId: e.id,
       name: `${e.firstName} ${e.lastName ?? ""}`.trim(),
@@ -131,6 +136,8 @@ export async function payrollForMonth(ctx: AppContext, month: string, onlyEmploy
       department: e.department?.name ?? null,
       monthlySalary,
       salaryMode: salary?.salaryMode ?? null,
+      fixedAllowance,
+      dateOfJoining: e.dateOfJoining,
       score,
       pay,
       fines: fine,
@@ -180,7 +187,10 @@ export type SalaryOverviewRow = {
   name: string;
   code: string;
   designation: string | null;
-  current: { amount: number; period: string; monthly: number; from: Date; mode: string | null } | null;
+  current: { amount: number; period: string; monthly: number; from: Date; mode: string | null; allowance: number } | null;
+  /** The salary before the current one, and the change (tracker S.No. 103: last / current / % increment). */
+  previous: { monthly: number; from: Date; until: Date } | null;
+  increment: { amount: number; percent: number | null } | null;
   upcoming: { amount: number; monthly: number; from: Date } | null;
   committed: { date: Date | null; amount: number | null; percent: number | null } | null;
   changes: number;
@@ -203,12 +213,18 @@ export async function salaryOverview(ctx: AppContext): Promise<SalaryOverviewRow
     const cur = e.salaryRecords.find((r) => r.effectiveFrom <= today) ?? null;
     const up = e.salaryRecords.filter((r) => r.effectiveFrom > today).at(-1) ?? null;
     const commit = cur && (cur.committedIncrementDate || cur.committedIncrementAmount || cur.committedIncrementPercent) ? cur : null;
+    const curIdx = cur ? e.salaryRecords.indexOf(cur) : -1;
+    const prev = curIdx >= 0 ? e.salaryRecords.slice(curIdx + 1).find((r) => r.effectiveFrom < cur!.effectiveFrom) ?? null : null;
+    const curMonthly = cur ? monthlyAmount(Number(cur.agreedSalary), cur.salaryPeriod) : null;
+    const prevMonthly = prev ? monthlyAmount(Number(prev.agreedSalary), prev.salaryPeriod) : null;
     return {
       id: e.id,
       name: `${e.firstName} ${e.lastName ?? ""}`.trim(),
       code: e.permanentEmployeeCode ?? e.temporaryEmployeeCode,
       designation: e.designation?.name ?? null,
-      current: cur ? { amount: Number(cur.agreedSalary), period: cur.salaryPeriod, monthly: monthlyAmount(Number(cur.agreedSalary), cur.salaryPeriod), from: cur.effectiveFrom, mode: cur.salaryMode } : null,
+      current: cur ? { amount: Number(cur.agreedSalary), period: cur.salaryPeriod, monthly: curMonthly!, from: cur.effectiveFrom, mode: cur.salaryMode, allowance: cur.fixedAllowance ? Number(cur.fixedAllowance) : 0 } : null,
+      previous: prev ? { monthly: prevMonthly!, from: prev.effectiveFrom, until: new Date(cur!.effectiveFrom.getTime() - 86_400_000) } : null,
+      increment: prevMonthly !== null && curMonthly !== null ? { amount: Math.round((curMonthly - prevMonthly) * 100) / 100, percent: prevMonthly ? Math.round(((curMonthly - prevMonthly) / prevMonthly) * 1000) / 10 : null } : null,
       upcoming: up ? { amount: Number(up.agreedSalary), monthly: monthlyAmount(Number(up.agreedSalary), up.salaryPeriod), from: up.effectiveFrom } : null,
       committed: commit ? { date: commit.committedIncrementDate, amount: commit.committedIncrementAmount ? Number(commit.committedIncrementAmount) : null, percent: commit.committedIncrementPercent ? Number(commit.committedIncrementPercent) : null } : null,
       changes: e.salaryRecords.length,
@@ -230,6 +246,7 @@ export async function salaryHistory(ctx: AppContext, employeeId: string, opts: {
     const before = prev ? monthlyAmount(Number(prev.agreedSalary), prev.salaryPeriod) : null;
     return {
       id: r.id, effectiveFrom: r.effectiveFrom, amount: Number(r.agreedSalary), period: r.salaryPeriod, monthly, mode: r.salaryMode, notes: r.incrementNotes,
+      allowance: r.fixedAllowance ? Number(r.fixedAllowance) : 0, previous: before,
       by: r.createdBy?.name ?? null, at: r.createdAt,
       change: before === null ? null : { amount: Math.round((monthly - before) * 100) / 100, percent: before ? Math.round(((monthly - before) / before) * 1000) / 10 : null },
       committed: { date: r.committedIncrementDate, amount: r.committedIncrementAmount ? Number(r.committedIncrementAmount) : null, percent: r.committedIncrementPercent ? Number(r.committedIncrementPercent) : null },
@@ -249,6 +266,8 @@ export const salarySchema = z.object({
   salaryPeriod: z.enum(["MONTHLY", "ANNUAL"]).default("MONTHLY"),
   effectiveFrom: zIsoDate,
   salaryMode: z.enum(["TRANSFER", "CASH"]).optional(),
+  /** Fixed monthly allowance (₹); blank = the allowance in force before (if any). */
+  fixedAllowance: z.coerce.number().min(0).max(10_000_000).optional(),
   incrementNotes: zOptionalText(500),
   committedIncrementDate: zIsoDate.optional(),
   committedIncrementPercent: z.coerce.number().min(0).max(500).optional(),
@@ -285,6 +304,7 @@ export async function setSalary(ctx: AppContext, v: z.infer<typeof salarySchema>
     const r = await tx.employeeSalaryRecord.create({
       data: {
         employeeId: emp.id, agreedSalary: amount, salaryPeriod: period, effectiveFrom: effective, salaryMode: v.salaryMode ?? base?.salaryMode ?? undefined,
+        fixedAllowance: v.fixedAllowance ?? base?.fixedAllowance ?? null,
         incrementNotes: v.incrementNotes,
         committedIncrementDate: v.committedIncrementDate ? dateOnly(v.committedIncrementDate) : null,
         committedIncrementPercent: v.committedIncrementPercent ?? null,
@@ -309,6 +329,7 @@ export const salaryEditSchema = z.object({
   salaryPeriod: z.enum(["MONTHLY", "ANNUAL"]),
   effectiveFrom: zIsoDate,
   salaryMode: z.enum(["TRANSFER", "CASH"]).optional(),
+  fixedAllowance: z.coerce.number().min(0).max(10_000_000).optional(),
   incrementNotes: zOptionalText(500),
   committedIncrementDate: zIsoDate.optional(),
   committedIncrementPercent: z.coerce.number().min(0).max(500).optional(),
@@ -327,6 +348,7 @@ export async function editSalary(ctx: AppContext, recordId: string, v: z.infer<t
       where: { id: r.id },
       data: {
         agreedSalary: v.agreedSalary, salaryPeriod: v.salaryPeriod, effectiveFrom: dateOnly(v.effectiveFrom), salaryMode: v.salaryMode ?? null, incrementNotes: v.incrementNotes ?? null,
+        fixedAllowance: v.fixedAllowance ?? null,
         committedIncrementDate: v.committedIncrementDate ? dateOnly(v.committedIncrementDate) : null,
         committedIncrementPercent: v.committedIncrementPercent ?? null,
         committedIncrementAmount: v.committedIncrementAmount ?? null,

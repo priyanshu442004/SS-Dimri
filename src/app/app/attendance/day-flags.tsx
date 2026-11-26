@@ -6,7 +6,9 @@ import { Badge } from "@/components/ui";
 export function DayFlags({ s, halfDayAt }: { s: DayScore; halfDayAt: string }) {
   const t = s.times;
   const out: React.ReactNode[] = [];
-  if (t && (t.lateBand === "LATE" || t.lateBand === "VERY_LATE")) {
+  if (s.requestHalfDay) out.push(<Badge key="r" tone="danger">Marked on request · over the monthly limit · ½ day</Badge>);
+  else if (s.requestMarked) out.push(<Badge key="r" tone="info">Marked on request</Badge>);
+  if (s.requestHalfDay) { /* the half day replaces the day's late penalties */ } else if (t && (t.lateBand === "LATE" || t.lateBand === "VERY_LATE")) {
     if (s.lateExcused) out.push(<Badge key="l" tone="info">Late {t.lateMinutes} min · excused (informed)</Badge>);
     else if (t.lateBand === "VERY_LATE") out.push(<Badge key="l" tone="danger">Late {minutesToHhmm(t.lateMinutes)} · ½ day</Badge>);
     else out.push(<Badge key="l" tone="warn">Late {t.lateMinutes} min</Badge>);

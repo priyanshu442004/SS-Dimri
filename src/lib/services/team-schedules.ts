@@ -11,7 +11,8 @@ import { notifyEmployees } from "./notifications";
 import { actsAsLeadFor, getPolicy, leadScopeIds, scheduleOf } from "./office-rules";
 
 // What the Team Lead fixes in the ERP:
-//   §5 the reporting time of a client-site team member (their day then lasts 8 hours);
+//   §5 the reporting time of a client-site team member and the length of their day (8 hours unless
+//      the Team Lead sets other hours — 25 Nov 2026);
 //   §7 a lunch moved for urgent work (still 30 minutes at most).
 
 const time = z.string().regex(/^\d{2}:\d{2}$/, "Enter a time");
@@ -21,6 +22,8 @@ export const scheduleSchema = z.object({
   place: z.enum(["OFFICE", "SITE"]),
   siteReportingTime: time.optional(),
   siteName: zOptionalText(200),
+  /** Working hours at the client site (6, 8, 8.5 …); blank = the firm's usual client-site day. */
+  siteDayHours: z.coerce.number("Enter the working hours").min(1, "At least 1 hour").max(16, "At most 16 hours").optional(),
 });
 
 export async function setSchedule(ctx: AppContext, v: z.infer<typeof scheduleSchema>) {
@@ -33,21 +36,23 @@ export async function setSchedule(ctx: AppContext, v: z.infer<typeof scheduleSch
     if (!v.siteName?.trim()) throw new BusinessRuleError("Enter the client or site.");
     const start = hhmmToMinutes(v.siteReportingTime);
     if (start < 6 * 60 || start > 14 * 60) throw new BusinessRuleError("Choose a reporting time between 06:00 and 14:00.");
+    if (v.siteDayHours && start + v.siteDayHours * 60 > 23 * 60 + 59) throw new BusinessRuleError("The day would end after midnight. Choose fewer hours or an earlier reporting time.");
   }
+  const dayMinutes = v.place === "SITE" && v.siteDayHours ? Math.round(v.siteDayHours * 60) : null;
   const site = v.place === "SITE";
   await prisma.$transaction(async (tx) => {
     await tx.employee.update({
       where: { id: emp.id },
       data: site
-        ? { attendanceProfile: "ONSITE", siteReportingTime: v.siteReportingTime, siteName: v.siteName!.trim() }
-        : { attendanceProfile: "STANDARD", siteReportingTime: null, siteName: null },
+        ? { attendanceProfile: "ONSITE", siteReportingTime: v.siteReportingTime, siteName: v.siteName!.trim(), siteDayMinutes: dayMinutes }
+        : { attendanceProfile: "STANDARD", siteReportingTime: null, siteName: null, siteDayMinutes: null },
     });
     await audit(tx, ctx, "attendance.schedule_set", "employee", emp.id);
-    const s = scheduleOf(policy, site ? { attendanceProfile: "ONSITE", siteReportingTime: v.siteReportingTime! } : null);
+    const s = scheduleOf(policy, site ? { attendanceProfile: "ONSITE", siteReportingTime: v.siteReportingTime!, siteDayMinutes: dayMinutes } : null);
     await notifyEmployees(tx, ctx.organization.id, [emp.id], {
       type: "attendance.schedule",
       title: site ? `Your reporting time at ${v.siteName!.trim()} is ${hhmm(s.start)}` : "You are back on office timings",
-      body: `${hhmm(s.start)}–${hhmm(s.end)}, grace till ${hhmm(s.graceUntil)}. Set by ${ctx.user.name}; it applies from your next mark-in.`,
+      body: `${hhmm(s.start)}–${hhmm(s.end)} (${Math.round(((s.end - s.start) / 60) * 100) / 100} h), grace till ${hhmm(s.graceUntil)}. Set by ${ctx.user.name}; it applies from your next mark-in.`,
       link: "/app/attendance",
     });
   });
@@ -63,7 +68,7 @@ export async function scheduleRows(ctx: AppContext) {
     prisma.employee.findMany({
       where: { organizationId: ctx.organization.id, approvalStatus: "APPROVED", employmentStatus: { not: "EXITED" }, id: scope === "ALL" ? { not: ctx.employee?.id ?? undefined } : { in: scope } },
       orderBy: { firstName: "asc" },
-      select: { id: true, firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true, siteName: true, designation: { select: { name: true } } },
+      select: { id: true, firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true, siteName: true, designation: { select: { name: true } } },
     }),
     prisma.attendanceRecord.findMany({ where: { organizationId: ctx.organization.id, attendanceDate: todayDateOnly(ctx.organization.timezone) }, select: { employeeId: true, timeIn: true, timeOut: true, lunchOutAt: true, lunchShiftedTo: true } }),
   ]);

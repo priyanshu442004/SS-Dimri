@@ -29,6 +29,8 @@ export type ClientFilters = {
   team: string;
   /** GST registration type (REGULAR / COMPOSITION / SURRENDERED), or "none" for not set. */
   gstType: string;
+  /** Client group id (tracker S.No. 107). */
+  group: string;
   sort: ClientSort;
 };
 
@@ -48,6 +50,7 @@ export function parseClientFilters(sp: Record<string, string | string[] | undefi
     state: str(sp.state).slice(0, 60),
     team: team === "none" || UUID.test(team) ? team : "",
     gstType: str(sp.gst) === "none" || isGstType(str(sp.gst)) ? str(sp.gst) : "",
+    group: UUID.test(str(sp.group)) ? str(sp.group) : "",
     sort: sort in CLIENT_SORTS ? (sort as ClientSort) : "name",
   };
 }
@@ -68,6 +71,7 @@ export function clientListWhere(ctx: AppContext, f: ClientFilters): Prisma.Clien
               { tan: { contains: q.toUpperCase() } },
               { itFileNo: { contains: q, mode: "insensitive" } },
               { gstRegistrations: { some: { gstin: { contains: q.toUpperCase() } } } },
+              { group: { name: { contains: q, mode: "insensitive" } } },
               { contacts: { some: { OR: [{ name: { contains: q, mode: "insensitive" } }, { mobile: { contains: q } }, { email: { contains: q, mode: "insensitive" } }] } } },
             ],
           }
@@ -75,8 +79,9 @@ export function clientListWhere(ctx: AppContext, f: ClientFilters): Prisma.Clien
       f.service ? { services: { some: { serviceId: f.service, status: "ACTIVE" } } } : {},
       f.department ? { departments: { has: f.department } } : {},
       f.constitution ? { constitutionId: f.constitution } : {},
-      f.state ? { state: { equals: f.state, mode: "insensitive" } } : {},
-      f.gstType === "none" ? { gstRegistrationType: null } : f.gstType ? { gstRegistrationType: f.gstType } : {},
+      f.state ? { OR: [{ state: { equals: f.state, mode: "insensitive" } }, { gstRegistrations: { some: { state: { equals: f.state, mode: "insensitive" } } } }] } : {},
+      f.gstType === "none" ? { gstRegistrationType: null } : f.gstType ? { OR: [{ gstRegistrationType: f.gstType }, { gstRegistrations: { some: { registrationType: f.gstType } } }] } : {},
+      f.group ? { groupId: f.group } : {},
       f.team === "none"
         ? { teamAllocations: { none: { status: { in: ["ACTIVE", "PLANNED"] } } } }
         : f.team
@@ -106,6 +111,7 @@ export function clientFiltersQuery(f: ClientFilters, extra: Record<string, strin
     ...(f.state && { state: f.state }),
     ...(f.team && { team: f.team }),
     ...(f.gstType && { gst: f.gstType }),
+    ...(f.group && { group: f.group }),
     ...(f.sort !== "name" && { sort: f.sort }),
   });
   for (const [k, v] of Object.entries(extra)) p.set(k, String(v));

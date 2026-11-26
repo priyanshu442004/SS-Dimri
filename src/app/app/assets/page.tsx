@@ -8,8 +8,8 @@ import { ASSET_CATEGORIES, ASSET_CONDITIONS, ASSET_STATUSES, assetRegister, asse
 import { employeeOptions } from "@/lib/services/lookups";
 import { ActionButton } from "@/components/action-button";
 import { Badge, Card, DownloadButton, EmptyState, PageHeader, Stat, TabNav, Table, Td, Th } from "@/components/ui";
-import { deleteAssetAction, issueAssetAction, returnAssetAction, saveAssetAction } from "./actions";
-import { AssetForm, IssueForm, ReturnForm } from "./forms";
+import { allocateAssetAction, deleteAssetAction, issueAssetAction, returnAssetAction, saveAssetAction } from "./actions";
+import { AllocateForm, AssetForm, IssueForm, ReturnForm } from "./forms";
 
 export const metadata: Metadata = { title: "Assets" };
 const selectCls = "h-10 rounded-md border border-line bg-surface px-2 text-sm";
@@ -23,7 +23,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
   const ctx = await requireCapability("app.use");
   const sp = await searchParams;
   const manage = can(ctx, "assets.manage");
-  const tab = manage && sp.tab !== "mine" ? "register" : "mine";
+  const tab = manage ? (sp.tab === "mine" ? "mine" : sp.tab === "allocation" ? "allocation" : "register") : "mine";
   const today = isoDateInTz(new Date(), ctx.organization.timezone);
 
   return (
@@ -31,8 +31,12 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
       <PageHeader icon={<Package />} title={manage ? "Fixed assets" : "My assets"}
         description={manage ? "The firm's office assets — laptops, desktops, printers, mobiles, furniture — who has each one, and its history of issue and return." : "Office assets issued to you. Return them when you leave or when asked."}
         actions={manage && tab === "register" && <DownloadButton href="/app/assets/export">Export to Excel</DownloadButton>} />
-      {manage && <TabNav current={tab} tabs={[{ key: "register", label: "Assets register", href: "/app/assets" }, { key: "mine", label: "My assets", href: "/app/assets?tab=mine" }]} />}
-      {tab === "register" ? <Register /> : <Mine />}
+      {manage && <TabNav current={tab} tabs={[
+        { key: "register", label: "Assets register", href: "/app/assets" },
+        { key: "allocation", label: "Asset allocation (who has what)", href: "/app/assets?tab=allocation" },
+        { key: "mine", label: "My assets", href: "/app/assets?tab=mine" },
+      ]} />}
+      {tab === "register" ? <Register /> : tab === "allocation" ? <Allocation /> : <Mine />}
     </>
   );
 
@@ -47,6 +51,60 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
           <tbody>{rows.map((r) => <tr key={r.id}><Td><span className="font-medium">{r.asset.description}</span><div className="font-mono text-xs text-muted">{r.asset.code}{r.asset.category ? ` · ${r.asset.category}` : ""}</div></Td><Td className="text-xs">{r.asset.serialNo ?? "—"}</Td><Td className="whitespace-nowrap text-xs">{formatDate(r.issuedOn)}{r.issueCondition && ` · ${ASSET_CONDITIONS[r.issueCondition as keyof typeof ASSET_CONDITIONS] ?? r.issueCondition}`}</Td><Td className="whitespace-nowrap text-xs">{r.returnedOn ? formatDate(r.returnedOn) : <Badge tone="info">With me</Badge>}</Td></tr>)}</tbody>
         </Table>
       </Card>
+    );
+  }
+
+  /** Who holds which asset, person by person, with the issue form alongside (tracker S.No. 112). */
+  async function Allocation() {
+    const [rows, employees] = await Promise.all([assetRegister(ctx.organization.id, parseAssetFilters({})), employeeOptions(ctx.organization.id)]);
+    const issued = rows.flatMap((a) => a.issues.filter((i) => !i.returnedOn).map((i) => ({ asset: a, issue: i })));
+    const byPerson = new Map<string, { name: string; items: typeof issued }>();
+    for (const x of issued) {
+      const k = x.issue.employee.id;
+      byPerson.set(k, { name: person(x.issue.employee), items: [...(byPerson.get(k)?.items ?? []), x] });
+    }
+    const inStock = rows.filter((a) => a.status === "IN_STOCK");
+    const q = typeof sp.q === "string" ? sp.q.trim().toLowerCase() : "";
+    const people = [...byPerson.entries()].filter(([, v]) => !q || v.name.toLowerCase().includes(q)).sort((x, y) => x[1].name.localeCompare(y[1].name));
+    return (
+      <div className="grid gap-6 xl:grid-cols-[3fr_2fr]">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+            <Stat label="Assets issued" value={issued.length} tone="info" />
+            <Stat label="People holding assets" value={byPerson.size} />
+            <Stat label="In stock (can be issued)" value={inStock.length} tone="ok" />
+          </div>
+          <form className="flex flex-wrap gap-2" role="search">
+            <input type="hidden" name="tab" value="allocation" />
+            <input name="q" defaultValue={q} placeholder="Search a person" className={`${selectCls} w-64`} aria-label="Search a person" />
+            <button className="h-10 rounded-md border border-line bg-surface px-4 text-sm hover:bg-subtle">Search</button>
+          </form>
+          {people.length === 0 ? (
+            <EmptyState kind="documents" title={issued.length ? "Nobody matches" : "No asset is issued to anyone yet"}>{issued.length ? "Try another name." : "Issue an asset with the form on the right, or open an asset in the register and use Issue."}</EmptyState>
+          ) : people.map(([id, v]) => (
+            <Card key={id} title={`${v.name} (${v.items.length})`} padded={false}>
+              <Table minWidth={620}>
+                <thead><tr><Th>Asset</Th><Th>Serial no.</Th><Th>Issued</Th><Th /></tr></thead>
+                <tbody>
+                  {v.items.map(({ asset, issue }) => (
+                    <tr key={issue.id}>
+                      <Td><span className="font-medium">{asset.description}</span><div className="font-mono text-xs text-muted">{asset.code}{asset.category ? ` · ${asset.category}` : ""}</div></Td>
+                      <Td className="text-xs">{asset.serialNo ?? "—"}</Td>
+                      <Td className="whitespace-nowrap text-xs">{formatDate(issue.issuedOn)}{issue.issueCondition ? ` · ${ASSET_CONDITIONS[issue.issueCondition as keyof typeof ASSET_CONDITIONS] ?? issue.issueCondition}` : ""}{issue.notes && <div className="text-muted">{issue.notes}</div>}</Td>
+                      <Td><Link href={`/app/assets?asset=${asset.id}#asset`} className="text-sm font-medium text-brand-700 hover:underline">Take back</Link></Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </Card>
+          ))}
+        </div>
+        <Card title="Issue an asset">
+          {inStock.length === 0 ? <p className="text-sm text-muted">No asset is in stock. Add assets in the register first.</p> : (
+            <AllocateForm action={allocateAssetAction} assets={inStock.map((a) => ({ value: a.id, label: `${a.code} · ${a.description}` }))} employees={employees} conditions={CONDITIONS} today={today} />
+          )}
+        </Card>
+      </div>
     );
   }
 
@@ -84,7 +142,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
                         <Td className="whitespace-nowrap text-xs">{a.purchaseDate ? formatDate(a.purchaseDate) : "—"}<div>{inr(a.cost)}{a.vendor ? ` · ${a.vendor}` : ""}</div></Td>
                         <Td className="text-xs">{a.location ?? "—"}<div className="text-muted">{a.condition ? ASSET_CONDITIONS[a.condition as keyof typeof ASSET_CONDITIONS] : ""}</div></Td>
                         <Td className="text-xs"><Badge tone={STATUS_TONE[a.status as keyof typeof STATUS_TONE] ?? "neutral"}>{ASSET_STATUSES[a.status as keyof typeof ASSET_STATUSES] ?? a.status}</Badge>{holder && <div className="mt-1">{person(holder.employee)} · since {formatDate(holder.issuedOn)}</div>}</Td>
-                        <Td><Link href={`/app/assets?asset=${a.id}#asset`} className="text-sm font-medium text-brand-700 hover:underline">Open</Link></Td>
+                        <Td><Link href={`/app/assets?asset=${a.id}#asset`} className="whitespace-nowrap text-sm font-medium text-brand-700 hover:underline">{a.status === "IN_STOCK" ? "Issue to someone" : a.status === "ISSUED" ? "Take back" : "Open"}</Link></Td>
                       </tr>
                     );
                   })}

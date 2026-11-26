@@ -30,6 +30,7 @@ function blocksToMarkdown(blocks: Block[]): string {
   const out: string[] = [];
   for (const b of blocks) {
     if (b.type === "kpis") out.push(b.items.map((i) => `- **${i.label}:** ${formatValue(i.value, i.format)}${i.hint ? ` (${i.hint})` : ""}`).join("\n"));
+    else if (b.type === "file") out.push(`📎 ${b.fileName}`);
     else if (b.type === "table") out.push(`${b.title ? `**${b.title}**\n\n` : ""}| ${b.columns.join(" | ")} |\n| ${b.columns.map(() => "---").join(" | ")} |\n${b.rows.map((r) => `| ${b.columns.map((_, j) => String(r[j] ?? "")).join(" | ")} |`).join("\n")}`);
     else out.push(`**${b.title}**\n\n| ${["", ...b.series.map((s) => s.name)].join(" | ")} |\n| ${["---", ...b.series.map(() => "---")].join(" | ")} |\n${b.labels.map((l, i) => `| ${[l, ...b.series.map((s) => formatValue(s.values[i] as number, b.format))].join(" | ")} |`).join("\n")}`);
   }
@@ -43,6 +44,7 @@ const htmlTable = (head: string[], rows: (string | number | null)[][]) =>
 function blocksToHtml(blocks: Block[]): string {
   return blocks.map((b) => {
     if (b.type === "kpis") return `<ul>${b.items.map((i) => `<li><b>${esc(i.label)}:</b> ${esc(formatValue(i.value, i.format))}${i.hint ? ` (${esc(i.hint)})` : ""}</li>`).join("")}</ul>`;
+    if (b.type === "file") return `<p>📎 ${esc(b.fileName)}</p>`;
     if (b.type === "table") return `${b.title ? `<p><b>${esc(b.title)}</b></p>` : ""}${htmlTable(b.columns, b.rows)}`;
     return `<p><b>${esc(b.title)}</b></p>${htmlTable(["", ...b.series.map((s) => s.name)], b.labels.map((l, i) => [l, ...b.series.map((s) => formatValue(s.values[i] as number, b.format))]))}`;
   }).join("<br>");

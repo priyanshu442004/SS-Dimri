@@ -47,7 +47,9 @@ export const tableBlockSchema = z.object({
 });
 
 export const blockSchema = z.union([kpiBlockSchema, chartBlockSchema, tableBlockSchema]);
-export type Block = z.infer<typeof blockSchema>;
+/** A PDF / Excel file the assistant made (25 Nov 2026); only the server creates these. */
+export type FileBlock = { type: "file"; fileId: string; kind: "pdf" | "xlsx"; fileName: string; title: string; sizeBytes: number; summary: string };
+export type Block = z.infer<typeof blockSchema> | FileBlock;
 export type KpiBlock = z.infer<typeof kpiBlockSchema>;
 export type ChartBlock = z.infer<typeof chartBlockSchema>;
 export type TableBlock = z.infer<typeof tableBlockSchema>;

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import type { AppContext } from "@/lib/session";
 import { clientScope } from "./clients";
+import { seesFirm } from "@/lib/hierarchy";
 
 /** Approved, non-exited employees for pickers. */
 export async function employeeOptions(organizationId: string) {
@@ -92,7 +93,7 @@ export async function mayLogWorkFor(ctx: AppContext, clientId: string, day: Date
 
 /** Client pickers elsewhere (new task, pending items, client visits): those the person can see in Clients. */
 export async function visibleClientOptions(ctx: AppContext) {
-  if (can(ctx, "clients.view_all")) return activeClientOptions(ctx.organization.id);
+  if (seesFirm(ctx, "clients.view_all")) return activeClientOptions(ctx.organization.id);
   const rows = await prisma.client.findMany({
     where: { AND: [clientScope(ctx), { status: { in: ["ACTIVE", "ON_HOLD"] } }] },
     orderBy: { tradeName: "asc" },

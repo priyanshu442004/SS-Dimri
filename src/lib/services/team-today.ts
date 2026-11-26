@@ -23,7 +23,7 @@ export async function teamToday(ctx: AppContext) {
   const [policy, subjects, holidays] = await Promise.all([getPolicy(ctx.organization.id), ruleSubjects(ctx.organization.id), holidaySet(ctx.organization.id, day, day)]);
   const ids = [...subjects.keys()].filter((id) => (scope === "ALL" || scope.includes(id)) && id !== ctx.employee?.id);
   const [employees, records, leaves, plans, otApproved, requests, leaveWaiting, escalate, weeklyOffs] = await Promise.all([
-    prisma.employee.findMany({ where: { id: { in: ids }, OR: [{ dateOfJoining: null }, { dateOfJoining: { lte: day } }] }, select: { id: true, attendanceProfile: true, siteReportingTime: true } }),
+    prisma.employee.findMany({ where: { id: { in: ids }, OR: [{ dateOfJoining: null }, { dateOfJoining: { lte: day } }] }, select: { id: true, attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true } }),
     prisma.attendanceRecord.findMany({ where: { employeeId: { in: ids }, attendanceDate: day }, select: { employeeId: true, status: true, timeIn: true, timeOut: true, scheduledStart: true, scheduledEnd: true } }),
     prisma.leaveRequest.findMany({ where: { employeeId: { in: ids }, status: "APPROVED", fromDate: { lte: day }, toDate: { gte: day } }, select: { employeeId: true } }),
     prisma.dailyPlan.findMany({ where: { employeeId: { in: ids }, planDate: day, planSubmittedAt: { not: null } }, select: { employeeId: true, approvedAt: true } }),

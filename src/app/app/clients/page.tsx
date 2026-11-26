@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { requireCapability } from "@/lib/session";
 import { clientScope } from "@/lib/services/clients";
+import { lineIds, seesFirm } from "@/lib/hierarchy";
 import { complianceChoices } from "@/lib/services/client-compliances";
 import { CLIENT_SORTS, CLIENT_STATUS_TABS, clientFiltersQuery, clientListOrder, clientListWhere, parseClientFilters } from "@/lib/services/client-list";
 import { employeeOptions } from "@/lib/services/lookups";
@@ -18,17 +19,20 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
   const sp = await searchParams;
   const f = parseClientFilters(sp);
   const page = Math.max(1, Number(sp.page) || 1);
+  // Hierarchy (tracker S.No. 111): the firm for owners / administrators, a lead's own line, or one's own clients.
+  const firm = seesFirm(ctx, "clients.view_all");
   const viewAll = can(ctx, "clients.view_all");
   const where = clientListWhere(ctx, f);
+  const line = new Set(viewAll && !seesFirm(ctx, "clients.view_all") ? await lineIds(ctx) : []);
 
-  const [clients, total, services, pendingCount, constitutions, states, departments, team] = await Promise.all([
+  const [clients, total, services, pendingCount, constitutions, states, departments, team, groups] = await Promise.all([
     prisma.client.findMany({
       where,
       orderBy: clientListOrder(f.sort),
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: {
-        id: true, clientCode: true, tradeName: true, legalName: true, status: true, departments: true, state: true,
+        id: true, clientCode: true, tradeName: true, legalName: true, status: true, departments: true, state: true, group: { select: { name: true } },
         constitution: { select: { name: true } },
         _count: { select: { gstRegistrations: true } },
         services: { where: { status: "ACTIVE" }, select: { service: { select: { name: true } } }, take: 3 },
@@ -41,17 +45,18 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
     prisma.constitution.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
     prisma.client.findMany({ where: { organizationId: ctx.organization.id, state: { not: null } }, distinct: ["state"], orderBy: { state: "asc" }, select: { state: true } }),
     complianceChoices().then((c) => c.departments),
-    viewAll ? employeeOptions(ctx.organization.id) : Promise.resolve([]),
+    viewAll ? employeeOptions(ctx.organization.id).then(async (all) => (firm ? all : all.filter((e) => line.has(e.value)))) : Promise.resolve([]),
+    prisma.clientGroup.findMany({ where: { organizationId: ctx.organization.id, clients: { some: clientScope(ctx) } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
 
   const qs = (extra: Record<string, string | number>) => `/app/clients${clientFiltersQuery(f, extra)}`;
-  const narrowed = !!(f.q || f.service || f.department || f.constitution || f.state || f.team || f.gstType);
+  const narrowed = !!(f.q || f.service || f.department || f.constitution || f.state || f.team || f.gstType || f.group);
 
   return (
     <>
       <PageHeader icon={<Building2 />}
         title="Clients"
-        description={viewAll ? "All registered businesses." : "Clients you are allocated to or have tasks for."}
+        description={firm ? "All registered businesses." : viewAll ? "Clients of your team: allocated to you or anyone reporting to you (all levels), or with your team's tasks." : "Clients you are allocated to or have tasks for."}
         actions={
           <>
             {can(ctx, "clients.approve") && <LinkButton variant="secondary" href="/app/clients/approvals">Approval queue{pendingCount ? ` (${pendingCount})` : ""}</LinkButton>}
@@ -106,6 +111,12 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
             {team.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
           </select>
         )}
+        {groups.length > 0 && (
+          <select name="group" defaultValue={f.group} aria-label="Filter by client group" className={`${selectCls} max-w-[14rem]`}>
+            <option value="">Any group</option>
+            {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+        )}
         <select name="sort" defaultValue={f.sort} aria-label="Sort clients" className={selectCls}>
           {Object.entries(CLIENT_SORTS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </select>
@@ -142,6 +153,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
                   <Td>
                     <Link href={`/app/clients/${c.id}`} className="font-medium text-brand-700 hover:underline">{c.tradeName}</Link>
                     {c.legalName && <div className="text-xs text-muted">{c.legalName}</div>}
+                    {c.group && <div className="text-xs text-muted">Group: {c.group.name}</div>}
                     {c._count.gstRegistrations > 0 && <div className="text-xs text-muted">{c._count.gstRegistrations} GSTIN{c._count.gstRegistrations > 1 ? "s" : ""}{c.state ? ` · ${c.state}` : ""}</div>}
                   </Td>
                   <Td>{c.constitution?.name ?? "—"}</Td>

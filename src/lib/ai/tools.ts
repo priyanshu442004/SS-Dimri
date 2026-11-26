@@ -10,12 +10,19 @@ import { blockSchema, type Block, type BlockFormat } from "./blocks";
 import { QueryError, runDbQuery, type DbQueryInput } from "./db-query";
 import { describeSheet, readSheet } from "./sheet";
 import { sheetFor } from "./config";
+import { FactIndex } from "./files/facts";
+import type { Datasets } from "./files/resolve";
+import { makeExcel, makePdf } from "./files/make";
 
 // Tools the model can call. Data tools return JSON for the model; presentation tools return a
 // block for the browser (KPI cards, charts, tables) or the one follow-up question.
 
 export type ToolSpec = { type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } };
 export type ToolOutcome = { result: unknown; block?: Block; followUp?: string; label: string; failed?: boolean };
+/** What the file tools check against and copy from: the data looked up in this conversation. */
+export type ToolEnv = { facts: FactIndex; datasets: Datasets; conversationId: string | null };
+/** Tools that make a file: the model writes its reply after them (they are not "presentation"). */
+export const FILE_TOOLS = new Set(["create_pdf", "create_excel"]);
 
 const ISO = { type: "string", description: "Date YYYY-MM-DD" };
 
@@ -149,6 +156,51 @@ export function toolSpecs(ctx: AppContext): ToolSpec[] {
     );
   }
   for (const [name, def] of Object.entries(VIS)) add(name, def.description, def.parameters as unknown as Record<string, unknown>);
+
+  // Files (25 Nov 2026): only when the user asks for a PDF / Excel. Every figure is checked against the data looked up.
+  const column = { type: "object", properties: { header: { type: "string" }, type: { type: "string", enum: ["text", "int", "number", "inr", "percent", "date", "hours"] }, field: { type: "string" }, total: { type: "string", enum: ["sum", "avg", "count", "none"] } }, required: ["header"] };
+  const table = {
+    type: "object",
+    description: "A table. EITHER rows: values copied exactly from tool results (names, dates YYYY-MM-DD, numbers — never a number you worked out), OR from: { dataset: \"d1\" (the _dataset id a data tool returned in THIS answer), path: \"rows\" | \"perPerson\" | …, where?: { field: value }, limit? } with each column's field (dot path like \"employee.firstName\"; \"employee.firstName|employee.lastName\" joins two fields) — best for long lists. computed: extra columns worked out by the server from other columns, e.g. { header: \"Late %\", type: \"percent\", formula: \"{Late days} / {Working days} * 100\" }. totals: true adds a total row (sums; set total: \"avg\" / \"count\" / \"none\" per column). sort: { column, desc }.",
+    properties: {
+      title: { type: "string" },
+      columns: { type: "array", items: column },
+      rows: { type: "array", items: { type: "array", items: { type: ["string", "number", "boolean", "null"] } } },
+      from: { type: "object", properties: { dataset: { type: "string" }, path: { type: "string" }, where: { type: "object" }, limit: { type: "integer" } }, required: ["dataset"] },
+      computed: { type: "array", items: { type: "object", properties: { header: { type: "string" }, type: { type: "string", enum: ["int", "number", "inr", "percent", "hours"] }, formula: { type: "string" }, total: { type: "string", enum: ["sum", "avg", "count", "none"] } }, required: ["header", "formula"] } },
+      sort: { type: "object", properties: { column: { type: "string" }, desc: { type: "boolean" } }, required: ["column"] },
+      totals: { type: "boolean" },
+    },
+    required: ["columns"],
+  };
+  const kpis = { type: "array", items: { type: "object", properties: { label: { type: "string" }, value: { type: ["number", "string"] }, type: { type: "string", enum: ["int", "number", "inr", "percent", "hours", "text"] }, hint: { type: "string" } }, required: ["label", "value"] } };
+  add(
+    "create_excel",
+    "Make a well-formatted Excel (.xlsx) file the user can download — ONLY when the user asks for Excel / a spreadsheet / a sheet to download. First get the data with the data tools (in an earlier step of this answer), then call this. Each sheet has one table (plus optional headline figures and notes). Numbers, names and dates you type must be exactly as the tools returned them; calculations go in computed / totals. If it answers with problems, fetch the missing data or use from, and call again — never change numbers to pass.",
+    {
+      type: "object",
+      properties: {
+        title: { type: "string" }, subtitle: { type: "string", description: "e.g. the period: 1 Nov 2026 – 26 Nov 2026" }, fileName: { type: "string" },
+        sheets: { type: "array", items: { type: "object", properties: { name: { type: "string", description: "≤ 31 characters" }, title: { type: "string" }, kpis, table, notes: { type: "array", items: { type: "string" } } }, required: ["name", "table"] } },
+      },
+      required: ["title", "sheets"],
+    },
+  );
+  add(
+    "create_pdf",
+    "Make a well-designed PDF report the user can download — ONLY when the user asks for a PDF / report to download / print. First get the data with the data tools (in an earlier step of this answer), then call this. Sections can have a heading, short text (**bold** and \"- \" bullets allowed), bullets, headline figures (kpis), a chart (bar / column / line / pie / donut) and a table. Every number in text, figures, charts and tables must come from the tool results or from the file's own tables; calculations go in computed / totals.",
+    {
+      type: "object",
+      properties: {
+        title: { type: "string" }, subtitle: { type: "string" }, fileName: { type: "string" }, landscape: { type: "boolean", description: "true for wide tables (8+ columns)" }, kpis,
+        sections: { type: "array", items: { type: "object", properties: {
+          heading: { type: "string" }, text: { type: "string" }, bullets: { type: "array", items: { type: "string" } }, kpis, table,
+          chart: { type: "object", properties: { chart: { type: "string", enum: ["bar", "column", "line", "pie", "donut"] }, title: { type: "string" }, labels: { type: "array", items: { type: "string" } }, series: { type: "array", items: { type: "object", properties: { name: { type: "string" }, values: { type: "array", items: { type: "number" } } }, required: ["name", "values"] } }, format: { type: "string", enum: ["int", "number", "inr", "percent", "hours"] } }, required: ["chart", "title", "labels", "series"] },
+        } } },
+      },
+      required: ["title", "sections"],
+    },
+  );
   return specs;
 }
 
@@ -169,6 +221,8 @@ export function toolLabel(name: string, args: Record<string, unknown>): string {
     case "show_chart": return "Drawing a chart";
     case "show_table": return "Building a table";
     case "suggest_follow_up": return "Suggesting a follow-up";
+    case "create_excel": return `Making the Excel file${args.title ? ` “${String(args.title).slice(0, 60)}”` : ""}`;
+    case "create_pdf": return `Making the PDF${args.title ? ` “${String(args.title).slice(0, 60)}”` : ""}`;
     default: return "Working";
   }
 }
@@ -353,10 +407,19 @@ export function guessFormat(text: string, value: number): BlockFormat {
   return Number.isInteger(value) ? "count" : "decimal";
 }
 
-export async function runTool(ctx: AppContext, name: string, args: Record<string, unknown>): Promise<ToolOutcome> {
+export async function runTool(ctx: AppContext, name: string, args: Record<string, unknown>, env?: ToolEnv): Promise<ToolOutcome> {
   const label = toolLabel(name, args);
   try {
     switch (name) {
+      case "create_excel":
+      case "create_pdf": {
+        const e = env ?? { facts: new FactIndex(), datasets: new Map(), conversationId: null };
+        const r = name === "create_excel" ? await makeExcel(ctx, args, e.facts, e.datasets, e.conversationId) : await makePdf(ctx, args, e.facts, e.datasets, e.conversationId);
+        // Local diagnosis only (AI_DEBUG_FILES=1): the problems name people and figures, so never on by default.
+        if (!r.ok && process.env.AI_DEBUG_FILES === "1") console.warn("assistant file refused", JSON.stringify(r.problems).slice(0, 2000));
+        if (!r.ok) return { label, failed: true, result: { error: "The file was NOT made. Fix these and call again (look up any missing data first; never change a figure to make it pass):", problems: r.problems } };
+        return { label, result: r.message, block: r.block };
+      }
       case "query_database":
         return { label, result: await runDbQuery(ctx, args as unknown as DbQueryInput) };
       case "attendance_report":

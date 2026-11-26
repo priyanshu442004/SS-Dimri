@@ -145,7 +145,7 @@ async function flagLateStays(organizationId: string, tz: string) {
   const policy = await getPolicy(organizationId);
   const open = await prisma.attendanceRecord.findMany({
     where: { organizationId, attendanceDate: today, timeIn: { not: null }, timeOut: null, lateStayFlaggedAt: null, status: { in: ["PRESENT", "HALF_DAY"] } },
-    select: { id: true, employeeId: true, scheduledStart: true, scheduledEnd: true, employee: { select: { firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true } } },
+    select: { id: true, employeeId: true, scheduledStart: true, scheduledEnd: true, employee: { select: { firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true } } },
     take: 200,
   });
   const due = open.filter((r) => nowMin > scheduleOf(policy, r.employee, r).overtimeAfter);

@@ -2,10 +2,10 @@
 
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { clsx } from "clsx";
-import { Download, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
+import { Download, ExternalLink, FileSpreadsheet, FileText, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
 import { BarList, ChartCard, Donut, SERIES, StackedColumns, TrendLine } from "@/components/charts";
 import { fmt, type Format } from "@/lib/chart-format";
-import type { Block, BlockFormat, ChartBlock, KpiBlock, TableBlock } from "@/lib/ai/blocks";
+import type { Block, BlockFormat, ChartBlock, FileBlock, KpiBlock, TableBlock } from "@/lib/ai/blocks";
 
 // Renders the assistant's KPI cards, charts and tables. Charts reuse the product's own SVG
 // chart set so they look like every other dashboard in the ERP.
@@ -302,13 +302,37 @@ export function KpiBlocks({ blocks, animate, onAsk }: { blocks: Block[]; animate
   return <div className="space-y-2.5">{kpis.map((b, i) => <KpiGrid key={i} block={b} animate={animate} onAsk={onAsk} />)}</div>;
 }
 
-/** Charts and tables (shown below the answer text). */
+const size = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${Math.round((n / 1024 / 1024) * 10) / 10} MB`);
+
+/** A PDF / Excel file the assistant made (25 Nov 2026): name, what is in it, and download / open. */
+export function FileCard({ block }: { block: FileBlock }) {
+  const pdf = block.kind === "pdf";
+  const Icon = pdf ? FileText : FileSpreadsheet;
+  const href = `/api/assistant/files/${block.fileId}`;
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface p-3 shadow-sm" data-testid="ai-file">
+      <span className={clsx("grid size-11 shrink-0 place-items-center rounded-lg", pdf ? "bg-danger-bg text-danger" : "bg-ok-bg text-ok")}><Icon className="size-6" aria-hidden /></span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-ink">{block.fileName}</span>
+        <span className="block text-xs text-muted">{pdf ? "PDF report" : "Excel workbook"} · {size(block.sizeBytes)}{block.summary ? ` · ${block.summary}` : ""}</span>
+      </span>
+      <span className="flex gap-2">
+        {pdf && <a href={`${href}?inline=1`} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-line px-3 text-sm font-medium hover:bg-subtle"><ExternalLink className="size-4" aria-hidden />Open</a>}
+        <a href={href} download={block.fileName} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-ink px-3 text-sm font-medium text-paper hover:opacity-90"><Download className="size-4" aria-hidden />Download</a>
+      </span>
+    </div>
+  );
+}
+
+/** Charts and tables (shown below the answer text), and files made. */
 export function VisualBlocks({ blocks, onAsk }: { blocks: Block[]; onAsk?: Ask }) {
   const charts = blocks.filter((b): b is ChartBlock => b.type === "chart");
   const tables = blocks.filter((b): b is TableBlock => b.type === "table");
-  if (!charts.length && !tables.length) return null;
+  const files = blocks.filter((b): b is FileBlock => b.type === "file");
+  if (!charts.length && !tables.length && !files.length) return null;
   return (
     <div className="space-y-3">
+      {files.map((b) => <FileCard key={b.fileId} block={b} />)}
       {charts.length > 0 && <div className={clsx("grid gap-3", charts.length > 1 && "2xl:grid-cols-2")}>{charts.map((b, i) => <ChartBlockView key={i} block={b} onAsk={onAsk} />)}</div>}
       {tables.map((b, i) => <TableBlockView key={i} block={b} onAsk={onAsk} />)}
     </div>

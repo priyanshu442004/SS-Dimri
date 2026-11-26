@@ -36,6 +36,7 @@ export async function getPolicy(organizationId: string) {
     unrequestedAbsenceDays: Number(row.unrequestedAbsenceDays),
     noLeaveBonusDays: Number(row.noLeaveBonusDays),
     overtimeMinutesPerDay: row.overtimeMinutesPerDay,
+    requestMarksPerMonth: row.requestMarksPerMonth,
   };
   return { row, times, numbers };
 }

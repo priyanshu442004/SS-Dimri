@@ -1,4 +1,3 @@
-import { NO_EMPLOYEE } from "@/lib/ids";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { prisma } from "@/lib/db";
@@ -10,7 +9,7 @@ import { ALLOCATION_RESOURCE_TYPES, ALLOCATION_ROLES } from "@/lib/domain/alloca
 import { describeSchedule, FREQUENCIES, isPlannedOn, plannedDates } from "@/lib/domain/allocation-schedule";
 import { getPolicy } from "@/lib/services/attendance";
 import { refreshAllocationStatuses } from "@/lib/services/allocations";
-import { allocationWhere, ALLOCATION_STATUS_FILTERS, filtersQuery, parseAllocationFilters } from "@/lib/services/allocation-views";
+import { allocationScope, allocationWhere, ALLOCATION_STATUS_FILTERS, filtersQuery, parseAllocationFilters } from "@/lib/services/allocation-views";
 import { DeleteButton } from "@/components/delete-dialog";
 import { canDelete } from "@/lib/services/deletions";
 import { activeClientOptions, employeeOptions } from "@/lib/services/lookups";
@@ -27,7 +26,10 @@ const selectCls = "h-10 rounded-md border border-line bg-surface px-2 text-sm";
 export default async function AllocationsPage({ searchParams }: PageProps<"/app/allocations">) {
   const ctx = await requireCapability("allocations.use");
   const sp = await searchParams;
+  // Team view for leads and administrators; a lead sees only their own line (tracker S.No. 110).
   const viewAll = can(ctx, "allocations.view_all");
+  const scope = await allocationScope(ctx);
+  const inLine = (id: string) => scope.firm || (scope.line ?? []).includes(id);
   const manage = can(ctx, "allocations.manage");
   const filters = parseAllocationFilters(sp);
   const view = viewAll && VIEWS.includes(sp.view as never) ? (sp.view as (typeof VIEWS)[number]) : "client";
@@ -39,7 +41,6 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
   const start = dateOnly(from);
   const days = Array.from({ length: DAYS }, (_, i) => addDays(start, i));
   const end = days[DAYS - 1];
-  const me = ctx.employee?.id;
   const { row: policy } = await getPolicy(ctx.organization.id);
   const capacity = capacityFromPolicy(policy);
   const num = (d: unknown) => (d === null || d === undefined ? null : Number(d));
@@ -48,7 +49,7 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
   const todayDate = dateOnly(today);
 
   const allocations = await prisma.teamAllocation.findMany({
-    where: allocationWhere(ctx.organization.id, filters, viewAll ? undefined : me ?? NO_EMPLOYEE),
+    where: allocationWhere(ctx.organization.id, filters, scope.where),
     orderBy: [{ client: { tradeName: "asc" } }, { startDate: "asc" }],
     take: 2000,
     include: {
@@ -85,12 +86,12 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
   const [boardEmployees, boardSpans, leaves] = viewAll
     ? await Promise.all([
         prisma.employee.findMany({
-          where: { organizationId: ctx.organization.id, approvalStatus: "APPROVED", employmentStatus: { not: "EXITED" } },
+          where: { organizationId: ctx.organization.id, approvalStatus: "APPROVED", employmentStatus: { not: "EXITED" }, ...(scope.firm ? {} : { id: { in: scope.line ?? [] } }) },
           orderBy: { firstName: "asc" },
           select: { id: true, firstName: true, lastName: true, designation: { select: { name: true, seniorityLevel: true } } },
         }),
         prisma.teamAllocation.findMany({
-          where: { organizationId: ctx.organization.id, status: { in: ["ACTIVE", "PLANNED"] } },
+          where: { organizationId: ctx.organization.id, status: { in: ["ACTIVE", "PLANNED"] }, ...(scope.firm ? {} : { employeeId: { in: scope.line ?? [] } }) },
           select: { employeeId: true, startDate: true, endDate: true, firstHalfHours: true, secondHalfHours: true, weekDays: true, frequency: true, visitDays: true, client: { select: { tradeName: true } } },
         }),
         prisma.leaveRequest.findMany({
@@ -105,7 +106,10 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
       weekDays: s.weekDays, frequency: s.frequency, visitDays: s.visitDays, clientName: s.client.tradeName,
     }));
 
-  const [employees, clients] = manage || viewAll ? await Promise.all([employeeOptions(ctx.organization.id), activeClientOptions(ctx.organization.id)]) : [[], []];
+  const [allEmployees, allClients] = manage || viewAll ? await Promise.all([employeeOptions(ctx.organization.id), activeClientOptions(ctx.organization.id)]) : [[], []];
+  // Pickers follow the same line: a lead allocates and filters their own people (any active client can be allocated).
+  const employees = scope.firm ? allEmployees : allEmployees.filter((e) => inLine(e.value));
+  const clients = manage ? allClients : scope.firm ? allClients : allClients.filter((c) => allocations.some((a) => a.client.id === c.value));
   const clientName = filters.client ? clients.find((c) => c.value === filters.client)?.label ?? allocations[0]?.client.tradeName : null;
   const resourceTypes = [...new Set([...ALLOCATION_RESOURCE_TYPES, ...(await prisma.teamAllocation.findMany({ where: { organizationId: ctx.organization.id, resourceType: { not: null } }, distinct: ["resourceType"], select: { resourceType: true } })).map((r) => r.resourceType!)])];
 
@@ -144,10 +148,11 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
   return (
     <>
       <PageHeader icon={<Users />}
-        title={viewAll ? "Team allocation" : "My allocations"}
-        description={viewAll ? "Who works for which client, on which days, and who is free. Changes keep the history." : "Clients you are allocated to, and on which days."}
+        title={viewAll ? (scope.firm ? "Team allocation" : "My team's allocation") : "My allocations"}
+        description={viewAll ? (scope.firm ? "Who works for which client, on which days, and who is free. Changes keep the history." : "Your own allocations and those of everyone in your team (all levels). Changes keep the history.") : "Clients you are allocated to, and on which days."}
         actions={
           <>
+            {manage && <LinkButton href="/app/allocations/bulk">Allocate / transfer many</LinkButton>}
             {viewAll && <LinkButton variant="secondary" href="/app/allocations/report">Allocation reports</LinkButton>}
             {viewAll && <DownloadButton href={`/app/allocations/export${filtersQuery(filters)}`}>Export to Excel</DownloadButton>}
             {manage && <LinkButton variant="secondary" href="/app/allocations/import">Import from Excel</LinkButton>}
@@ -235,8 +240,9 @@ export default async function AllocationsPage({ searchParams }: PageProps<"/app/
                       </th>
                       {days.map((d) => {
                         const onLeave = empLeaves.some((l) => l.fromDate <= d && l.toDate >= d);
-                        const sunday = d.getUTCDay() === 0;
                         const av = availabilityOn(d, spans, capacity);
+                        // Sunday is off unless the person is planned at a client that works on Sunday (tracker S.No. 109).
+                        const sunday = d.getUTCDay() === 0 && av.level === "free";
                         const at = spans.filter((s) => s.startDate <= d && (s.endDate ?? d) >= d && isPlannedOn(s, d)).map((s) => s.clientName);
                         const label = onLeave ? "Leave" : sunday ? "Sun" : av.level === "free" ? "Free" : av.level === "busy" ? "Busy" : `${formatHours(av.first)}+${formatHours(av.second)}`;
                         const full = onLeave ? "On approved leave" : sunday ? "Sunday" : `First half ${formatHours(av.first)} of ${formatHours(capacity.first)} h, second half ${formatHours(av.second)} of ${formatHours(capacity.second)} h${at.length ? ` — ${at.join(", ")}` : ""}`;

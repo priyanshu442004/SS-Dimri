@@ -12,7 +12,7 @@ export type ComplianceOption = { id: string; department: string; name: string; f
  * of that department from the master data, all ticked, to untick what does not apply.
  * Posts departments[] and complianceItemIds[].
  */
-export function CompliancePicker({ items: allItems, departments, defaultDepartments = [], defaultIds, defaultGstType = "" }: {
+export function CompliancePicker({ items: allItems, departments, defaultDepartments = [], defaultIds, defaultGstType = "", gstinTypes = [] }: {
   items: ComplianceOption[];
   departments: string[];
   defaultDepartments?: string[];
@@ -20,17 +20,21 @@ export function CompliancePicker({ items: allItems, departments, defaultDepartme
   defaultIds?: string[];
   /** GST registration type (tracker S.No. 74): the GST compliances listed follow it. */
   defaultGstType?: string;
+  /** Own types of the client's GSTINs (e.g. a separate ISD registration): their compliances are listed too. */
+  gstinTypes?: string[];
 }) {
   const [gstType, setGstType] = useState<GstType | "">(isGstType(defaultGstType) ? defaultGstType : "");
-  const items = allItems.filter((i) => gstItemApplies(gstType || null, i));
+  const extra = gstinTypes.filter(isGstType);
+  const types = (t: GstType | "") => (t || extra.length ? [t || null, ...extra] : null);
+  const items = allItems.filter((i) => gstItemApplies(types(gstType), i));
   const [chosen, setChosen] = useState(() => new Set(defaultDepartments));
-  const [ids, setIds] = useState(() => new Set(defaultIds ?? allItems.filter((i) => defaultDepartments.includes(i.department) && gstItemApplies(isGstType(defaultGstType) ? defaultGstType : null, i)).map((i) => i.id)));
+  const [ids, setIds] = useState(() => new Set(defaultIds ?? allItems.filter((i) => defaultDepartments.includes(i.department) && gstItemApplies(types(isGstType(defaultGstType) ? defaultGstType : ""), i)).map((i) => i.id)));
   function changeGstType(t: GstType | "") {
     setGstType(t);
     // GST compliances of the new type start ticked (if GST is chosen); the others are dropped.
     setIds((prev) => {
-      const next = new Set([...prev].filter((id) => { const i = allItems.find((x) => x.id === id); return !i || gstItemApplies(t || null, i); }));
-      if (chosen.has("GST")) for (const i of allItems) if (i.department === "GST" && gstItemApplies(t || null, i)) next.add(i.id);
+      const next = new Set([...prev].filter((id) => { const i = allItems.find((x) => x.id === id); return !i || gstItemApplies(types(t), i); }));
+      if (chosen.has("GST")) for (const i of allItems) if (i.department === "GST" && gstItemApplies(types(t), i)) next.add(i.id);
       return next;
     });
   }
@@ -63,7 +67,7 @@ export function CompliancePicker({ items: allItems, departments, defaultDepartme
           <option value="">Not set</option>
           {GST_TYPE_KEYS.map((k) => <option key={k} value={k}>{GST_TYPES[k]}</option>)}
         </select>
-        <span className="mt-1 block text-xs text-muted">{gstType ? GST_TYPE_NOTE[gstType] : "Regular, Composition dealer or Surrendered (cancelled): the GST compliances below follow it."}</span>
+        <span className="mt-1 block text-xs text-muted">{gstType ? GST_TYPE_NOTE[gstType] : "Regular, Composition dealer, ISD or Surrendered (cancelled): the GST compliances below follow it."}{extra.length ? ` A GSTIN of this client is registered as ${extra.map((t) => GST_TYPES[t]).join(", ")}: its compliances are listed too.` : ""}</span>
       </label>
       <fieldset>
         <legend className="mb-2 text-sm font-medium">Departments the client is with</legend>

@@ -24,7 +24,7 @@ const STEPS = ["Business identity", "Constitution & people", "GST registrations"
 // Which step owns each server-side field (to jump back on validation errors).
 const FIELD_STEP: Record<string, number> = {
   tradeName: 0, legalName: 0, address: 0, pan: 0, tan: 0, primaryBusinessNatureId: 0, contactName: 0, contactMobile: 0, contactEmail: 0, contactDesignation: 0, state: 0, dateOfBirth: 0, itFileNo: 0,
-  gstUserId: 3, gstPassword: 3, incomeTaxUserId: 3, incomeTaxPassword: 3, tracesUserId: 3, tracesPassword: 3, masterRemark: 5,
+  gstUserId: 3, gstPassword: 3, incomeTaxUserId: 3, incomeTaxPassword: 3, tracesUserId: 3, tracesPassword: 3, ewayBillUserId: 3, ewayBillPassword: 3, masterRemark: 5,
   constitutionId: 1, people: 1, gstins: 2,
   isMsme: 3, msmeRegistrationNumber: 3, esiNumber: 3, pfNumber: 3, "departments[]": 3, "complianceItemIds[]": 3,
   "serviceIds[]": 4, natureOfClient: 4,
@@ -229,7 +229,7 @@ export function BusinessWizard({ constitutions, natures, services, compliances }
       ["GSTINs", gstins.join(", "), 2],
       ["MSME", v("isMsme") === "yes" ? `Yes ${v("msmeRegistrationNumber")}` : v("isMsme") === "no" ? "No" : "", 3],
       ["ESI / PF", [v("esiNumber"), v("pfNumber")].filter(Boolean).join(" / "), 3],
-      ["Portal logins", [v("gstUserId") && `GST: ${v("gstUserId")}`, `Income Tax: ${v("incomeTaxUserId") || v("pan").toUpperCase() || "—"}`, v("tracesUserId") && `TRACES: ${v("tracesUserId")}`].filter(Boolean).join(" · "), 3],
+      ["Portal logins", [v("gstUserId") && `GST: ${v("gstUserId")}`, `Income Tax: ${v("incomeTaxUserId") || v("pan").toUpperCase() || "—"}`, v("tracesUserId") && `TRACES: ${v("tracesUserId")}`, v("ewayBillUserId") && `E-way bill: ${v("ewayBillUserId")}`].filter(Boolean).join(" · "), 3],
       ["Departments", fd.getAll("departments[]").join(", "), 3],
       ["Compliances", fd.getAll("complianceItemIds[]").length ? `${fd.getAll("complianceItemIds[]").length} selected` : "", 3],
       ["Documents", files.join(", "), 3],
@@ -370,6 +370,8 @@ export function BusinessWizard({ constitutions, natures, services, compliances }
             <Field label="Income Tax password" name="incomeTaxPassword"><input id="f-incomeTaxPassword" name="incomeTaxPassword" type="password" autoComplete="new-password" className={input} /></Field>
             <Field label="TRACES user ID" name="tracesUserId"><input id="f-tracesUserId" name="tracesUserId" autoComplete="off" className={input} /></Field>
             <Field label="TRACES password" name="tracesPassword"><input id="f-tracesPassword" name="tracesPassword" type="password" autoComplete="new-password" className={input} /></Field>
+            <Field label="E-way bill user ID" name="ewayBillUserId"><input id="f-ewayBillUserId" name="ewayBillUserId" autoComplete="off" className={input} /></Field>
+            <Field label="E-way bill password" name="ewayBillPassword"><input id="f-ewayBillPassword" name="ewayBillPassword" type="password" autoComplete="new-password" className={input} /></Field>
           </fieldset>
           <div className="space-y-3 sm:col-span-2">
             <p className="text-sm font-medium">Documents <span className="font-normal text-muted">(PDF, JPG, PNG, DOCX · max 10 MB each, 11 MB together · stored privately)</span></p>

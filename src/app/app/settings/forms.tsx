@@ -79,7 +79,7 @@ export function PolicyForm({ action, d }: { action: Act; d: D }) {
         <TextField label="Office name" name="officeName" defaultValue={d.officeName} hint="Shown as the first work location, e.g. Naraina Office" />
         {t("Office start", "officeStart")}{t("Grace until", "reportingGraceUntil", "Up to 15 minutes late: no deduction")}
         {t("Office end", "officeEnd")}{t("Lunch from", "lunchStart")}{t("Lunch to", "lunchEnd", "Never more than this; a Team Lead may move it")}
-        {n("Client-site day (minutes)", "onsiteRequiredMinutes", "480 = 8 hours from the reporting time the Team Lead fixes")}
+        <TextField label="Client-site day (hours)" name="onsiteRequiredHours" type="number" step="0.25" min={1} max={16} defaultValue={d.onsiteRequiredMinutes ? String(Number(d.onsiteRequiredMinutes) / 60) : "8"} hint="Usual length of a client-site day from the reporting time. A Team Lead can set other hours for each person (Attendance → Team timings)." />
         <SelectField label="Photo (selfie) at mark-in / out" name="attendancePhoto" placeholder={null} defaultValue={d.attendancePhoto || "OPTIONAL"} options={[
           { value: "OFF", label: "Disabled — no photo" }, { value: "OPTIONAL", label: "Enabled — optional" }, { value: "REQUIRED", label: "Enabled — required" },
         ]} hint="Photos taken by a Team Lead for someone else are always required" />
@@ -90,6 +90,7 @@ export function PolicyForm({ action, d }: { action: Act; d: D }) {
         {n("Late days (15 min – 1 h) per half day", "lateArrivalsPerHalfDay", "3 in a month = half a day's salary")}
         {n("Late by more than (minutes) = half day", "veryLateAfterMinutes", "60 = over an hour late is a half day")}
         {n("Late arrivals excused a month", "lateGracePerMonth", "With a genuine reason, informed in the ERP beforehand")}
+        {n("Days a month attendance may be marked on request", "requestMarksPerMonth", "“Please mark my attendance” (forgot / could not mark). Each day after this counts as a half day")}
       </fieldset>
       <fieldset className="grid gap-3 sm:grid-cols-3">
         <legend className="mb-2 text-sm font-semibold">Leaving early, staying late and overtime (rules 8 and 9)</legend>
@@ -110,6 +111,11 @@ export function PolicyForm({ action, d }: { action: Act; d: D }) {
         {t("Morning plan due by", "morningPlanBy")}
         {n("Fine for an EOD not filed (₹)", "eodPenaltyRupees", "Filed by the next day's reporting time = no fine")}
         {n("Fine for a Team Lead not escalating (₹)", "leadPenaltyRupees")}
+      </fieldset>
+      <fieldset className="grid gap-3 sm:grid-cols-3">
+        <legend className="mb-2 text-sm font-semibold">Conveyance and salary</legend>
+        {n("Conveyance rate per km (₹, own vehicle)", "conveyanceRatePerKm", "SSDA conveyance sheet: ₹4.50 a km", "0.05")}
+        {n("Salary paid on (day of next month)", "salaryPayDay", "Shown on the salary slip, e.g. 10 = paid on the 10th")}
       </fieldset>
       <SubmitButton>Save policy</SubmitButton>
     </ActionForm>

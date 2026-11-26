@@ -114,7 +114,7 @@ export async function POST(request: Request) {
         : Promise.resolve();
 
       try {
-        const r = await runAgent(ctx, history, { text: body.text, quote: body.quote }, emit, abort.signal);
+        const r = await runAgent(ctx, history, { text: body.text, quote: body.quote }, emit, abort.signal, { conversationId });
         const saved = await prisma.aiMessage.create({
           data: {
             conversationId, role: "assistant", content: r.content, blocks: r.blocks.length ? r.blocks : undefined, followUp: r.followUp,

@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { BusinessRuleError, zIsoDate, zOptionalText } from "@/lib/actions";
+import { BusinessRuleError, zCheckbox, zIsoDate, zOptionalText } from "@/lib/actions";
 import { addDays, dateOnly, formatDate, monthRange, todayDateOnly, toIsoDate } from "@/lib/dates";
 import { can } from "@/lib/permissions";
 import type { AppContext } from "@/lib/session";
@@ -19,7 +19,8 @@ import { notifyEmployees, notifyRoles } from "./notifications";
 //   deduction and the balance are worked out from it, and the payslip shows both.
 
 const money = z.coerce.number("Enter the amount").positive("Enter the amount").max(1_000_000);
-export const CONVEYANCE_MODES = ["Two-wheeler", "Car", "Auto / cab", "Bus / metro", "Other"] as const;
+import { CONVEYANCE_MODES, conveyanceAmount, isOwnVehicle } from "@/lib/domain/conveyance";
+export { CONVEYANCE_MODES, conveyanceAmount, isOwnVehicle };
 
 // ---------------------------------------------------------------- conveyance
 
@@ -27,11 +28,47 @@ export const conveyanceSchema = z.object({
   claimDate: zIsoDate,
   clientId: z.uuid().optional(),
   place: zOptionalText(300),
-  mode: z.enum(CONVEYANCE_MODES).optional(),
+  mode: z.enum(CONVEYANCE_MODES, { error: "Choose the mode of conveyance" }),
+  /** Own vehicle: the day's total run and the home ↔ office km to take off. */
+  totalRunKm: z.coerce.number().min(0).max(5000).optional(),
+  commuteKm: z.coerce.number().min(0).max(1000).optional(),
+  rememberCommute: zCheckbox.optional(),
+  /** Older form: the distance as one figure. */
   km: z.coerce.number().min(0).max(5000).optional(),
-  amount: money,
+  /** Fare paid (metro, bus, cab …); for an own vehicle it is worked out. */
+  amount: z.coerce.number().min(0).max(1_000_000).optional(),
   purpose: zOptionalText(500),
+  remark: zOptionalText(500),
 });
+
+/**
+ * The clients a person may pick on a claim (client, 25 Nov 2026: "specific and related clients only"):
+ * the clients they are allocated to (now or in the last two months), have tasks for, or checked in at
+ * as a client visit. Administrators also get every other active client after their own.
+ */
+export async function conveyanceClientOptions(ctx: AppContext) {
+  const me = ctx.employee?.id ?? NO_EMPLOYEE;
+  const since = addDays(todayDateOnly(ctx.organization.timezone), -62);
+  const related = await prisma.client.findMany({
+    where: {
+      organizationId: ctx.organization.id,
+      status: { in: ["ACTIVE", "ON_HOLD"] },
+      OR: [
+        { teamAllocations: { some: { employeeId: me, status: { not: "CANCELLED" }, OR: [{ endDate: null }, { endDate: { gte: since } }] } } },
+        { tasks: { some: { OR: [{ assignments: { some: { employeeId: me } } }, { makerEmployeeId: me }, { checkerEmployeeId: me }], updatedAt: { gte: since } } } },
+        { tasks: { some: { status: { notIn: ["COMPLETED", "CANCELLED"] }, OR: [{ assignments: { some: { employeeId: me, removedAt: null } } }, { makerEmployeeId: me }, { checkerEmployeeId: me }] } } },
+        { clientVisits: { some: { employeeId: me, startedAt: { gte: since } } } },
+      ],
+    },
+    orderBy: { tradeName: "asc" },
+    select: { id: true, tradeName: true },
+  });
+  const mine = related.map((c) => ({ value: c.id, label: c.tradeName }));
+  if (!can(ctx, "org.manage")) return mine;
+  const ids = new Set(related.map((c) => c.id));
+  const others = await prisma.client.findMany({ where: { organizationId: ctx.organization.id, status: { in: ["ACTIVE", "ON_HOLD"] }, id: { notIn: [...ids] } }, orderBy: { tradeName: "asc" }, select: { id: true, tradeName: true } });
+  return [...mine, ...others.map((c) => ({ value: c.id, label: `${c.tradeName} (not your client)` }))];
+}
 
 export async function submitConveyance(ctx: AppContext, v: z.infer<typeof conveyanceSchema>, fd: FormData) {
   if (!ctx.employee) throw new BusinessRuleError("Your login is not linked to a staff record.");
@@ -42,20 +79,42 @@ export async function submitConveyance(ctx: AppContext, v: z.infer<typeof convey
   if (!v.clientId && !v.place) throw new BusinessRuleError("Choose the client, or say where you travelled.");
   const client = v.clientId ? await prisma.client.findFirst({ where: { id: v.clientId, organizationId: ctx.organization.id }, select: { id: true, tradeName: true } }) : null;
   if (v.clientId && !client) throw new BusinessRuleError("Client not found.");
+  // Only the person's own (related) clients can be claimed for; administrators may pick any client.
+  if (client && !(await conveyanceClientOptions(ctx)).some((o) => o.value === client.id)) throw new BusinessRuleError(`${client.tradeName} is not one of your clients (allocated, with your tasks, or visited). Choose your client, or write the place instead.`);
+  const own = isOwnVehicle(v.mode);
+  let km = v.km ?? null;
+  let totalRunKm: number | null = null;
+  let commuteKm: number | null = null;
+  let ratePerKm: number | null = null;
+  let amount = v.amount ?? 0;
+  if (own) {
+    const [policy, emp] = await Promise.all([
+      prisma.attendancePolicy.findUnique({ where: { organizationId: ctx.organization.id }, select: { conveyanceRatePerKm: true } }),
+      prisma.employee.findUniqueOrThrow({ where: { id: ctx.employee.id }, select: { commuteKm: true } }),
+    ]);
+    if (v.totalRunKm === undefined || v.totalRunKm <= 0) throw new BusinessRuleError("Enter the total run (km) of the day.");
+    totalRunKm = v.totalRunKm;
+    commuteKm = v.commuteKm ?? (emp.commuteKm ? Number(emp.commuteKm) : 0);
+    if (commuteKm > totalRunKm) throw new BusinessRuleError("The home ↔ office km cannot be more than the total run.");
+    ratePerKm = policy ? Number(policy.conveyanceRatePerKm) : 4.5;
+    ({ km, amount } = conveyanceAmount(totalRunKm, commuteKm, ratePerKm));
+    if (amount <= 0) throw new BusinessRuleError("Nothing to claim: the km for office work is 0 (total run less home ↔ office).");
+  } else if (!amount || amount <= 0) throw new BusinessRuleError("Enter the fare paid.");
   const bill = fd.get("bill");
   const file = hasFile(bill) ? await storeUpload(ctx, bill, { area: "employees", ownerId: ctx.employee.id }) : null;
   const claim = await prisma.$transaction(async (tx) => {
     const c = await tx.conveyanceClaim.create({
       data: {
         organizationId: ctx.organization.id, employeeId: ctx.employee!.id, claimDate: day, clientId: client?.id, place: v.place, mode: v.mode,
-        km: v.km, amount: v.amount, purpose: v.purpose, billFileId: file?.id,
+        km, totalRunKm, commuteKm, ratePerKm, amount, purpose: v.purpose, remark: v.remark, billFileId: file?.id,
       },
     });
+    if (own && v.rememberCommute && commuteKm !== null) await tx.employee.update({ where: { id: ctx.employee!.id }, data: { commuteKm } });
     await audit(tx, ctx, "conveyance.claimed", "conveyance_claim", c.id);
     await notifyRoles(tx, ctx.organization.id, ["OWNER", "ADMIN"], {
       type: "conveyance.claimed",
-      title: `Conveyance claim from ${ctx.employee!.firstName}: ₹${v.amount.toLocaleString("en-IN")}`,
-      body: `${formatDate(day)} · ${client?.tradeName ?? v.place ?? ""}${v.km ? ` · ${v.km} km` : ""}`,
+      title: `Conveyance claim from ${ctx.employee!.firstName}: ₹${amount.toLocaleString("en-IN")}`,
+      body: `${formatDate(day)} · ${client?.tradeName ?? v.place ?? ""} · ${v.mode}${km ? ` · ${km} km for office` : ""}`,
       link: "/app/payroll?tab=conveyance",
     }, ctx.user.id);
     return c;
@@ -104,6 +163,16 @@ export async function myConveyance(ctx: AppContext) {
     orderBy: [{ claimDate: "desc" }, { createdAt: "desc" }],
     take: 60,
     include: { client: { select: { tradeName: true } }, decidedBy: { select: { name: true } } },
+  });
+}
+
+/** One person's claims of a month, in date order: the SSDA conveyance sheet. */
+export async function conveyanceSheet(ctx: AppContext, month: string, employeeId: string) {
+  const { start, end } = monthRange(`${month}-01`);
+  return prisma.conveyanceClaim.findMany({
+    where: { organizationId: ctx.organization.id, employeeId, claimDate: { gte: start, lte: end }, status: { not: "CANCELLED" } },
+    orderBy: [{ claimDate: "asc" }, { createdAt: "asc" }],
+    include: { client: { select: { tradeName: true } }, employee: { select: { firstName: true, lastName: true } } },
   });
 }
 

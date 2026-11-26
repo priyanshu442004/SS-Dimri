@@ -7,8 +7,11 @@ import { BusinessRuleError, parseForm, safeAction, type ActionState } from "@/li
 import { actionContext } from "@/lib/session";
 import { can } from "@/lib/permissions";
 import { audit } from "@/lib/services/audit";
+import { gstState } from "@/lib/domain/gst-state";
 import {
-  addEngagement,
+  addEngagements,
+  engagementsSchema,
+  gstinDetailsSchema,
   updateEngagement,
   addRepresentative,
   clientDetailsSchema,
@@ -103,11 +106,30 @@ export async function addGstinAction(clientId: string, _p: ActionState, fd: Form
     });
     if (dup) throw new BusinessRuleError(`This GSTIN is already registered for ${dup.client.tradeName}.`);
     await prisma.$transaction(async (tx) => {
-      const g = await tx.clientGstRegistration.create({ data: { clientId: client.id, gstin: parsed.data.gstin } });
+      const g = await tx.clientGstRegistration.create({
+        data: { clientId: client.id, gstin: parsed.data.gstin, state: gstState(parsed.data.gstin), branchName: parsed.data.branchName ?? null, registrationType: parsed.data.registrationType ?? null },
+      });
       await audit(tx, ctx, "client.gstin_added", "client", client.id, { gstinId: g.id });
     });
     revalidatePath(`/app/clients/${clientId}`);
     return { ok: true, message: "GSTIN added." };
+  });
+}
+
+/** Branch and own registration type of one GSTIN (tracker S.No. 107: state-wise registrations). */
+export async function updateGstinAction(clientId: string, gstId: string, _p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(gstinDetailsSchema, fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const { ctx, client } = await editableClient(clientId);
+    await prisma.$transaction(async (tx) => {
+      const g = await tx.clientGstRegistration.findFirst({ where: { id: gstId, clientId: client.id } });
+      if (!g) throw new BusinessRuleError("GSTIN not found.");
+      await tx.clientGstRegistration.update({ where: { id: g.id }, data: { branchName: parsed.data.branchName ?? null, registrationType: parsed.data.registrationType ?? null, state: g.state ?? gstState(g.gstin) } });
+      await audit(tx, ctx, "client.gstin_updated", "client", client.id, { gstinId: g.id });
+    });
+    revalidatePath(`/app/clients/${clientId}`);
+    return { ok: true, message: "GSTIN details saved." };
   });
 }
 
@@ -166,14 +188,15 @@ export async function removeRepresentativeAction(clientId: string, memberId: str
   });
 }
 
+/** Add one or more services (tracker S.No. 99: multi-select). */
 export async function addEngagementAction(clientId: string, _p: ActionState, fd: FormData): Promise<ActionState> {
-  const parsed = parseForm(engagementSchema, fd);
+  const parsed = parseForm(engagementsSchema, fd);
   if (!parsed.success) return parsed.state;
   return safeAction(async () => {
     const { ctx } = await editableClient(clientId);
-    await addEngagement(ctx, clientId, parsed.data);
+    const r = await addEngagements(ctx, clientId, parsed.data);
     revalidatePath(`/app/clients/${clientId}`);
-    return { ok: true, message: "Service added." };
+    return { ok: true, message: `${r.added.length === 1 ? "Service" : `${r.added.length} services`} added: ${r.added.join(", ")}.${r.skipped.length ? ` Already active: ${r.skipped.join(", ")}.` : ""}` };
   });
 }
 

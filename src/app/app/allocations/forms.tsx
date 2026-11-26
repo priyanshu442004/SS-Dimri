@@ -6,13 +6,13 @@ import { ActionForm, Checkbox, SelectField, SubmitButton, TextField, type FormSt
 import { SearchSelect } from "@/components/pickers";
 import { formatHours, type DayCapacity } from "@/lib/domain/allocation";
 import { ALLOCATION_RESOURCE_TYPES, ALLOCATION_ROLES } from "@/lib/domain/allocation-import";
-import { FREQUENCIES, WEEKDAY_NAMES, type Frequency } from "@/lib/domain/allocation-schedule";
+import { FREQUENCIES, WEEK_ORDER, WEEKDAY_NAMES, type Frequency } from "@/lib/domain/allocation-schedule";
 
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
 type Option = { value: string; label: string; level?: string | null };
 
 /** First-half / second-half hours, with one-click choices for the usual patterns. */
-function HalfDayHours({ capacity }: { capacity: DayCapacity }) {
+export function HalfDayHours({ capacity }: { capacity: DayCapacity }) {
   const [first, setFirst] = useState("");
   const [second, setSecond] = useState("");
   const presets = [
@@ -46,7 +46,7 @@ function HalfDayHours({ capacity }: { capacity: DayCapacity }) {
 }
 
 /** Frequency, then the week days (weekly patterns) or the visit days of the month (monthly patterns). */
-function VisitPlan() {
+export function VisitPlan() {
   const [frequency, setFrequency] = useState<Frequency | "">("");
   const monthly = frequency === "TWICE_A_MONTH" || frequency === "MONTHLY";
   return (
@@ -63,14 +63,14 @@ function VisitPlan() {
         <fieldset>
           <legend className="mb-1.5 text-sm font-medium text-ink">Week days</legend>
           <div className="flex flex-wrap gap-1.5">
-            {[1, 2, 3, 4, 5, 6].map((d) => (
+            {WEEK_ORDER.map((d) => (
               <label key={d} className="flex cursor-pointer items-center gap-1 rounded-full border border-line px-2.5 py-1 text-xs has-[:checked]:border-ink has-[:checked]:bg-ink has-[:checked]:text-paper">
                 <input type="checkbox" name="weekDays[]" value={d} className="sr-only" />
                 {WEEKDAY_NAMES[d]}
               </label>
             ))}
           </div>
-          <p className="mt-1 text-xs text-muted">None ticked = Mon–Sat.</p>
+          <p className="mt-1 text-xs text-muted">None ticked = Mon–Sat. Tick Sun for a client that works on Sundays.</p>
         </fieldset>
       )}
       {monthly && (

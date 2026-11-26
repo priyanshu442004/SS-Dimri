@@ -1,8 +1,9 @@
 "use client";
 
 import { IdValidate } from "@/components/id-validate";
-import { useId } from "react";
-import { ActionForm, Checkbox, SelectField, SubmitButton, TextArea, TextField, type FormState } from "@/components/form";
+import { useId, useState } from "react";
+import { ActionForm, Checkbox, FormError, SelectField, SubmitButton, TextArea, TextField, type FormState } from "@/components/form";
+import { GST_TYPE_KEYS, GST_TYPES } from "@/lib/domain/gst-type";
 import { CompliancePicker, type ComplianceOption } from "@/components/compliance-picker";
 import { checkFileInput } from "@/components/upload-guard";
 
@@ -28,11 +29,12 @@ const BASIS_LABELS: Record<string, string> = {
 };
 
 export function DetailsForm({
-  action, d, constitutions, natures, classifications, completedAt, compliances,
+  action, d, constitutions, natures, classifications, completedAt, compliances, groups,
 }: {
   action: Act;
   d: Record<string, string>;
-  compliances: { items: ComplianceOption[]; departments: string[]; chosenDepartments: string[]; chosenIds: string[]; gstType: string };
+  compliances: { items: ComplianceOption[]; departments: string[]; chosenDepartments: string[]; chosenIds: string[]; gstType: string; gstinTypes?: string[] };
+  groups?: string[];
   constitutions: Option[];
   natures: Option[];
   classifications: (Option & { basis: string })[];
@@ -56,6 +58,10 @@ export function DetailsForm({
         <TextField label="Date of birth / incorporation" name="dateOfBirth" type="date" defaultValue={d.dateOfBirth} />
         <TextField label="IT file no." name="itFileNo" defaultValue={d.itFileNo} />
         <TextArea label="Remark" name="masterRemark" rows={1} defaultValue={d.masterRemark} />
+        <div>
+          <TextField label="Client group" name="groupName" defaultValue={d.groupName} list="client-groups" autoComplete="off" placeholder="e.g. DNS Group" hint="Clients of the same group (same promoters, or one PAN in several states) are linked. Pick a group or type a new one." />
+          <datalist id="client-groups">{(groups ?? []).map((g) => <option key={g} value={g} />)}</datalist>
+        </div>
         <TextField label="Client's office opens at" name="officeOpensAt" type="time" defaultValue={d.officeOpensAt} hint="Staff who report straight to this client are late against this time, not the firm's office time. Leave blank to use the firm's time." />
       </fieldset>
 
@@ -67,12 +73,14 @@ export function DetailsForm({
         <TextField label="GST password" name="gstPassword" type="password" autoComplete="new-password" placeholder={d.gstPasswordSet ? "Saved · type to change" : ""} />
         <TextField label="Income Tax password" name="incomeTaxPassword" type="password" autoComplete="new-password" placeholder={d.incomeTaxPasswordSet ? "Saved · type to change" : ""} />
         <TextField label="TRACES password" name="tracesPassword" type="password" autoComplete="new-password" placeholder={d.tracesPasswordSet ? "Saved · type to change" : ""} />
+        <TextField label="E-way bill user ID" name="ewayBillUserId" defaultValue={d.ewayBillUserId} autoComplete="off" hint="ewaybillgst.gov.in login" />
+        <TextField label="E-way bill password" name="ewayBillPassword" type="password" autoComplete="new-password" placeholder={d.ewayBillPasswordSet ? "Saved · type to change" : ""} />
       </fieldset>
 
       <fieldset>
         <legend className="mb-2 text-sm font-semibold">Departments & compliances</legend>
         <input type="hidden" name="compliancesShown" value="on" />
-        <CompliancePicker items={compliances.items} departments={compliances.departments} defaultDepartments={compliances.chosenDepartments} defaultIds={compliances.chosenIds} defaultGstType={compliances.gstType} />
+        <CompliancePicker items={compliances.items} departments={compliances.departments} defaultDepartments={compliances.chosenDepartments} defaultIds={compliances.chosenIds} defaultGstType={compliances.gstType} gstinTypes={compliances.gstinTypes} />
       </fieldset>
 
       <fieldset className="grid gap-4 sm:grid-cols-2">
@@ -122,14 +130,31 @@ export function TransitionForm({ action, actions }: { action: Act; actions: { ac
   );
 }
 
+const GST_TYPE_OPTIONS = GST_TYPE_KEYS.map((k) => ({ value: k, label: GST_TYPES[k] }));
+
+/** Add a GSTIN: its state comes from the code; branch and an own registration type are optional (tracker S.No. 107). */
 export function GstinForm({ action, pan }: { action: Act; pan?: string | null }) {
   return (
     <ActionForm action={action} resetOnSuccess>
-      <div className="flex items-end gap-2">
-        <TextField label="Add GSTIN" name="gstin" maxLength={15} autoCapitalize="characters" className="flex-1" />
-        <SubmitButton>Add</SubmitButton>
-      </div>
+      <TextField label="Add GSTIN" name="gstin" maxLength={15} autoCapitalize="characters" hint="The state is read from the first two digits" />
       <IdValidate kind="GSTIN" field="gstin" pan={pan} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <TextField label="Branch / place (optional)" name="branchName" placeholder="e.g. Mumbai branch" />
+        <SelectField label="Registration type" name="registrationType" placeholder="Same as the client" options={GST_TYPE_OPTIONS} />
+      </div>
+      <SubmitButton>Add GSTIN</SubmitButton>
+    </ActionForm>
+  );
+}
+
+export function GstinDetailsForm({ action, d }: { action: Act; d: { branchName: string; registrationType: string } }) {
+  return (
+    <ActionForm action={action}>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <TextField label="Branch / place" name="branchName" defaultValue={d.branchName} />
+        <SelectField label="Registration type" name="registrationType" placeholder="Same as the client" defaultValue={d.registrationType} options={GST_TYPE_OPTIONS} />
+      </div>
+      <SubmitButton size="sm" variant="secondary">Save</SubmitButton>
     </ActionForm>
   );
 }
@@ -171,12 +196,37 @@ export function RepresentativeForm({ action, defaultRole }: { action: Act; defau
   );
 }
 
-/** Add a service, or (with `d`) correct one already on the client. */
-export function EngagementForm({ action, services, today, d }: { action: Act; services: Option[]; today: string; d?: Record<string, string> }) {
+/** Tick one or more services (tracker S.No. 99); ones already active on the client are marked. */
+function ServiceChecklist({ services, active }: { services: Option[]; active: string[] }) {
+  const [q, setQ] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const shown = services.filter((s) => !q.trim() || s.label.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <fieldset className="sm:col-span-3">
+      <legend className="mb-1.5 text-sm font-medium">Services <span className="font-normal text-muted">· tick one or more ({picked.size} ticked)</span></legend>
+      {services.length > 8 && <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search services" aria-label="Search services" className="mb-2 h-9 w-full max-w-xs rounded-md border border-line bg-surface px-3 text-sm" />}
+      <div className="grid max-h-64 gap-1.5 overflow-y-auto sm:grid-cols-2">
+        {shown.map((s) => {
+          const on = active.includes(s.value);
+          return (
+            <label key={s.value} className={`flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm ${picked.has(s.value) ? "border-brand-600 bg-brand-50" : "border-line hover:bg-subtle"}`}>
+              <input type="checkbox" name="serviceIds[]" value={s.value} checked={picked.has(s.value)} onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(s.value); else n.delete(s.value); setPicked(n); }} className="size-4 accent-brand-700" />
+              <span>{s.label}{on && <span className="ml-1 text-xs text-muted">(already active)</span>}</span>
+            </label>
+          );
+        })}
+      </div>
+      <FormError name="serviceIds[]" />
+    </fieldset>
+  );
+}
+
+/** Add one or more services, or (with `d`) correct one already on the client. */
+export function EngagementForm({ action, services, today, d, active = [] }: { action: Act; services: Option[]; today: string; d?: Record<string, string>; active?: string[] }) {
   return (
     <ActionForm action={action} resetOnSuccess={!d}>
       <div className="grid gap-3 sm:grid-cols-3">
-        <SelectField label="Service" name="serviceId" required options={services} defaultValue={d?.serviceId} className="sm:col-span-2" />
+        {d ? <SelectField label="Service" name="serviceId" required options={services} defaultValue={d?.serviceId} className="sm:col-span-2" /> : <ServiceChecklist services={services} active={active} />}
         <SelectField label="Engagement" name="engagementNature" defaultValue={d?.engagementNature} options={[{ value: "ONE_TIME", label: "One time" }, { value: "RETAINER", label: "Retainer" }]} />
         <TextField label="Agreed fee (₹)" name="agreedFee" type="number" min={0} step="0.01" inputMode="decimal" defaultValue={d?.agreedFee} />
         <TextField label="Start date" name="startDate" type="date" defaultValue={d ? d.startDate : today} />
@@ -188,7 +238,8 @@ export function EngagementForm({ action, services, today, d }: { action: Act; se
         <TextField label="POC email" name="pocEmail" type="email" defaultValue={d?.pocEmail} />
         <TextArea label="POC address" name="pocAddress" rows={1} className="sm:col-span-3" defaultValue={d?.pocAddress} />
       </div>
-      <SubmitButton>{d ? "Save changes" : "Add service"}</SubmitButton>
+      {!d && <p className="text-xs text-muted">The engagement, fee, dates and contact apply to every ticked service; correct one later with Edit.</p>}
+      <SubmitButton>{d ? "Save changes" : "Add services"}</SubmitButton>
     </ActionForm>
   );
 }

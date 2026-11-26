@@ -8,6 +8,8 @@ import { BusinessRuleError, zCheckbox, zIsoDate, zMoney, zOptionalText, zRequire
 import { dateOnly } from "@/lib/dates";
 import { clientTransition, type ClientAction, type ClientStatus } from "@/lib/domain/client-workflow";
 import { can } from "@/lib/permissions";
+import { inLine, seesFirm } from "@/lib/hierarchy";
+import { GST_TYPE_KEYS, type GstType } from "@/lib/domain/gst-type";
 import { encryptField, encryptWithLast4 } from "@/lib/security/encryption";
 import { aadhaarSchema, gstinSchema, intlMobileSchema, mobileSchema, panSchema, tanSchema } from "@/lib/validation/identifiers";
 import type { AppContext } from "@/lib/session";
@@ -20,10 +22,31 @@ import { checkClientUploads, storeClientUploads } from "./client-registration";
 import { notifyClientUsers, notifyRoles } from "./notifications";
 import { createPasswordLink } from "./password-links";
 
-/** Clients the caller may see. Team members see only clients they are allocated to or have tasks for. */
+/**
+ * Which clients a person sees (tracker S.No. 111, hierarchy rule of S.No. 97): the owner and administrators
+ * (or "See all clients" given by name) every client; a Team Leader / Manager the clients of their own line —
+ * allocated to them or anyone reporting to them (all levels), or with their line's tasks — plus the ones they
+ * registered themselves; a team member only the clients allocated to them or with their tasks.
+ */
 export function clientScope(ctx: AppContext): Prisma.ClientWhereInput {
-  if (can(ctx, "clients.view_all")) return { organizationId: ctx.organization.id };
+  if (seesFirm(ctx, "clients.view_all")) return { organizationId: ctx.organization.id };
   const me = ctx.employee?.id ?? "00000000-0000-0000-0000-000000000000";
+  if (can(ctx, "clients.view_all")) {
+    const line = inLine(ctx);
+    return {
+      organizationId: ctx.organization.id,
+      OR: [
+        { createdById: ctx.user.id },
+        {
+          status: { in: ["ACTIVE", "ON_HOLD"] },
+          OR: [
+            { teamAllocations: { some: { status: { in: ["ACTIVE", "PLANNED"] }, OR: [{ employee: line }, { reportsTo: line }, { teamLeader: line }] } } },
+            { tasks: { some: { OR: [{ assignments: { some: { employee: line, removedAt: null } } }, { maker: line }, { checker: line }] } } },
+          ],
+        },
+      ],
+    };
+  }
   return {
     organizationId: ctx.organization.id,
     status: { in: ["ACTIVE", "ON_HOLD"] },
@@ -132,13 +155,25 @@ export const clientDetailsSchema = z.object({
   gstUserId: zOptionalText(120),
   incomeTaxUserId: zOptionalText(120),
   tracesUserId: zOptionalText(120),
+  ewayBillUserId: zOptionalText(120),
   /** Typed only to set or change; never shown back. */
   gstPassword: zOptionalText(200),
   incomeTaxPassword: zOptionalText(200),
   tracesPassword: zOptionalText(200),
+  ewayBillPassword: zOptionalText(200),
+  /** Client group (tracker S.No. 107): an existing group's name, or a new one. Blank = no group. */
+  groupName: zOptionalText(120),
 });
 
 const BASES = ["GST_STATUS", "BILLING_BASIS", "PLACE_OF_WORK", "TURNOVER", "PRIORITY"] as const;
+
+/** The group with this name (case-insensitive), created if new. */
+export async function groupIdFor(tx: Prisma.TransactionClient, organizationId: string, name: string): Promise<string> {
+  const clean = name.replace(/\s+/g, " ").trim();
+  const found = await tx.clientGroup.findFirst({ where: { organizationId, name: { equals: clean, mode: "insensitive" } }, select: { id: true } });
+  if (found) return found.id;
+  return (await tx.clientGroup.create({ data: { organizationId, name: clean }, select: { id: true } })).id;
+}
 
 export async function saveClientDetails(ctx: AppContext, clientId: string, v: z.infer<typeof clientDetailsSchema>, fd: FormData) {
   const client = await getClientForCtx(ctx, clientId);
@@ -149,6 +184,7 @@ export async function saveClientDetails(ctx: AppContext, clientId: string, v: z.
     if (hasFile(file)) uploads[f] = (await storeUpload(ctx, file, { area: "clients", ownerId: client.id, imagesOnly: f === "profilePicture" })).id;
   }
   await prisma.$transaction(async (tx) => {
+    const groupId = v.groupName ? await groupIdFor(tx, ctx.organization.id, v.groupName) : null;
     await tx.client.update({
       where: { id: client.id },
       data: {
@@ -173,6 +209,9 @@ export async function saveClientDetails(ctx: AppContext, clientId: string, v: z.
         gstUserId: v.gstUserId ?? null,
         incomeTaxUserId: v.incomeTaxUserId ?? null,
         tracesUserId: v.tracesUserId ?? null,
+        ewayBillUserId: v.ewayBillUserId ?? null,
+        groupId,
+        ...(v.ewayBillPassword ? { ewayBillPasswordEncrypted: encryptField(v.ewayBillPassword) } : {}),
         ...(v.gstPassword ? { gstPasswordEncrypted: encryptField(v.gstPassword) } : {}),
         ...(v.incomeTaxPassword ? { incomeTaxPasswordEncrypted: encryptField(v.incomeTaxPassword) } : {}),
         ...(v.tracesPassword ? { tracesPasswordEncrypted: encryptField(v.tracesPassword) } : {}),
@@ -243,7 +282,14 @@ export async function transitionClient(ctx: AppContext, clientId: string, action
 
 // ------------------------------------------------------------- GSTINs, contacts, representatives, services, documents
 
-export const gstinSchemaForm = z.object({ gstin: gstinSchema });
+export const gstinSchemaForm = z.object({
+  gstin: gstinSchema,
+  /** Branch / place of business, e.g. "Mumbai branch". */
+  branchName: zOptionalText(120),
+  /** This GSTIN's own registration type when it differs from the client's (e.g. a separate ISD registration). */
+  registrationType: z.enum(GST_TYPE_KEYS as [GstType, ...GstType[]]).optional(),
+});
+export const gstinDetailsSchema = gstinSchemaForm.omit({ gstin: true });
 export const contactSchema = z.object({
   name: zRequiredText(120),
   designation: zOptionalText(120),
@@ -260,6 +306,20 @@ export const representativeSchema = z.object({
   address: zOptionalText(500),
   pan: panSchema.optional(),
   aadhaar: aadhaarSchema.optional(),
+});
+/** Adding services: tick one or more (tracker S.No. 99); the terms below apply to each. */
+export const engagementsSchema = z.object({
+  "serviceIds[]": z.array(z.uuid()).min(1, "Tick at least one service").max(60),
+  agreedFee: zMoney.optional(),
+  engagementNature: z.enum(["ONE_TIME", "RETAINER"]).optional(),
+  startDate: zIsoDate.optional(),
+  dueDate: zIsoDate.optional(),
+  timelineNote: zOptionalText(500),
+  description: zOptionalText(1000),
+  pocName: zOptionalText(120),
+  pocMobile: mobileSchema.optional(),
+  pocEmail: z.email().optional(),
+  pocAddress: zOptionalText(500),
 });
 export const engagementSchema = z.object({
   serviceId: z.uuid("Select a service"),
@@ -337,6 +397,31 @@ export async function addEngagement(ctx: AppContext, clientId: string, v: z.infe
       pocAddress: v.pocAddress,
     },
   });
+}
+
+/** Several services at once (tracker S.No. 99). A service the client already has (active) is skipped. */
+export async function addEngagements(ctx: AppContext, clientId: string, v: z.infer<typeof engagementsSchema>) {
+  const client = await getClientForCtx(ctx, clientId);
+  if (!client) throw new BusinessRuleError("Client not found.");
+  const services = await prisma.service.findMany({ where: { id: { in: [...new Set(v["serviceIds[]"])] }, organizationId: ctx.organization.id }, select: { id: true, name: true } });
+  if (!services.length) throw new BusinessRuleError("Service not found.");
+  const active = new Set((await prisma.clientService.findMany({ where: { clientId: client.id, status: "ACTIVE", serviceId: { in: services.map((s) => s.id) } }, select: { serviceId: true } })).map((s) => s.serviceId));
+  const add = services.filter((s) => !active.has(s.id));
+  if (!add.length) throw new BusinessRuleError(services.length === 1 ? `${services[0].name} is already an active service of this client.` : "These services are already active on this client.");
+  const terms = {
+    agreedFee: v.agreedFee,
+    engagementNature: v.engagementNature,
+    startDate: v.startDate ? dateOnly(v.startDate) : null,
+    dueDate: v.dueDate ? dateOnly(v.dueDate) : null,
+    retainerStartDate: v.engagementNature === "RETAINER" && v.startDate ? dateOnly(v.startDate) : null,
+    timelineNote: v.timelineNote, description: v.description,
+    pocName: v.pocName, pocMobile: v.pocMobile, pocEmail: v.pocEmail, pocAddress: v.pocAddress,
+  };
+  await prisma.$transaction(async (tx) => {
+    await tx.clientService.createMany({ data: add.map((s) => ({ organizationId: ctx.organization.id, clientId: client.id, serviceId: s.id, ...terms })) });
+    await audit(tx, ctx, "client.services_added", "client", client.id, { count: add.length });
+  });
+  return { added: add.map((s) => s.name), skipped: services.filter((s) => active.has(s.id)).map((s) => s.name) };
 }
 
 /** Correct a service already on the client: the service itself, its terms and its contact. */

@@ -4,7 +4,8 @@ import type { Block, StreamEvent } from "./blocks";
 import { aiConfig } from "./config";
 import { streamStep, stripToolMarkup, type ChatMessage, type ToolCall } from "./deepseek";
 import { buildSystemPrompt } from "./prompt";
-import { runTool, toolSpecs, toolLabel } from "./tools";
+import { FILE_TOOLS, runTool, toolSpecs, toolLabel, type ToolEnv } from "./tools";
+import { FactIndex } from "./files/facts";
 
 // One answer: model ↔ tools loop, streamed to the browser as events.
 
@@ -44,6 +45,11 @@ export function historyMessages(history: HistoryMessage[], thinking: boolean): C
       const replay: { call: ToolCall; result: string }[] = [];
       (m.context ?? "").split("\n").filter(Boolean).forEach((note, j) => { const r = noteToCall(note, `h${i}_${j}`); if (r) replay.push(r); });
       if (Array.isArray(m.blocks)) (m.blocks as Block[]).forEach((b, j) => {
+        if (b.type === "file") {
+          // A file made earlier: replayed as its call, so "change that Excel" / "make it a PDF" refers back to it.
+          replay.push({ call: { id: `h${i}_b${j}`, type: "function", function: { name: b.kind === "pdf" ? "create_pdf" : "create_excel", arguments: JSON.stringify({ title: b.title, fileName: b.fileName }) } }, result: `File "${b.fileName}" was made and given to the user (${b.summary}).` });
+          return;
+        }
         const { type, ...args } = b;
         const name = type === "kpis" ? "show_kpis" : type === "chart" ? "show_chart" : "show_table";
         replay.push({ call: { id: `h${i}_b${j}`, type: "function", function: { name, arguments: JSON.stringify(args).slice(0, 4000) } }, result: "Shown to the user." });
@@ -67,7 +73,8 @@ export function stripNotes(text: string): string {
 function compactForContext(name: string, args: Record<string, unknown>, result: unknown): string {
   const a = JSON.stringify(args);
   const r = JSON.stringify(result);
-  return `${name}(${a.length > 300 ? `${a.slice(0, 300)}…` : a}) → ${r.length > 1800 ? `${r.slice(0, 1800)}…` : r}`;
+  // Kept longer than before (25 Nov 2026) so a follow-up ("now give me this as Excel") still has the figures.
+  return `${name}(${a.length > 300 ? `${a.slice(0, 300)}…` : a}) → ${r.length > 5000 ? `${r.slice(0, 5000)}…` : r}`;
 }
 
 export async function runAgent(
@@ -76,9 +83,14 @@ export async function runAgent(
   question: { text: string; quote?: string | null },
   emit: (e: StreamEvent) => void,
   signal: AbortSignal,
+  opts: { conversationId?: string | null } = {},
 ): Promise<AgentResult> {
   const cfg = aiConfig();
   const tools = toolSpecs(ctx);
+  // Facts the file tools check against: data looked up earlier in this chat, and in this answer.
+  const env: ToolEnv = { facts: new FactIndex(), datasets: new Map(), conversationId: opts.conversationId ?? null };
+  for (const m of history) if (m.role === "assistant" && m.context) env.facts.addText(m.context);
+  let datasetNo = 0;
   const messages: ChatMessage[] = [
     { role: "system", content: buildSystemPrompt(ctx) },
     ...historyMessages(history, cfg.thinking),
@@ -125,7 +137,16 @@ export async function runAgent(
         }
         const quiet = PRESENTATION.has(call.function.name);
         if (!quiet) emit({ type: "tool", id: call.id, name: call.function.name, label: toolLabel(call.function.name, args), state: "running" });
-        const outcome = await runTool(ctx, call.function.name, args);
+        const outcome = await runTool(ctx, call.function.name, args, env);
+        // A data result becomes a data set the file tools can copy from, and facts they check against.
+        if (!outcome.failed && !PRESENTATION.has(call.function.name) && !FILE_TOOLS.has(call.function.name)) {
+          env.facts.addJson(outcome.result);
+          if (outcome.result && typeof outcome.result === "object" && !Array.isArray(outcome.result)) {
+            const id = `d${++datasetNo}`;
+            env.datasets.set(id, outcome.result);
+            outcome.result = { _dataset: id, ...(outcome.result as Record<string, unknown>) };
+          }
+        }
         if (!quiet) emit({ type: "tool", id: call.id, name: call.function.name, label: outcome.label, state: outcome.failed ? "error" : "done" });
         return { call, args, outcome };
       }),
@@ -136,7 +157,11 @@ export async function runAgent(
       if (outcome.block) { blocks.push(outcome.block); emit({ type: "block", block: outcome.block }); }
       if (outcome.followUp) { followUp = outcome.followUp; emit({ type: "followup", text: outcome.followUp }); }
       if (outcome.failed && PRESENTATION.has(call.function.name)) presentationFailed = true;
-      if (!PRESENTATION.has(call.function.name) && !outcome.failed) contextNotes.push(compactForContext(call.function.name, args, outcome.result));
+      if (!PRESENTATION.has(call.function.name) && !FILE_TOOLS.has(call.function.name) && !outcome.failed) {
+        // Data set ids live for one answer only: kept out of the history so a follow-up looks the data up again.
+        const { _dataset: _d, ...kept } = (outcome.result && typeof outcome.result === "object" && !Array.isArray(outcome.result) ? outcome.result : { result: outcome.result }) as Record<string, unknown>;
+        contextNotes.push(compactForContext(call.function.name, args, kept));
+      }
       const content = JSON.stringify(outcome.result);
       messages.push({ role: "tool", tool_call_id: call.id, content: content.length > 60_000 ? `${content.slice(0, 60_000)}…(cut)` : content });
     }
@@ -172,7 +197,7 @@ export async function runAgent(
     content: cleaned,
     blocks,
     followUp,
-    context: contextNotes.join("\n").slice(0, 6000),
+    context: contextNotes.join("\n").slice(0, 20000),
     reasoning: cfg.thinking ? reasoning : "",
     stopped: signal.aborted,
   };

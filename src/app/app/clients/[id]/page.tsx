@@ -17,13 +17,14 @@ import { DeleteButton } from "@/components/delete-dialog";
 import { canDelete } from "@/lib/services/deletions";
 import { Badge, Card, DetailList, EmptyState, humanize, Notice, PageHeader, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
 import {
-  addContactAction, addEngagementAction, addGstinAction, addRepresentativeAction, removeContactAction, removeGstinAction,
+  addContactAction, addEngagementAction, addGstinAction, addRepresentativeAction, removeContactAction, removeGstinAction, updateGstinAction,
   removeRepresentativeAction, saveClientDetailsAction, setEngagementStatusAction, transitionClientAction, updateEngagementAction, uploadClientDocumentAction,
   invitePortalUserAction,
   issuePortalResetLinkAction,
   setPortalUserStatusAction,
 } from "../actions";
-import { ContactForm, DetailsForm, DocumentForm, EngagementForm, GstinForm, PortalInviteForm, ResetLinkForm, RepresentativeForm, TransitionForm } from "./forms";
+import { ContactForm, DetailsForm, DocumentForm, EngagementForm, GstinDetailsForm, GstinForm, PortalInviteForm, ResetLinkForm, RepresentativeForm, TransitionForm } from "./forms";
+import { gstinLabel, gstState } from "@/lib/domain/gst-state";
 
 const TABS = ["overview", "details", "registration", "services", "documents", "portal", "activity"] as const;
 
@@ -39,6 +40,10 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   const edit = can(ctx, "clients.edit");
   const viewAll = can(ctx, "clients.view_all");
   const base = `/app/clients/${c.id}`;
+  // Filings tracked per GSTIN (registration number in the compliance tracker), for state-wise compliances.
+  const gstinFilings = new Map((await prisma.complianceEntry.groupBy({ by: ["registrationNumber"], where: { clientId: c.id, registrationNumber: { in: c.gstRegistrations.map((g) => g.gstin) } }, _count: { _all: true } })).map((g) => [g.registrationNumber!, g._count._all]));
+  // Other clients of the same group (tracker S.No. 107), as far as this person may see them.
+  const groupMates = c.groupId ? await prisma.client.findMany({ where: { AND: [clientScope(ctx), { groupId: c.groupId, id: { not: c.id } }] }, orderBy: { tradeName: "asc" }, select: { id: true, tradeName: true, clientCode: true, state: true, status: true, gstRegistrations: { select: { gstin: true, state: true } } } }) : [];
 
   return (
     <>
@@ -69,7 +74,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         ]}
       />
 
-      {tab === "overview" && <Overview c={c} role={ctx} edit={edit} viewAll={viewAll} basis={ctx.organization.pendingDaysBasis} />}
+      {tab === "overview" && <Overview c={c} role={ctx} edit={edit} viewAll={viewAll} basis={ctx.organization.pendingDaysBasis} groupMates={groupMates} />}
 
       {tab === "details" && edit && (
         <Card className="max-w-4xl">
@@ -79,12 +84,26 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
 
       {tab === "registration" && (
         <div className="grid gap-6 lg:grid-cols-2">
-          <Card title={`GSTINs (${c.gstRegistrations.length})`}>
+          <Card title={`GSTINs — state-wise (${c.gstRegistrations.length})`}>
+            {c.gstRegistrations.length > 1 && <p className="mb-2 text-xs text-muted">One PAN registered in {new Set(c.gstRegistrations.map((g) => g.state ?? gstState(g.gstin))).size} state(s). Each GSTIN files its own returns: pick the GSTIN in the compliance tracker so each state&apos;s filings are tracked separately.</p>}
             <ul className="mb-4 divide-y divide-line text-sm">
               {c.gstRegistrations.map((g) => (
-                <li key={g.id} className="flex items-center justify-between py-2">
-                  <span className="font-mono">{g.gstin}</span>
-                  {edit && <ActionButton variant="ghost" confirm={`Remove GSTIN ${g.gstin}?`} action={removeGstinAction.bind(null, c.id, g.id)}>Remove</ActionButton>}
+                <li key={g.id} className="py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      <span className="font-mono">{g.gstin}</span>
+                      <span className="ml-2 text-xs text-muted">{[g.state ?? gstState(g.gstin), g.branchName].filter(Boolean).join(" · ") || "State not known"}</span>
+                      {g.registrationType && isGstType(g.registrationType) && <> <Badge tone="info">{GST_TYPES[g.registrationType]}</Badge></>}
+                      {(gstinFilings.get(g.gstin) ?? 0) > 0 && <Link href={`/app/compliances?client=${c.id}`} className="ml-2 text-xs text-brand-700 hover:underline">{gstinFilings.get(g.gstin)} filing{gstinFilings.get(g.gstin) === 1 ? "" : "s"} tracked</Link>}
+                    </span>
+                    {edit && <ActionButton variant="ghost" confirm={`Remove GSTIN ${g.gstin}?`} action={removeGstinAction.bind(null, c.id, g.id)}>Remove</ActionButton>}
+                  </div>
+                  {edit && (
+                    <details className="mt-1 text-xs">
+                      <summary className="cursor-pointer text-brand-700">Branch / registration type</summary>
+                      <div className="mt-2"><GstinDetailsForm action={updateGstinAction.bind(null, c.id, g.id)} d={{ branchName: g.branchName ?? "", registrationType: g.registrationType ?? "" }} /></div>
+                    </details>
+                  )}
                 </li>
               ))}
               {c.gstRegistrations.length === 0 && <li className="py-2 text-muted">No GSTIN recorded.</li>}
@@ -187,12 +206,13 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
 type FullClient = NonNullable<Awaited<ReturnType<typeof getFull>>>;
 
 async function DetailsFormLoader({ clientId, c }: { clientId: string; c: FullClient }) {
-  const [constitutions, natures, options, choices, chosen] = await Promise.all([
+  const [constitutions, natures, options, choices, chosen, groups] = await Promise.all([
     prisma.constitution.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.businessNature.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     prisma.classificationOption.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     complianceChoices(),
     prisma.clientCompliance.findMany({ where: { clientId }, select: { complianceItemId: true } }),
+    prisma.clientGroup.findMany({ where: { organizationId: c.organizationId }, orderBy: { name: "asc" }, select: { name: true } }),
   ]);
   const cls = Object.fromEntries(c.classifications.map((x) => [x.basis, x.optionId]));
   return (
@@ -204,11 +224,13 @@ async function DetailsFormLoader({ clientId, c }: { clientId: string; c: FullCli
         primaryBusinessNatureId: c.primaryBusinessNatureId ?? "", secondaryBusinessNatureId: c.secondaryBusinessNatureId ?? "",
         isMsme: c.isMsme === null ? "" : c.isMsme ? "yes" : "no", msmeRegistrationNumber: c.msmeRegistrationNumber ?? "",
         esiNumber: c.esiNumber ?? "", pfNumber: c.pfNumber ?? "", ...cls,
-        gstUserId: c.gstUserId ?? "", incomeTaxUserId: c.incomeTaxUserId ?? "", tracesUserId: c.tracesUserId ?? "",
-        gstPasswordSet: c.gstPasswordEncrypted ? "1" : "", incomeTaxPasswordSet: c.incomeTaxPasswordEncrypted ? "1" : "", tracesPasswordSet: c.tracesPasswordEncrypted ? "1" : "",
+        gstUserId: c.gstUserId ?? "", incomeTaxUserId: c.incomeTaxUserId ?? "", tracesUserId: c.tracesUserId ?? "", ewayBillUserId: c.ewayBillUserId ?? "",
+        gstPasswordSet: c.gstPasswordEncrypted ? "1" : "", incomeTaxPasswordSet: c.incomeTaxPasswordEncrypted ? "1" : "", tracesPasswordSet: c.tracesPasswordEncrypted ? "1" : "", ewayBillPasswordSet: c.ewayBillPasswordEncrypted ? "1" : "",
+        groupName: c.group?.name ?? "",
         officeOpensAt: c.officeOpensAt ?? "", state: c.state ?? "", dateOfBirth: c.dateOfBirth ? toIsoDate(c.dateOfBirth) : "", itFileNo: c.itFileNo ?? "", masterRemark: c.masterRemark ?? "",
       }}
-      compliances={{ ...choices, chosenDepartments: c.departments, chosenIds: chosen.map((x) => x.complianceItemId), gstType: c.gstRegistrationType ?? "" }}
+      compliances={{ ...choices, chosenDepartments: c.departments, chosenIds: chosen.map((x) => x.complianceItemId), gstType: c.gstRegistrationType ?? "", gstinTypes: c.gstRegistrations.map((g) => g.registrationType).filter((t): t is string => !!t) }}
+      groups={groups.map((g) => g.name)}
       constitutions={constitutions.map((x) => ({ value: x.id, label: x.name }))}
       natures={natures.map((x) => ({ value: x.id, label: x.label }))}
       classifications={options.map((o) => ({ value: o.id, label: o.label, basis: o.basis }))}
@@ -217,7 +239,9 @@ async function DetailsFormLoader({ clientId, c }: { clientId: string; c: FullCli
   );
 }
 
-async function Overview({ c, role, edit, viewAll, basis }: { basis: "CALENDAR" | "BUSINESS"; c: FullClient; role: Parameters<typeof clientActions>[1]; edit: boolean; viewAll: boolean }) {
+type GroupMate = { id: string; tradeName: string; clientCode: string | null; state: string | null; status: string; gstRegistrations: { gstin: string; state: string | null }[] };
+
+async function Overview({ c, role, edit, viewAll, basis, groupMates }: { basis: "CALENDAR" | "BUSINESS"; c: FullClient; role: Parameters<typeof clientActions>[1]; edit: boolean; viewAll: boolean; groupMates: GroupMate[] }) {
   const [tasks, pending] = await Promise.all([
     prisma.task.findMany({
       where: { clientId: c.id, status: { notIn: ["COMPLETED", "CANCELLED"] } },
@@ -247,7 +271,8 @@ async function Overview({ c, role, edit, viewAll, basis }: { basis: "CALENDAR" |
               ["Nature of client", c.natureOfClient ? humanize(c.natureOfClient) : null],
               ["PAN", c.pan],
               ["TAN", c.tan],
-              ["GSTIN", c.gstRegistrations.map((g) => g.gstin).join(", ")],
+              ["Client group", c.group?.name],
+              ["GSTIN", c.gstRegistrations.map((g) => gstinLabel(g)).join(", ")],
               ["Address", c.address],
               ["MSME", c.isMsme === null ? null : c.isMsme ? `Yes${c.msmeRegistrationNumber ? ` · ${c.msmeRegistrationNumber}` : ""}` : "No"],
               ["ESI / PF", [c.esiNumber, c.pfNumber].filter(Boolean).join(" / ")],
@@ -261,7 +286,7 @@ async function Overview({ c, role, edit, viewAll, basis }: { basis: "CALENDAR" |
               ["Date of birth / incorporation", c.dateOfBirth ? formatDate(c.dateOfBirth) : null],
               ["IT file no.", c.itFileNo],
               ["Departments", c.departments.join(", ")],
-              ["Portal logins", ([["GST", c.gstUserId, c.gstPasswordEncrypted], ["Income Tax", c.incomeTaxUserId, c.incomeTaxPasswordEncrypted], ["TRACES", c.tracesUserId, c.tracesPasswordEncrypted]] as const).filter(([, id, pw]) => id || pw).map(([k, id, pw]) => `${k}: ${id ?? "—"}${pw ? " (password saved)" : ""}`).join(" · ")],
+              ["Portal logins", ([["GST", c.gstUserId, c.gstPasswordEncrypted], ["Income Tax", c.incomeTaxUserId, c.incomeTaxPasswordEncrypted], ["TRACES", c.tracesUserId, c.tracesPasswordEncrypted], ["E-way bill", c.ewayBillUserId, c.ewayBillPasswordEncrypted]] as const).filter(([, id, pw]) => id || pw).map(([k, id, pw]) => `${k}: ${id ?? "—"}${pw ? " (password saved)" : ""}`).join(" · ")],
               ["Remark", c.masterRemark],
               ...(c.extraFields && typeof c.extraFields === "object" && !Array.isArray(c.extraFields) ? Object.entries(c.extraFields as Record<string, string>).map(([k, v]) => [k, String(v)] as [string, string]) : []),
               ["Primary contact", c.contacts[0] ? `${c.contacts[0].name} ${c.contacts[0].mobile ?? ""}` : null],
@@ -331,6 +356,20 @@ async function Overview({ c, role, edit, viewAll, basis }: { basis: "CALENDAR" |
             </div>
           )}
         </Card>
+        {c.group && (
+          <Card title={`Group · ${c.group.name}`} actions={<Link className="text-sm text-brand-700 hover:underline" href={`/app/clients?group=${c.group.id}`}>All in group</Link>}>
+            {groupMates.length === 0 ? <p className="text-sm text-muted">No other client of this group{viewAll ? "" : " that you can see"}.</p> : (
+              <ul className="space-y-2 text-sm">
+                {groupMates.map((m) => (
+                  <li key={m.id}>
+                    <Link href={`/app/clients/${m.id}`} className="font-medium text-brand-700 hover:underline">{m.tradeName}</Link>
+                    <span className="block text-xs text-muted">{[m.clientCode, m.state ?? [...new Set(m.gstRegistrations.map((g) => g.state ?? gstState(g.gstin)).filter(Boolean))].join(", "), m.gstRegistrations.length ? `${m.gstRegistrations.length} GSTIN${m.gstRegistrations.length > 1 ? "s" : ""}` : null].filter(Boolean).join(" · ")}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        )}
         <Card title="Team allocated" actions={viewAll && <Link className="text-sm text-brand-700 hover:underline" href={`/app/allocations?client=${c.id}`}>Manage</Link>}>
           {c.teamAllocations.length === 0 ? <p className="text-sm text-muted">No team allocated.</p> : (
             <ul className="space-y-2 text-sm">
@@ -362,7 +401,7 @@ async function getFull(id: string) {
   return prisma.client.findFirst({
     where: { id },
     include: {
-      constitution: true, primaryBusinessNature: true, secondaryBusinessNature: true, gstRegistrations: { orderBy: { createdAt: "asc" } }, contacts: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }] },
+      constitution: true, primaryBusinessNature: true, secondaryBusinessNature: true, gstRegistrations: { orderBy: { createdAt: "asc" } }, group: true, contacts: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }] },
       constitutionMembers: { orderBy: { createdAt: "asc" } }, classifications: { include: { option: true } },
       services: { include: { service: { include: { department: true } } }, orderBy: { createdAt: "asc" } },
       documents: { include: { file: { select: { id: true, originalFileName: true, createdAt: true } } } },
@@ -437,8 +476,8 @@ async function ServicesTab({ c, edit, organizationId, editId }: { c: FullClient;
         </div>
       )}
       {edit && (
-        <Card title="Add a service" className="max-w-4xl">
-          <EngagementForm action={addEngagementAction.bind(null, c.id)} services={services.map((s) => ({ value: s.id, label: s.name }))} today={toIsoDate(new Date())} />
+        <Card title="Add services" className="max-w-4xl">
+          <EngagementForm action={addEngagementAction.bind(null, c.id)} services={services.map((s) => ({ value: s.id, label: s.name }))} today={toIsoDate(new Date())} active={c.services.filter((s) => s.status === "ACTIVE").map((s) => s.serviceId)} />
         </Card>
       )}
     </div>

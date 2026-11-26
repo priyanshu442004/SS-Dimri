@@ -28,8 +28,8 @@ export const allocationSchema = z.object({
   reportsToEmployeeId: z.uuid().optional(),
   teamLeaderEmployeeId: z.uuid().optional(),
   allowOverlap: zCheckbox.optional(),
-  /** 1 = Mon … 6 = Sat; none ticked = Mon–Sat. */
-  "weekDays[]": z.array(z.coerce.number().int().min(1).max(6)).max(6).default([]),
+  /** 1 = Mon … 6 = Sat, 0 = Sun (some clients work on Sunday); none ticked = Mon–Sat. */
+  "weekDays[]": z.array(z.coerce.number().int().min(0).max(6)).max(7).default([]),
   frequency: z.enum(FREQUENCY_KEYS as [Frequency, ...Frequency[]]).optional(),
   visitDays: zOptionalText(80),
   remark: zOptionalText(1000),
@@ -72,7 +72,7 @@ export async function refreshAllocationStatuses(organizationId: string, todayIso
 }
 
 /** Validate an allocation (ownership, dates, conflicts) and return the row data to insert. */
-async function prepareAllocation(ctx: AppContext, input: AllocationInput, excludeId?: string) {
+export async function prepareAllocation(ctx: AppContext, input: AllocationInput, excludeId?: string) {
   const v = allocationSchema.parse(input);
   const [client, employee] = await Promise.all([
     prisma.client.findFirst({ where: { id: v.clientId, organizationId: ctx.organization.id, status: { in: ["ACTIVE", "ON_HOLD"] } } }),

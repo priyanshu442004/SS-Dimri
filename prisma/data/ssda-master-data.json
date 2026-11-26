@@ -776,6 +776,16 @@
       "remarks": null
     },
     {
+      "department": "GST",
+      "name": "ISD return (Input Service Distributor)",
+      "form": "GSTR-6",
+      "applicableTo": "Input Service Distributors (ISD registration)",
+      "frequency": "Monthly",
+      "dueDateRule": "13th of next month",
+      "penalty": "Late fee",
+      "remarks": "Distribution of input tax credit to the units (GSTINs) of the same PAN"
+    },
+    {
       "department": "TDS",
       "name": "TDS / TCS deposit",
       "form": "Challan",

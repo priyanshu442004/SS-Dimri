@@ -5,7 +5,7 @@ import { getContext } from "@/lib/session";
 import { xlsxResponse } from "@/lib/xlsx";
 import { ALLOCATION_ROLES } from "@/lib/domain/allocation-import";
 import { FREQUENCIES, formatWeekDays } from "@/lib/domain/allocation-schedule";
-import { allocationWhere, parseAllocationFilters } from "@/lib/services/allocation-views";
+import { allocationScope, allocationWhere, parseAllocationFilters } from "@/lib/services/allocation-views";
 
 /** The allocation list as Excel, in the import columns (so it can be edited and imported again elsewhere). */
 export async function GET(request: Request) {
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   }
   const filters = parseAllocationFilters(Object.fromEntries(new URL(request.url).searchParams));
   const rows = await prisma.teamAllocation.findMany({
-    where: allocationWhere(ctx.organization.id, filters),
+    where: allocationWhere(ctx.organization.id, filters, (await allocationScope(ctx)).where),
     orderBy: [{ client: { tradeName: "asc" } }, { startDate: "asc" }],
     take: 20_000,
     include: {

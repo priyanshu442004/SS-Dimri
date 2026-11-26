@@ -15,13 +15,14 @@ import { leaveUsedThisMonth, parseTeamFilters, teamAttendanceRows, todayIso, typ
 import { getPolicy, hasAcceptedRules, holidaySet, isOffDay, reporteeIds, scheduleOf, workLocationLabels } from "@/lib/services/office-rules";
 import { ownWorkClientOptions } from "@/lib/services/lookups";
 import { KIND_LABEL, myRequests, pendingRequestCount, requestsToDecide } from "@/lib/services/attendance-requests";
+import { cutoffFor, markRequestsToDecide, requestMarksThisMonth } from "@/lib/services/mark-requests";
 import { scheduleRows } from "@/lib/services/team-schedules";
 import { payrollForMonth } from "@/lib/services/payroll";
 import { myPlanStatus } from "@/lib/services/daily-plans";
 import { Badge, Card, EmptyState, humanize, Notice, PageHeader, Stat, StatusBadge, TabNav, Table, Td, Th } from "@/components/ui";
 import { ActionButton } from "@/components/action-button";
 import Link from "next/link";
-import { cancelRequestAction, decideLeaveAction, decideRequestAction, endVisitAction, lunchAction, markAction, raiseRequestAction, requestLeaveAction, setScheduleAction, shiftLunchAction, startVisitAction } from "./actions";
+import { cancelRequestAction, decideLeaveAction, decideMarkRequestAction, decideRequestAction, endVisitAction, escalateMarkRequestAction, lunchAction, markAction, raiseRequestAction, requestLeaveAction, setScheduleAction, shiftLunchAction, startVisitAction } from "./actions";
 import { lunchAllowanceMinutes, lunchMinutes, lunchOverMinutes, markOutReminderDue } from "@/lib/domain/attendance-extras";
 import { pendingPhotoChecks } from "@/lib/services/attendance-proxy";
 import { myVisitsToday, pendencyIfVisible, visitClientOptions } from "@/lib/services/client-visits";
@@ -90,17 +91,21 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
     </>
   );
 
-  async function Mine() {
-    // Every active client of the firm for "Client office / Client visit", the person's allocated ones first
-    // (tracker S.No. 77: the list was empty for anyone not allocated that day), with its opening time.
+  /** Every active client of the firm for "Client office / Client visit", the person's allocated ones first. */
+  async function placeClientOptions() {
+    // Tracker S.No. 77: the list was empty for anyone not allocated that day; each client shows its opening time.
     const [mineToday, allClients] = await Promise.all([
       ownWorkClientOptions(ctx, dateOnly(today)),
       prisma.client.findMany({ where: { organizationId: ctx.organization.id, status: { in: ["ACTIVE", "ON_HOLD"] } }, orderBy: { tradeName: "asc" }, select: { id: true, tradeName: true, officeOpensAt: true } }),
     ]);
     const allocatedIds = new Set(can(ctx, "org.manage") ? [] : mineToday.map((c) => c.value));
-    const clientNames = allClients
+    return allClients
       .map((c) => ({ name: c.tradeName, opens: c.officeOpensAt, mine: allocatedIds.has(c.id) }))
       .sort((x, y) => Number(y.mine) - Number(x.mine) || x.name.localeCompare(y.name));
+  }
+
+  async function Mine() {
+    const clientNames = await placeClientOptions();
     if (!ctx.employee) {
       // The owner and administrators get their attendance record at their first mark-in.
       if (!can(ctx, "org.manage")) return <EmptyState kind="people" title="No staff record">Your login is not linked to an employee, so there is no attendance to mark.</EmptyState>;
@@ -119,7 +124,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
     const [todayRec, records, emp, visits, missed, leaveToday, myForms, pay, plans, holidays] = await Promise.all([
       prisma.attendanceRecord.findFirst({ where: { employeeId: me, attendanceDate: day }, orderBy: { createdAt: "desc" }, include: { timeInProxyBy: { select: { name: true } } } }),
       prisma.attendanceRecord.findMany({ where: { employeeId: me, attendanceDate: { gte: start, lte: end } }, orderBy: { attendanceDate: "asc" } }),
-      prisma.employee.findUniqueOrThrow({ where: { id: me }, select: { attendanceProfile: true, siteReportingTime: true, siteName: true, rulesAcknowledgedAt: true } }),
+      prisma.employee.findUniqueOrThrow({ where: { id: me }, select: { attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true, siteName: true, rulesAcknowledgedAt: true } }),
       myVisitsToday(ctx),
       // Earlier days (last month) with a time in and no time out: their hours cannot be counted.
       prisma.attendanceRecord.findMany({
@@ -198,6 +203,16 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                     <p className="mb-3 text-sm">Running late? <Link href="/app/attendance?tab=requests&kind=LATE_ARRIVAL" className="font-medium text-brand-700 hover:underline">Inform your Team Lead before {hhmm(schedule.start)}</Link>.</p>
                   )}
                   {lateForm && <p className="mb-3 text-sm text-muted">You told your Team Lead you would arrive at {lateForm.atTime}{lateForm.status === "REJECTED" ? " (not accepted)" : ""}.</p>}
+                  {!pastCutoff && (() => {
+                    const markForm = form("MARK_ATTENDANCE");
+                    return markForm?.status === "PENDING" ? (
+                      <div className="mb-3"><Notice tone="info">Your request to mark your attendance (reached {markForm.atTime}) is with {markForm.escalatedAt ? "the administrators" : "your seniors"}. It must be marked before {hhmm(schedule.absentAt)}. <Link href="/app/attendance?tab=requests" className="font-medium underline">{markForm.escalatedAt ? "See it" : "Send it to the admin"}</Link></Notice></div>
+                    ) : markForm?.status === "REJECTED" ? (
+                      <p className="mb-3 text-sm text-danger">Your request to mark attendance was not accepted{markForm.decisionNote ? `: ${markForm.decisionNote}` : ""}. Mark in yourself below.</p>
+                    ) : (
+                      <p className="mb-3 text-sm">Forgot, or can&apos;t mark in (phone, location, network)? <Link href="/app/attendance?tab=requests&kind=MARK_ATTENDANCE" className="font-medium text-brand-700 hover:underline">Ask your seniors to mark your attendance</Link> — before {hhmm(schedule.absentAt)}.</p>
+                    );
+                  })()}
                   <MarkCard action={markAction.bind(null, "in")} kind="in" showLateReason={lateNow} labels={labels} clients={clientNames} firmStart={policyRow.officeStart} photo={policyRow.attendancePhoto} defaultLocation={emp.attendanceProfile === "ONSITE" ? "CLIENT_OFFICE" : null} defaultPlace={emp.siteName}
                     warning={lateNow ? `It is past ${hhmm(schedule.graceUntil)}, so this counts as a late arrival${nowMin - schedule.start > policy.numbers.veryLateAfterMinutes ? " of more than an hour (a half day)" : ""}.` : null} />
                 </>
@@ -209,6 +224,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                 <p className="mb-1 text-sm">Marked in at <strong>{formatTime(todayRec.timeIn, tz)}</strong>{todayRec.workLocation && <> · {labels[todayRec.workLocation]}{todayRec.workPlace ? ` (${todayRec.workPlace})` : ""}</>}.</p>
                 {scoreBy.get(today) && <div className="mb-3"><DayFlags s={scoreBy.get(today)!} halfDayAt={hhmm(schedule.halfDayBefore)} /></div>}
                 {todayRec.timeInProxyBy && <p className="mb-3 text-xs text-muted">Recorded for you by {todayRec.timeInProxyBy.name} with your photo.</p>}
+                {todayRec.markedOnRequest && <p className="mb-3 text-xs text-muted">Marked on your request. Mark out yourself when you leave.</p>}
                 {reminderDue && <div className="mb-3"><Notice tone="warn">It is past {policyRow.markOutReminderAt}. Remember to mark out before you leave, so your hours and salary are worked out correctly.</Notice></div>}
                 <div className="mb-4 rounded-lg border border-line bg-paper p-3">
                   <p className="mb-2 flex items-center gap-1.5 text-sm font-medium"><UtensilsCrossed className="size-4 text-muted" aria-hidden /> Lunch</p>
@@ -250,6 +266,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                 <Stat label="Late arrivals" value={s.lateArrivals + s.veryLateArrivals} hint={`${s.lateArrivals % policy.numbers.lateArrivalsPerHalfDay} of ${policy.numbers.lateArrivalsPerHalfDay} toward the next ½ day${s.lateExcused ? ` · ${s.lateExcused} excused` : ""}`} icon={<Clock4 />} tone={s.lateArrivals + s.veryLateArrivals ? "warn" : "neutral"} />
                 <Stat label="Deducted (days)" value={s.unpaidDays} hint={s.unpaidDays ? "Absences, half days, unpaid leave" : "Nothing deducted"} tone={s.unpaidDays ? "danger" : "ok"} href="/app/payroll" />
                 <Stat label="Approved overtime" value={minutesToHhmm(s.overtimeMinutes)} hint={s.stayedUnapprovedMinutes ? `${minutesToHhmm(s.stayedUnapprovedMinutes)} not approved` : "Real minutes after 6:45 PM"} icon={<MoonStar />} />
+                {s.requestMarked > 0 && <Stat label="Marked on request" value={s.requestMarked} hint={`${Math.min(s.requestMarked, policyRow.requestMarksPerMonth)} of ${policyRow.requestMarksPerMonth} allowed${s.requestHalfDays ? ` · ${s.requestHalfDays} counted as ½ day` : ""}`} tone={s.requestHalfDays ? "danger" : "info"} />}
                 <Stat label="Absent" value={s.absent} hint={s.absentUnrequested ? `${s.absentUnrequested} without a request (counts double)` : undefined} tone={s.absent ? "danger" : "neutral"} />
                 {plans && <Stat label="EOD fines" value={`₹${row.fines.eodMissed.length * policyRow.eodPenaltyRupees}`} hint={row.fines.eodMissed.length ? `${row.fines.eodMissed.length} not filed in time` : "All filed in time"} tone={row.fines.eodMissed.length ? "danger" : "neutral"} href="/app/timesheet?tab=plan" />}
                 {(() => { const b = noLeaveBonusDays(s, policy.numbers); return <Stat label="No-leave bonus" value={b ? `+${b} day${b === 1 ? "" : "s"}` : "—"} hint={!s.leaveTaken ? "On track: no leave so far" : b ? `${s.leaveTaken} day${s.leaveTaken === 1 ? "" : "s"} of leave so far` : "Not this month (leave taken)"} tone={b === policy.numbers.noLeaveBonusDays ? "ok" : "neutral"} />; })()}
@@ -353,12 +370,20 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
 
   async function Requests() {
     const kind = typeof sp.kind === "string" ? sp.kind : undefined;
-    const [mine, toDecide, emp] = await Promise.all([
+    const day = dateOnly(today);
+    const [mine, toDecide, emp, markQueue, placeClients, todayRec, usedMarks] = await Promise.all([
       myRequests(ctx),
       lead ? requestsToDecide(ctx) : Promise.resolve([]),
-      ctx.employee ? prisma.employee.findUnique({ where: { id: ctx.employee.id }, select: { attendanceProfile: true, siteReportingTime: true } }) : Promise.resolve(null),
+      ctx.employee ? prisma.employee.findUnique({ where: { id: ctx.employee.id }, select: { attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true } }) : Promise.resolve(null),
+      markRequestsToDecide(ctx),
+      ctx.employee ? placeClientOptions() : Promise.resolve([]),
+      ctx.employee ? prisma.attendanceRecord.findFirst({ where: { employeeId: ctx.employee.id, attendanceDate: day } }) : Promise.resolve(null),
+      ctx.employee ? requestMarksThisMonth(ctx.employee.id, day) : Promise.resolve(0),
     ]);
-    const s = scheduleOf(policy, emp);
+    const s = scheduleOf(policy, emp, todayRec);
+    const nowMin = minutesOfDayInTz(new Date(), tz);
+    const markInfo = { cutoff: hhmm(s.absentAt), used: usedMarks, limit: policyRow.requestMarksPerMonth, pastCutoff: nowMin >= s.absentAt, markedIn: !!todayRec?.timeIn };
+    const cutoffs = new Map(await Promise.all(markQueue.map(async (r) => [r.id, await cutoffFor(ctx, r.employeeId, r)] as const)));
     const waiting = toDecide.filter((r) => r.status === "PENDING" && r.kind !== "LATE_ARRIVAL");
     const lateNotes = toDecide.filter((r) => r.kind === "LATE_ARRIVAL");
     const when = (d: Date) => (toIsoDate(d) === today ? "Today" : formatDate(d));
@@ -367,8 +392,8 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
         <div className="space-y-6">
           {ctx.employee && (
             <Card title="Inform or ask your Team Lead">
-              <RequestForm action={raiseRequestAction} today={today} initialKind={kind}
-                defaults={{ arrival: hhmm(s.start + 30), leaving: hhmm(s.halfDayBefore), overtimeUntil: hhmm(s.overtimeAfter + 60), monthBack: toIsoDate(addDays(dateOnly(today), -31)) }} />
+              <RequestForm action={raiseRequestAction} today={today} initialKind={kind} clients={placeClients} officeLabel={labels.OFFICE} firmStart={policyRow.officeStart} markInfo={markInfo}
+                defaults={{ arrival: hhmm(s.start + 30), leaving: hhmm(s.halfDayBefore), overtimeUntil: hhmm(s.overtimeAfter + 60), monthBack: toIsoDate(addDays(dateOnly(today), -31)), reachedAt: hhmm(Math.min(nowMin, s.start)) }} />
             </Card>
           )}
           <Card title="My requests">
@@ -383,7 +408,10 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                       {r.decidedBy && <span className="block text-xs text-muted">{r.decidedBy.name}{r.decisionNote ? `: ${r.decisionNote}` : ""}</span>}
                     </span>
                     <span className="flex items-center gap-1">
-                      <StatusBadge status={r.status} label={r.kind === "LATE_ARRIVAL" ? (r.status === "REJECTED" ? "Not accepted" : r.status === "APPROVED" ? "Accepted" : "Informed") : undefined} />
+                      <StatusBadge status={r.kind === "MARK_ATTENDANCE" && r.status === "PENDING" && (toIsoDate(r.requestDate) < today || markInfo.pastCutoff) ? "EXPIRED" : r.status} label={r.kind === "LATE_ARRIVAL" ? (r.status === "REJECTED" ? "Not accepted" : r.status === "APPROVED" ? "Accepted" : "Informed") : r.kind === "MARK_ATTENDANCE" ? (r.status === "APPROVED" ? "Marked" : r.status === "REJECTED" ? "Not marked" : toIsoDate(r.requestDate) < today || markInfo.pastCutoff ? "Too late (after cut-off)" : "Waiting") : undefined} />
+                      {r.kind === "MARK_ATTENDANCE" && r.status === "PENDING" && toIsoDate(r.requestDate) === today && !markInfo.pastCutoff && (r.escalatedAt
+                        ? <Badge tone="info">With the admin</Badge>
+                        : <ActionButton variant="secondary" action={escalateMarkRequestAction.bind(null, r.id)} confirm="Send this request to the administrators as well?">Send to admin</ActionButton>)}
                       {r.status === "PENDING" && <ActionButton variant="ghost" action={cancelRequestAction.bind(null, r.id)} confirm="Withdraw this request?">Withdraw</ActionButton>}
                       {(r.status === "PENDING" || r.status === "REJECTED") && toIsoDate(r.requestDate) >= today && <Link href={`/app/attendance?tab=requests&kind=${r.kind}`} className="text-xs font-medium text-brand-700 hover:underline">Send again</Link>}
                     </span>
@@ -393,8 +421,31 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
             )}
           </Card>
         </div>
-        {lead && (
+        {(lead || markQueue.length > 0) && (
           <div className="space-y-6">
+            {(markQueue.length > 0 || lead) && (
+              <Card title={`Please mark attendance — today (${markQueue.length})`}>
+                <p className="mb-3 text-xs text-muted">Team members who forgot or could not mark in. Any senior above them, or an administrator, can mark it — only until the cut-off (12:00); after that nobody can and the day counts as absent. More than {policyRow.requestMarksPerMonth} such days in a month: each extra one counts as a half day.</p>
+                {markQueue.length === 0 ? <p className="text-sm text-muted">No request waiting.</p> : (
+                  <ul className="space-y-3">
+                    {markQueue.map((r) => {
+                      const cut = cutoffs.get(r.id) ?? policyRow.autoAbsentAt;
+                      const late = nowMin >= hhmmToMinutes(cut);
+                      return (
+                        <li key={r.id} className="rounded-md border border-line p-3 text-sm">
+                          <p className="font-medium">{nameOf(r.employee)}{r.employee.designation ? <span className="font-normal text-muted"> · {r.employee.designation.name}</span> : null} · reached {r.atTime} · {r.workLocation === "OFFICE" || !r.workLocation ? labels.OFFICE : `${labels[r.workLocation as "CLIENT_OFFICE" | "CLIENT_VISIT"]}${r.workPlace ? ` (${r.workPlace})` : ""}`}{r.escalatedAt && <> <Badge tone="info">Sent to admin</Badge></>}</p>
+                          <p className="mt-1">{r.reason}</p>
+                          {late
+                            ? <p className="mt-1 text-xs text-danger">Past {cut}: it can no longer be marked.</p>
+                            : <><p className="mt-1 text-xs text-muted">Mark before {cut}. They are marked in at {r.atTime}; they mark out themselves.</p><div className="mt-2"><RequestDecisionForm action={decideMarkRequestAction.bind(null, r.id)} late={false} approveLabel="Mark present" rejectLabel="Don't mark" /></div></>}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </Card>
+            )}
+            {lead && <>
             <Card title={`Waiting for your decision (${waiting.length})`}>
               {waiting.length === 0 ? <p className="text-sm text-muted">Nothing waiting. Leave requests are on the Leave tab.</p> : (
                 <ul className="space-y-4">
@@ -427,6 +478,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                 </ul>
               )}
             </Card>
+            </>}
           </div>
         )}
       </div>
@@ -618,7 +670,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                   <tr key={r.id}>
                     <Td className="font-medium">{nameOf(r)}<div className="text-xs font-normal text-muted">{r.designation?.name}</div></Td>
                     <Td>{r.schedule.site ? <><Badge tone="info">Client site</Badge> <span className="text-xs">{r.siteName}</span></> : <span className="text-xs">{labels.OFFICE}</span>}</Td>
-                    <Td className="whitespace-nowrap text-xs">{hhmm(r.schedule.start)}–{hhmm(r.schedule.end)} · grace {hhmm(r.schedule.graceUntil)}</Td>
+                    <Td className="whitespace-nowrap text-xs">{hhmm(r.schedule.start)}–{hhmm(r.schedule.end)} · {Math.round(((r.schedule.end - r.schedule.start) / 60) * 100) / 100} h<div className="text-muted">grace {hhmm(r.schedule.graceUntil)}</div></Td>
                     <Td className="text-xs">{r.today?.lunchShiftedTo ? `Moved to ${r.today.lunchShiftedTo}` : r.today?.timeIn ? `${policyRow.lunchStart}–${policyRow.lunchEnd}` : "—"}</Td>
                     <Td><Link href={`/app/attendance?tab=schedules&edit=${r.id}#timing`} className="text-xs font-medium text-brand-700 hover:underline">Change</Link></Td>
                   </tr>
@@ -629,9 +681,9 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
         </Card>
         <div className="space-y-6">
           <Card title="Set a client-site timing">
-            <p id="timing" className="mb-3 scroll-mt-24 text-xs text-muted">For team members working at a client: fix the reporting time from the client&apos;s timing and location. Their day is then 8 hours from it; grace, half-day and overtime times move with it. Office team: {officeHours}.</p>
-            <ScheduleForm key={editId} action={setScheduleAction} employees={options} officeHours={officeHours}
-              defaults={editing ? { employeeId: editing.id, place: editing.schedule.site ? "SITE" : "OFFICE", time: editing.siteReportingTime ?? undefined, site: editing.siteName ?? undefined } : undefined} />
+            <p id="timing" className="mb-3 scroll-mt-24 text-xs text-muted">For team members working at a client: fix the reporting time from the client&apos;s timing and location, and how many hours their day is (usually {policyRow.onsiteRequiredMinutes / 60} h — change it when the client works shorter or longer). Grace, half-day and overtime times move with it. Office team: {officeHours}.</p>
+            <ScheduleForm key={editId} action={setScheduleAction} employees={options} officeHours={officeHours} firmSiteHours={policyRow.onsiteRequiredMinutes / 60}
+              defaults={editing ? { employeeId: editing.id, place: editing.schedule.site ? "SITE" : "OFFICE", time: editing.siteReportingTime ?? undefined, site: editing.siteName ?? undefined, hours: editing.siteDayMinutes ? editing.siteDayMinutes / 60 : undefined } : undefined} />
           </Card>
           <Card title="Move today's lunch (urgent work)">
             <p className="mb-3 text-xs text-muted">Lunch is {policyRow.lunchStart}–{policyRow.lunchEnd}. You may shift it for urgent work; it is never more than {lunchAllowance} minutes.</p>

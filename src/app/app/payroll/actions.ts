@@ -48,9 +48,9 @@ export async function submitConveyanceAction(_p: ActionState, fd: FormData): Pro
   if (!parsed.success) return parsed.state;
   return safeAction(async () => {
     const ctx = await actionContext("payroll.view_own");
-    await submitConveyance(ctx, parsed.data, fd);
+    const claim = await submitConveyance(ctx, parsed.data, fd);
     revalidatePath("/app/payroll");
-    return { ok: true, message: `Conveyance claim of ${inr(parsed.data.amount)} sent for approval. Once approved it is paid with that month's salary.` };
+    return { ok: true, message: `Conveyance claim of ${inr(Number(claim.amount))}${claim.km ? ` (${Number(claim.km)} km for office)` : ""} sent for approval. Once approved it is paid with that month's salary.` };
   });
 }
 

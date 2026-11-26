@@ -68,6 +68,8 @@ export default async function RulesPage() {
       title: "3. Reporting on time",
       points: [
         <>Employees must report as scheduled. If you are going to be late, or have any issue, update it in the ERP <strong>before</strong> your reporting time. Do not wait for a senior to ask. <strong>At {t(p.autoAbsentAt)} the ERP marks the employee Absent automatically, and attendance cannot be changed to Present after that.</strong></>,
+        <><strong>Forgot to mark, or could not mark (phone, location, network)?</strong> Send &ldquo;Please mark my attendance&rdquo; in the ERP with the time you reached. All your seniors are told and any of them can mark it; if they don&apos;t, send it to the admin. <strong>Nobody can mark it after {t(p.autoAbsentAt)}.</strong> <Link href="/app/attendance?tab=requests&kind=MARK_ATTENDANCE" className="text-brand-700 underline">Ask to mark my attendance</Link></>,
+        <>Attendance marked on request is allowed on <strong>{p.requestMarksPerMonth} days a month</strong>. Each day after that counts as a <strong>half day</strong>; a day not marked by {t(p.autoAbsentAt)} is absent.</>,
       ],
     },
     { title: "4. Team Lead reporting", points: ["It is mandatory to report to your Team Lead: the day's schedule in the morning, and the EOD report on old and new work."] },
@@ -76,7 +78,7 @@ export default async function RulesPage() {
       points: [
         <>Office timing (in-office team): <strong>{t(p.officeStart)} – {t(p.officeEnd)}</strong>.</>,
         <>Grace period: till <strong>{t(p.reportingGraceUntil)}</strong>.</>,
-        <>Client-site team: reporting time fixed by the Team Lead in the ERP, based on the client&apos;s timing and location. Total working time must be {p.onsiteRequiredMinutes / 60} hours.</>,
+        <>Client-site team: reporting time and working hours fixed by the Team Lead in the ERP, based on the client&apos;s timing and location — usually {p.onsiteRequiredMinutes / 60} hours; your own hours are shown on your attendance page.</>,
       ],
     },
     {

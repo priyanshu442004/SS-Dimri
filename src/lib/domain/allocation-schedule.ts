@@ -105,9 +105,14 @@ export function formatVisitDays(v: VisitDays): string {
   return `${v.nth.map(ord).join(" & ")} ${WEEKDAY_NAMES[v.weekday]}`;
 }
 
+/** Monday first, Sunday last (some clients work on Sunday — tracker S.No. 109). */
+export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
 export const formatWeekDays = (days: number[]) => {
-  const d = [...new Set(days)].sort((a, b) => a - b);
+  const d = [...new Set(days)].sort((a, b) => WEEK_ORDER.indexOf(a) - WEEK_ORDER.indexOf(b));
   if (!d.length || (d.length === 6 && WORKING_DAYS.every((x) => d.includes(x)))) return "Mon–Sat";
+  if (d.length === 7) return "Mon–Sun (all days)";
+  if (d.length === 6 && d.includes(0) && [2, 3, 4, 5, 6].every((x) => d.includes(x))) return "Tue–Sun";
   return d.map((x) => WEEKDAY_NAMES[x]).join(", ");
 };
 

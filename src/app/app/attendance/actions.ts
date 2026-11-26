@@ -1,5 +1,6 @@
 "use server";
 
+import { decideMarkRequest, escalateMarkRequest, markRequestSchema, raiseMarkRequest } from "@/lib/services/mark-requests";
 import { revalidatePath } from "next/cache";
 import { BusinessRuleError, parseForm, safeAction, type ActionState } from "@/lib/actions";
 import { actionContext } from "@/lib/session";
@@ -155,6 +156,17 @@ export async function workerPaidAction(workerId: string, from: string, to: strin
 // ---------------------------------------------------------------- office rules (14 Nov 2026)
 
 export async function raiseRequestAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  // "Please mark my attendance" has its own fields (time reached, where): see services/mark-requests.
+  if (fd.get("kind") === "MARK_ATTENDANCE") {
+    const mark = parseForm(markRequestSchema, fd);
+    if (!mark.success) return mark.state;
+    return safeAction(async () => {
+      const ctx = await actionContext("attendance.mark_own");
+      const message = await raiseMarkRequest(ctx, mark.data);
+      revalidatePath("/app/attendance");
+      return { ok: true, message };
+    });
+  }
   const parsed = parseForm(requestSchema, fd);
   if (!parsed.success) return parsed.state;
   return safeAction(async () => {
@@ -182,6 +194,28 @@ export async function decideRequestAction(id: string, _p: ActionState, fd: FormD
     const name = await decideRequest(ctx, id, parsed.data);
     revalidatePath("/app/attendance");
     return { ok: true, message: `Saved. ${name} is notified.` };
+  });
+}
+
+/** A senior / administrator marks (or declines) a "please mark my attendance" request. */
+export async function decideMarkRequestAction(id: string, _p: ActionState, fd: FormData): Promise<ActionState> {
+  const parsed = parseForm(requestDecisionSchema, fd);
+  if (!parsed.success) return parsed.state;
+  return safeAction(async () => {
+    const ctx = await actionContext("leave.request"); // seniors up the line / administrators: checked in the service
+    const message = await decideMarkRequest(ctx, id, parsed.data.decision === "approve", parsed.data.note);
+    revalidatePath("/app/attendance");
+    return { ok: true, message };
+  });
+}
+
+/** The person sends their waiting request on to the administrators. */
+export async function escalateMarkRequestAction(id: string): Promise<ActionState> {
+  return safeAction(async () => {
+    const ctx = await actionContext("attendance.mark_own");
+    const message = await escalateMarkRequest(ctx, id);
+    revalidatePath("/app/attendance");
+    return { ok: true, message };
   });
 }
 

@@ -38,13 +38,17 @@ function liveAllocation(today: Date): Prisma.TeamAllocationWhereInput {
   return { status: { in: ["ACTIVE", "PLANNED"] }, OR: [{ endDate: null }, { endDate: { gte: today } }] };
 }
 
-/** Client-wise: every client with its team (or none). */
-export async function clientAllocationReport(organizationId: string, f: ReportFilters, todayIso: string) {
+/**
+ * Client-wise: every client with its team (or none). `line` = a Team Leader's people (hierarchy rule):
+ * then only the clients they handle, with only their people, and no firm-wide "not allocated" count.
+ */
+export async function clientAllocationReport(organizationId: string, f: ReportFilters, todayIso: string, line: string[] | null = null) {
   const today = dateOnly(todayIso);
-  const live = liveAllocation(today);
+  const live: Prisma.TeamAllocationWhereInput = line ? { ...liveAllocation(today), employeeId: { in: line } } : liveAllocation(today);
   const clients = await prisma.client.findMany({
     where: {
       organizationId,
+      ...(line ? { teamAllocations: { some: live } } : {}),
       ...(f.status === "all" ? {} : { status: f.status as Prisma.EnumClientStatusFilter["equals"] }),
       ...(f.q ? { OR: [{ tradeName: { contains: f.q, mode: "insensitive" } }, { clientCode: { contains: f.q, mode: "insensitive" } }] } : {}),
       ...(f.allocated === "yes" ? { teamAllocations: { some: live } } : f.allocated === "no" ? { teamAllocations: { none: live } } : {}),
@@ -64,6 +68,7 @@ export async function clientAllocationReport(organizationId: string, f: ReportFi
     team: c.teamAllocations.map((a) => `${person(a.employee)}${a.seniorityLevel ? ` (${ALLOCATION_ROLES[a.seniorityLevel]})` : ""}`),
     people: new Set(c.teamAllocations.map((a) => person(a.employee))).size,
   }));
+  if (line) return { rows, allocatedCount: rows.length, notAllocated: 0, total: rows.length };
   const [allocatedCount, total] = await Promise.all([
     prisma.client.count({ where: { organizationId, ...(f.status === "all" ? {} : { status: f.status as Prisma.EnumClientStatusFilter["equals"] }), teamAllocations: { some: live } } }),
     prisma.client.count({ where: { organizationId, ...(f.status === "all" ? {} : { status: f.status as Prisma.EnumClientStatusFilter["equals"] }) } }),
@@ -72,13 +77,13 @@ export async function clientAllocationReport(organizationId: string, f: ReportFi
 }
 
 /** Team-wise: each person's clients with role, days and hours. */
-export async function teamAllocationReport(organizationId: string, f: ReportFilters, todayIso: string) {
+export async function teamAllocationReport(organizationId: string, f: ReportFilters, todayIso: string, line: string[] | null = null) {
   const today = dateOnly(todayIso);
   const cap = capacityFromPolicy((await getPolicy(organizationId)).row);
   const allocations = await prisma.teamAllocation.findMany({
     where: {
       organizationId, ...liveAllocation(today),
-      ...(f.member ? { employeeId: f.member } : {}),
+      ...(f.member ? { employeeId: f.member } : line ? { employeeId: { in: line } } : {}),
       ...(f.q ? { client: { tradeName: { contains: f.q, mode: "insensitive" } } } : {}),
     },
     orderBy: [{ employee: { firstName: "asc" } }, { client: { tradeName: "asc" } }],
@@ -104,7 +109,7 @@ export async function teamAllocationReport(organizationId: string, f: ReportFilt
     };
   });
   const people = await prisma.employee.findMany({
-    where: { organizationId, approvalStatus: "APPROVED", employmentStatus: { not: "EXITED" } },
+    where: { organizationId, approvalStatus: "APPROVED", employmentStatus: { not: "EXITED" }, ...(line ? { id: { in: line } } : {}) },
     orderBy: { firstName: "asc" },
     select: { id: true, firstName: true, lastName: true, designation: { select: { name: true } } },
   });

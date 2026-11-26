@@ -191,9 +191,9 @@ export function parseAllocationRow(row: string[], header: string[], mapping: All
   }
   if (raw.weekDays) {
     const w = parseWeekDays(raw.weekDays);
-    values.weekDays = w.days.filter((d) => d !== 0);
+    // Sunday is kept: some clients work on Sunday (tracker S.No. 109).
+    values.weekDays = w.days;
     if (w.unknown.length) warnings.push(`Week days: could not read “${w.unknown.join(", ")}”`);
-    if (w.days.includes(0)) warnings.push("Sunday is not a working day and was left out");
   }
   if (raw.visitDays) {
     const rule = parseVisitDays(raw.visitDays);

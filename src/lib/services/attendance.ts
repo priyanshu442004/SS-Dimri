@@ -71,7 +71,7 @@ export async function markAttendance(ctx: AppContext, kind: "in" | "out", v: z.i
   const [existing, policy, emp] = await Promise.all([
     prisma.attendanceRecord.findFirst({ where: { organizationId: ctx.organization.id, employeeId: ctx.employee.id, attendanceDate: day }, orderBy: { createdAt: "desc" } }),
     getPolicy(ctx.organization.id),
-    prisma.employee.findUniqueOrThrow({ where: { id: ctx.employee.id }, select: { attendanceProfile: true, siteReportingTime: true } }),
+    prisma.employee.findUniqueOrThrow({ where: { id: ctx.employee.id }, select: { attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true } }),
   ]);
   const location = v.workLocation ?? existing?.workLocation ?? undefined;
   if (kind === "in" && !location) throw new BusinessRuleError("Choose where you are working today.");
@@ -133,6 +133,8 @@ export async function markAttendance(ctx: AppContext, kind: "in" | "out", v: z.i
         throw e;
       }
     }
+    // Marked in after all: a waiting "please mark my attendance" request is no longer needed.
+    await prisma.attendanceRequest.updateMany({ where: { employeeId: ctx.employee.id, requestDate: day, kind: "MARK_ATTENDANCE", status: "PENDING" }, data: { status: "CANCELLED" } });
     return { late, lateMinutes: times.lateMinutes, band: times.lateBand, early: false, halfDay: false };
   }
 
@@ -216,7 +218,7 @@ export async function requestLeave(ctx: AppContext, v: z.infer<typeof leaveSchem
   if (v.isHalfDay && v.fromDate !== v.toDate) throw new BusinessRuleError("A half-day leave is for one day: make the From and To dates the same.");
   const [policy, emp] = await Promise.all([
     getPolicy(ctx.organization.id),
-    prisma.employee.findUniqueOrThrow({ where: { id: ctx.employee.id }, select: { attendanceProfile: true, siteReportingTime: true } }),
+    prisma.employee.findUniqueOrThrow({ where: { id: ctx.employee.id }, select: { attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true } }),
   ]);
   const notice = noticeDays(toIsoDate(today), v.fromDate);
   if (v.leaveType === "PLANNED" && notice < policy.row.plannedLeaveNoticeDays) {
@@ -375,7 +377,7 @@ export async function teamAttendanceRows(ctx: AppContext, policy: Policy, f: Tea
         ...(text ? { OR: [{ firstName: text }, { lastName: text }, { permanentEmployeeCode: text }] } : {}),
       },
       orderBy: { firstName: "asc" },
-      select: { id: true, firstName: true, lastName: true, permanentEmployeeCode: true, temporaryEmployeeCode: true, attendanceProfile: true, siteReportingTime: true, siteName: true, dateOfJoining: true, designation: { select: { name: true } }, department: { select: { name: true } } },
+      select: { id: true, firstName: true, lastName: true, permanentEmployeeCode: true, temporaryEmployeeCode: true, attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true, siteName: true, dateOfJoining: true, designation: { select: { name: true } }, department: { select: { name: true } } },
     }),
     prisma.attendanceRecord.findMany({
       where: { organizationId, attendanceDate: { gte: from, lte: to } },
@@ -472,7 +474,7 @@ export async function sweepAutoAbsent(organizationId: string, tz: string) {
   const [employees, records, leaves, lateForms] = await Promise.all([
     prisma.employee.findMany({
       where: { id: { in: [...subjects.keys()] }, OR: [{ dateOfJoining: null }, { dateOfJoining: { lte: day } }] },
-      select: { id: true, firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true },
+      select: { id: true, firstName: true, lastName: true, attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true },
     }),
     prisma.attendanceRecord.findMany({ where: { organizationId, attendanceDate: day }, select: { employeeId: true } }),
     prisma.leaveRequest.findMany({ where: { organizationId, status: { in: ["APPROVED", "PENDING"] }, fromDate: { lte: day }, toDate: { gte: day } }, select: { employeeId: true } }),

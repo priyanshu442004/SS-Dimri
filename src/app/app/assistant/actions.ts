@@ -83,7 +83,10 @@ export async function setPinned(conversationId: string, pinned: boolean): Promis
 export async function deleteConversation(conversationId: string): Promise<Result<true>> {
   return guarded(async () => {
     const o = await owner();
-    await prisma.aiConversation.deleteMany({ where: { id: id.parse(conversationId), ...o } });
+    const chat = id.parse(conversationId);
+    // The PDF / Excel files made in that chat go with it.
+    await prisma.aiGeneratedFile.deleteMany({ where: { conversationId: chat, userId: o.userId, organizationId: o.organizationId } });
+    await prisma.aiConversation.deleteMany({ where: { id: chat, ...o } });
     return true as const;
   });
 }
@@ -91,6 +94,7 @@ export async function deleteConversation(conversationId: string): Promise<Result
 export async function deleteAllConversations(): Promise<Result<number>> {
   return guarded(async () => {
     const o = await owner();
+    await prisma.aiGeneratedFile.deleteMany({ where: { userId: o.userId, organizationId: o.organizationId } });
     const r = await prisma.aiConversation.deleteMany({ where: o });
     return r.count;
   });

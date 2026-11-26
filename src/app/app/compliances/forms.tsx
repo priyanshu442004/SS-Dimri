@@ -32,11 +32,13 @@ const FREQUENCIES = COMPLIANCE_FREQUENCIES.map((f) => ({ value: f, label: f }));
  * The module comes first: choosing GST narrows the compliance list to GST's own
  * (GSTR-1, GSTR-3B, …), and choosing a compliance fills in what it can.
  */
-export function ComplianceEntryForm({ action, departments, items, clients, employees, columns, defaults, submitLabel, resetOnSuccess }: {
+export function ComplianceEntryForm({ action, departments, items, clients, employees, columns, defaults, submitLabel, resetOnSuccess, gstins = {} }: {
   action: Act;
   departments: string[];
   items: ComplianceChoice[];
   clients: Option[];
+  /** Each client's GSTINs ("GSTIN (State)"): a state-wise filing is tracked against its GSTIN (tracker S.No. 107). */
+  gstins?: Record<string, string[]>;
   employees: Option[];
   columns: { id: string; label: string }[];
   defaults: Partial<EntryDefaults>;
@@ -49,6 +51,9 @@ export function ComplianceEntryForm({ action, departments, items, clients, emplo
   const [frequency, setFrequency] = useState(defaults.frequency ?? "");
   const [authority, setAuthority] = useState(defaults.issuingAuthority ?? defaultAuthority(defaults.department ?? departments[0] ?? ""));
   const typedType = useRef(false);
+  const [clientId, setClientId] = useState(defaults.clientId ?? "");
+  const [regNo, setRegNo] = useState(defaults.registrationNumber ?? "");
+  const clientGstins = gstins[clientId] ?? [];
 
   const available = items.filter((i) => i.department === department);
 
@@ -88,9 +93,15 @@ export function ComplianceEntryForm({ action, departments, items, clients, emplo
           onChange={(e) => { setType(e.target.value); typedType.current = true; }}
           hint="Add the period if you like, e.g. GSTR-1 (Sep-2026)"
         />
-        <SearchSelect label="Client" name="clientId" defaultValue={defaults.clientId ?? ""} options={clients} placeholder="Search clients…" emptyLabel="The firm itself" />
+        <SearchSelect label="Client" name="clientId" value={clientId} onChange={(v) => { setClientId(v); const g = gstins[v] ?? []; if (department === "GST" && g.length === 1) setRegNo(g[0].split(" ")[0]); }} options={clients} placeholder="Search clients…" emptyLabel="The firm itself" />
         <TextField label="Issuing authority" name="issuingAuthority" value={authority} onChange={(e) => setAuthority(e.target.value)} />
-        <TextField label="Licence / registration no." name="registrationNumber" defaultValue={defaults.registrationNumber} />
+        {department === "GST" && clientGstins.length > 0 ? (
+          <SelectField label="GSTIN (state)" name="registrationNumber" value={regNo} onChange={(e) => setRegNo(e.target.value)} placeholder="All GSTINs / not state-wise"
+            options={[...new Set([...clientGstins.map((g) => g.split(" ")[0]), ...(regNo && !clientGstins.some((g) => g.startsWith(regNo)) ? [regNo] : [])])].map((g) => ({ value: g, label: clientGstins.find((x) => x.startsWith(g)) ?? g }))}
+            hint={clientGstins.length > 1 ? "This client is registered in several states: track each GSTIN's return separately" : undefined} />
+        ) : (
+          <TextField label="Licence / registration no." name="registrationNumber" value={regNo} onChange={(e) => setRegNo(e.target.value)} />
+        )}
         <TextField label="Due date" name="dueDate" type="date" required defaultValue={defaults.dueDate} />
         <SelectField label="Renewal frequency" name="frequency" value={frequency} onChange={(e) => setFrequency(e.target.value)} options={FREQUENCIES} />
         <SearchSelect label="Responsible person" name="responsibleEmployeeId" defaultValue={defaults.responsibleEmployeeId ?? ""} options={employees} emptyLabel="Nobody yet" hint="Gets the reminder" />

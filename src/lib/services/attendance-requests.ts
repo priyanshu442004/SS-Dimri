@@ -10,6 +10,7 @@ import { NO_EMPLOYEE } from "@/lib/ids";
 import { audit } from "./audit";
 import { notifyEmployees, notifyRoles } from "./notifications";
 import { requestLeave } from "./attendance";
+import { decideMarkRequest, markRequestsToDecide } from "./mark-requests";
 import { actsAsLeadFor, getPolicy, holidaySet, isOffDay, leadScopeIds, scheduleOf } from "./office-rules";
 
 // Forms raised in the ERP (policy §2, §3, §6, §8, §9):
@@ -35,7 +36,7 @@ export const requestSchema = z.object({
   whyNotTomorrow: zOptionalText(1000),
 });
 
-export const KIND_LABEL = { LATE_ARRIVAL: "Late arrival", EARLY_LEAVE: "Leave early", OVERTIME: "Overtime", WEEKLY_OFF: "Weekly off", OFF_DAY_WORK: "Worked on Sunday / holiday" } as const;
+export const KIND_LABEL = { LATE_ARRIVAL: "Late arrival", EARLY_LEAVE: "Leave early", OVERTIME: "Overtime", WEEKLY_OFF: "Weekly off", OFF_DAY_WORK: "Worked on Sunday / holiday", MARK_ATTENDANCE: "Please mark my attendance" } as const;
 /** Permissions that wait for the Team Lead's decision (late intimations need none). */
 export const DECIDED_KINDS = ["EARLY_LEAVE", "OVERTIME", "WEEKLY_OFF", "OFF_DAY_WORK"] as const;
 
@@ -55,7 +56,7 @@ export async function raiseRequest(ctx: AppContext, v: z.infer<typeof requestSch
   }
   const [policy, emp, holidays] = await Promise.all([
     getPolicy(ctx.organization.id),
-    prisma.employee.findUniqueOrThrow({ where: { id: ctx.employee.id }, select: { attendanceProfile: true, siteReportingTime: true } }),
+    prisma.employee.findUniqueOrThrow({ where: { id: ctx.employee.id }, select: { attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true } }),
     holidaySet(ctx.organization.id, day, day),
   ]);
   const off = isOffDay(v.requestDate, holidays);
@@ -158,6 +159,7 @@ export const decideSchema = z.object({ decision: z.enum(["approve", "reject"]), 
 export async function decideRequest(ctx: AppContext, id: string, v: z.infer<typeof decideSchema>) {
   const r = await prisma.attendanceRequest.findFirst({ where: { id, organizationId: ctx.organization.id }, include: { employee: { select: { firstName: true } } } });
   if (!r || r.status === "CANCELLED") throw new BusinessRuleError("Request not found or withdrawn.");
+  if (r.kind === "MARK_ATTENDANCE") { await decideMarkRequest(ctx, id, v.decision === "approve", v.note); return r.employee.firstName; }
   if (!(await actsAsLeadFor(ctx, r.employeeId))) throw new BusinessRuleError("You can only decide for people who report to you.");
   // A late intimation may be changed later (accepted ↔ not genuine); permissions are decided once.
   if (r.kind !== "LATE_ARRIVAL" && r.status !== "PENDING") throw new BusinessRuleError("This request was already decided. Refresh the page.");
@@ -204,6 +206,7 @@ export async function requestsToDecide(ctx: AppContext) {
     where: {
       organizationId: ctx.organization.id,
       employeeId: scope === "ALL" ? { not: ctx.employee?.id ?? NO_EMPLOYEE } : { in: scope },
+      kind: { not: "MARK_ATTENDANCE" }, // listed on their own, for the whole line (see markRequestsToDecide)
       OR: [{ status: "PENDING" }, { kind: "LATE_ARRIVAL", requestDate: { gte: since }, status: { not: "CANCELLED" } }],
     },
     orderBy: [{ status: "asc" }, { requestDate: "asc" }, { createdAt: "asc" }],
@@ -214,9 +217,10 @@ export async function requestsToDecide(ctx: AppContext) {
 
 /** Count for the tab badge and the dashboards: permissions waiting (late intimations need no action). */
 export async function pendingRequestCount(ctx: AppContext) {
+  const marks = (await markRequestsToDecide(ctx)).length;
   const scope = await leadScopeIds(ctx);
-  if (scope !== "ALL" && !scope.length) return 0;
-  return prisma.attendanceRequest.count({
+  if (scope !== "ALL" && !scope.length) return marks;
+  return marks + await prisma.attendanceRequest.count({
     where: { organizationId: ctx.organization.id, status: "PENDING", kind: { in: [...DECIDED_KINDS] }, employeeId: scope === "ALL" ? { not: ctx.employee?.id ?? NO_EMPLOYEE } : { in: scope } },
   });
 }

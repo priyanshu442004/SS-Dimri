@@ -31,10 +31,13 @@ export const IMPORT_FIELDS = {
   incomeTaxPassword: { label: "Income Tax password", aliases: ["income tax password", "it password"] },
   tracesUserId: { label: "TRACES user ID", aliases: ["traces user id", "traces username"] },
   tracesPassword: { label: "TRACES password", aliases: ["traces password"] },
+  ewayBillUserId: { label: "E-way bill user ID", aliases: ["e-way bill user id", "eway bill user id", "ewb user id", "e way bill login", "eway bill username", "e-way bill login id"] },
+  ewayBillPassword: { label: "E-way bill password", aliases: ["e-way bill password", "eway bill password", "ewb password"] },
+  group: { label: "Client group", aliases: ["client group", "group", "group name", "group of companies"] },
 } as const;
 
 /** Columns that hold secrets: stored encrypted, never sent back to the browser. */
-export const SECRET_FIELDS = ["gstPassword", "incomeTaxPassword", "tracesPassword"] as const;
+export const SECRET_FIELDS = ["gstPassword", "incomeTaxPassword", "tracesPassword", "ewayBillPassword"] as const;
 
 export type ImportField = keyof typeof IMPORT_FIELDS;
 /** "extra" = a column with no field of its own: kept on the client as it is (client feedback 13 Nov 2026). */

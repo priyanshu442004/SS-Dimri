@@ -1,4 +1,6 @@
 import "server-only";
+import { gstState } from "@/lib/domain/gst-state";
+import { groupIdFor } from "./clients";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { BusinessRuleError } from "@/lib/actions";
@@ -157,6 +159,8 @@ function masterData(v: ParsedClient) {
     gstPasswordEncrypted: secret(v.gstPassword),
     incomeTaxPasswordEncrypted: secret(v.incomeTaxPassword),
     tracesPasswordEncrypted: secret(v.tracesPassword),
+    ewayBillUserId: v.ewayBillUserId?.slice(0, 120),
+    ewayBillPasswordEncrypted: secret(v.ewayBillPassword),
     extraFields: v.extra && Object.keys(v.extra).length ? v.extra : undefined,
   };
 }
@@ -229,9 +233,11 @@ export async function runClientImport(ctx: AppContext, file: File, requestedMapp
     const depts = departmentsOf(v);
     try {
       await prisma.$transaction(async (tx) => {
+        const groupId = v.group ? await groupIdFor(tx, organizationId, v.group.slice(0, 120)) : undefined;
         const client = await tx.client.create({
           data: {
             organizationId,
+            groupId,
             clientCode,
             tradeName: v.tradeName!.slice(0, 200),
             legalName: v.legalName?.slice(0, 200),
@@ -248,7 +254,7 @@ export async function runClientImport(ctx: AppContext, file: File, requestedMapp
             submittedAt: new Date(),
             approvedAt: status === "PENDING_APPROVAL" ? null : new Date(),
             approvedById: status === "PENDING_APPROVAL" ? null : ctx.user.id,
-            gstRegistrations: { create: v.gstins.map((gstin) => ({ gstin })) },
+            gstRegistrations: { create: v.gstins.map((gstin) => ({ gstin, state: gstState(gstin) })) },
             contacts: v.contactName || v.contactMobile || v.contactEmail
               ? { create: { name: (v.contactName ?? v.tradeName!).slice(0, 120), mobile: v.contactMobile, email: v.contactEmail, isPrimary: true } }
               : undefined,
@@ -312,6 +318,7 @@ async function fillClient(ctx: AppContext, clientId: string, v: ParsedClient, de
   const gstins = v.gstins.filter((g) => !c.gstRegistrations.some((x) => x.gstin === g));
   const have = new Set(c.compliances.map((x) => x.complianceItemId));
   const addItems = complianceIds(newDepts).filter((id) => !have.has(id));
+  if (v.group && !c.groupId) data.group = { connect: { id: await prisma.$transaction((tx) => groupIdFor(tx, ctx.organization.id, v.group!.slice(0, 120))) } };
   if (!Object.keys(data).length && !gstins.length && !addItems.length) return false;
   await prisma.$transaction(async (tx) => {
     // A GSTIN already on another client of the firm is left alone.
@@ -321,7 +328,7 @@ async function fillClient(ctx: AppContext, clientId: string, v: ParsedClient, de
       where: { id: c.id },
       data: {
         ...data,
-        ...(free.length ? { gstRegistrations: { create: free.map((gstin) => ({ gstin })) } } : {}),
+        ...(free.length ? { gstRegistrations: { create: free.map((gstin) => ({ gstin, state: gstState(gstin) })) } } : {}),
         ...(addItems.length ? { compliances: { create: addItems.map((complianceItemId) => ({ complianceItemId })) } } : {}),
       },
     });

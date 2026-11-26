@@ -27,6 +27,13 @@ export async function issueAssetAction(assetId: string, _p: ActionState, fd: For
   });
 }
 
+/** Asset allocation tab: choose the asset and the person in one form (tracker S.No. 112). */
+export async function allocateAssetAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const assetId = String(fd.get("assetId") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(assetId)) return { ok: false, fieldErrors: { assetId: ["Choose the asset"] } };
+  return issueAssetAction(assetId, _p, fd);
+}
+
 export async function returnAssetAction(assetId: string, _p: ActionState, fd: FormData): Promise<ActionState> {
   const parsed = parseForm(returnSchema, fd);
   if (!parsed.success) return parsed.state;

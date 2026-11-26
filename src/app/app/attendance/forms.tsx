@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ActionForm, SelectField, SubmitButton, TextArea, TextField, type FormState } from "@/components/form";
+import { ClientPlacePicker, type PlaceClient } from "./client-place-picker";
 
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
 type Option = { value: string; label: string };
@@ -48,6 +49,7 @@ export function LeaveDecisionForm({ action }: { action: Act }) {
 }
 
 const KINDS = [
+  { value: "MARK_ATTENDANCE", label: "Please mark my attendance", hint: "Forgot to mark in, or could not (phone, location, network)? Say when you reached and where you are. All your seniors are told and any of them can mark it — only until the absent cut-off (12:00); after that nobody can. If they don't, send it to the admin. Up to 3 days a month count normally; after that each one is a half day." },
   { value: "LATE_ARRIVAL", label: "I'll be late / half day", hint: "Before your reporting time: your reason and when you expect to arrive (for a half day, your second-half arrival time). Mark in with your location when you reach. One late arrival a month informed in advance is a warning only." },
   { value: "ABSENT", label: "I can't come today", hint: "Raises a leave request for the day for your Team Lead to decide. Without a request in the ERP an absence counts double." },
   { value: "EARLY_LEAVE", label: "Leave early", hint: "Your Team Lead's permission to leave before your scheduled time. Leaving before the half-day time still counts as a half day." },
@@ -57,8 +59,15 @@ const KINDS = [
 ] as const;
 
 /** One form for everything the rules ask to be raised in the ERP; the fields follow the choice. */
-export function RequestForm({ action, today, initialKind, defaults }: { action: Act; today: string; initialKind?: string; defaults: { arrival: string; leaving: string; overtimeUntil: string; monthBack?: string } }) {
+export function RequestForm({ action, today, initialKind, defaults, clients = [], officeLabel = "Office", firmStart = "09:30", markInfo }: {
+  action: Act; today: string; initialKind?: string;
+  defaults: { arrival: string; leaving: string; overtimeUntil: string; monthBack?: string; reachedAt?: string };
+  clients?: PlaceClient[]; officeLabel?: string; firmStart?: string;
+  /** Mark-attendance: cut-off today and how many days were already marked on request this month. */
+  markInfo?: { cutoff: string; used: number; limit: number; pastCutoff: boolean; markedIn: boolean };
+}) {
   const [kind, setKind] = useState<string>(KINDS.some((k) => k.value === initialKind) ? initialKind! : "LATE_ARRIVAL");
+  const [where, setWhere] = useState("OFFICE");
   const info = KINDS.find((k) => k.value === kind)!;
   return (
     <ActionForm action={action}>
@@ -74,50 +83,93 @@ export function RequestForm({ action, today, initialKind, defaults }: { action: 
         </div>
         <p className="mt-2 text-xs text-muted">{info.hint}</p>
       </fieldset>
+      {kind === "MARK_ATTENDANCE" ? (
+        <>
+          {markInfo && (
+            <p className={`rounded-md border px-3 py-2 text-xs ${markInfo.pastCutoff || markInfo.markedIn ? "border-danger/30 bg-danger-bg text-danger" : markInfo.used >= markInfo.limit ? "border-warn/30 bg-warn-bg text-warn" : "border-line bg-paper text-muted"}`}>
+              {markInfo.markedIn ? "You are already marked in today." : markInfo.pastCutoff ? `It is past ${markInfo.cutoff}: attendance can no longer be marked for today by anyone.` : <>Today only · must be marked before <strong>{markInfo.cutoff}</strong>. Marked on request this month: <strong>{markInfo.used} of {markInfo.limit}</strong>{markInfo.used >= markInfo.limit ? " — this one would count as a half day." : "."}</>}
+            </p>
+          )}
+          <input type="hidden" name="requestDate" value={today} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TextField label="I reached at" name="atTime" type="time" required defaultValue={defaults.reachedAt ?? defaults.arrival} key="reached" hint="The time you actually reached" />
+            <SelectField label="Where are you working today?" name="workLocation" placeholder={null} value={where} onChange={(e) => setWhere(e.target.value)} options={[
+              { value: "OFFICE", label: officeLabel }, { value: "CLIENT_OFFICE", label: "Client office" }, { value: "CLIENT_VISIT", label: "Client visit" },
+            ]} />
+          </div>
+          {where !== "OFFICE" && <ClientPlacePicker clients={clients} label={where === "CLIENT_OFFICE" ? "Which client's office?" : "Which client are you visiting?"} firmStart={firmStart} />}
+        </>
+      ) : (
       <div className="grid gap-3 sm:grid-cols-2">
         <TextField label="Date" name="requestDate" type="date" required defaultValue={today} min={kind === "WEEKLY_OFF" || kind === "OFF_DAY_WORK" ? defaults.monthBack : today} key={`d-${kind}`} />
         {kind === "LATE_ARRIVAL" && <TextField label="Expected arrival" name="atTime" type="time" required defaultValue={defaults.arrival} key="arr" />}
         {kind === "EARLY_LEAVE" && <TextField label="Leaving at" name="atTime" type="time" required defaultValue={defaults.leaving} key="leave" />}
         {kind === "OVERTIME" && <TextField label="Expected to finish by" name="atTime" type="time" defaultValue={defaults.overtimeUntil} key="ot" />}
       </div>
+      )}
       {kind === "OVERTIME" && (
         <>
           <TextArea label="What task will you be doing?" name="task" rows={2} required />
           <TextArea label="Why can it not wait till tomorrow?" name="whyNotTomorrow" rows={2} required />
         </>
       )}
-      <TextArea label={kind === "OVERTIME" ? "Anything else" : kind === "OFF_DAY_WORK" ? "What work, for which client" : "Reason"} name="reason" rows={2} required={kind !== "OVERTIME"} key={`r-${kind}`} defaultValue={kind === "OVERTIME" ? "Urgent work" : undefined} />
-      <SubmitButton>{kind === "LATE_ARRIVAL" || kind === "ABSENT" ? "Inform my Team Lead" : "Ask my Team Lead"}</SubmitButton>
+      <TextArea label={kind === "OVERTIME" ? "Anything else" : kind === "OFF_DAY_WORK" ? "What work, for which client" : kind === "MARK_ATTENDANCE" ? "Why could you not mark it yourself?" : "Reason"} name="reason" rows={2} required={kind !== "OVERTIME"} key={`r-${kind}`} defaultValue={kind === "OVERTIME" ? "Urgent work" : undefined} />
+      <SubmitButton>{kind === "MARK_ATTENDANCE" ? "Ask my seniors to mark it" : kind === "LATE_ARRIVAL" || kind === "ABSENT" ? "Inform my Team Lead" : "Ask my Team Lead"}</SubmitButton>
     </ActionForm>
   );
 }
 
 /** Team Lead's decision. A late intimation is accepted by default and can be marked not genuine. */
-export function RequestDecisionForm({ action, late }: { action: Act; late: boolean }) {
+export function RequestDecisionForm({ action, late, approveLabel, rejectLabel }: { action: Act; late: boolean; approveLabel?: string; rejectLabel?: string }) {
   return (
     <ActionForm action={action}>
       <TextField label="Note (optional)" name="note" />
       <div className="flex flex-wrap gap-2">
-        <SubmitButton name="decision" value="approve" size="sm">{late ? "Accept reason" : "Approve"}</SubmitButton>
-        <SubmitButton name="decision" value="reject" variant="danger" size="sm">{late ? "Not genuine" : "Reject"}</SubmitButton>
+        <SubmitButton name="decision" value="approve" size="sm">{approveLabel ?? (late ? "Accept reason" : "Approve")}</SubmitButton>
+        <SubmitButton name="decision" value="reject" variant="danger" size="sm">{rejectLabel ?? (late ? "Not genuine" : "Reject")}</SubmitButton>
       </div>
     </ActionForm>
   );
 }
 
-export function ScheduleForm({ action, employees, officeHours, defaults }: { action: Act; employees: Option[]; officeHours: string; defaults?: { employeeId?: string; place?: "OFFICE" | "SITE"; time?: string; site?: string } }) {
+const DAY_PRESETS = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10];
+const toHhmm = (min: number) => `${String(Math.floor((((min % 1440) + 1440) % 1440) / 60)).padStart(2, "0")}:${String(((min % 60) + 60) % 60).padStart(2, "0")}`;
+
+/**
+ * Team timings: office, or a client site with its own reporting time AND working hours (25 Nov 2026:
+ * the day is no longer always 8 hours). One tap for the usual lengths, or type any; the leaving time
+ * is shown as you choose, so the Team Lead sees exactly what the person's day will be.
+ */
+export function ScheduleForm({ action, employees, officeHours, defaults, firmSiteHours = 8 }: {
+  action: Act; employees: Option[]; officeHours: string; firmSiteHours?: number;
+  defaults?: { employeeId?: string; place?: "OFFICE" | "SITE"; time?: string; site?: string; hours?: number };
+}) {
   const [place, setPlace] = useState(defaults?.place ?? "SITE");
+  const [time, setTime] = useState(defaults?.time ?? "10:00");
+  const [hours, setHours] = useState(String(defaults?.hours ?? firmSiteHours));
+  const h = Number(hours);
+  const [hh, mm] = time.split(":").map(Number);
+  const ends = Number.isFinite(h) && h > 0 && Number.isFinite(hh) ? toHhmm(hh * 60 + (mm || 0) + Math.round(h * 60)) : null;
   return (
     <ActionForm action={action}>
       <div className="grid gap-3 sm:grid-cols-2">
         <SelectField label="Team member" name="employeeId" required options={employees} defaultValue={defaults?.employeeId} />
         <SelectField label="Works at" name="place" placeholder={null} value={place} onChange={(e) => setPlace(e.target.value as "OFFICE" | "SITE")} options={[
-          { value: "SITE", label: "Client site (own reporting time)" }, { value: "OFFICE", label: `Office (${officeHours})` },
+          { value: "SITE", label: "Client site (own timing)" }, { value: "OFFICE", label: `Office (${officeHours})` },
         ]} />
         {place === "SITE" && (
           <>
-            <TextField label="Client / site" name="siteName" required defaultValue={defaults?.site} placeholder="e.g. ABC Traders, Okhla" />
-            <TextField label="Reporting time" name="siteReportingTime" type="time" required defaultValue={defaults?.time ?? "10:00"} hint="Their day lasts 8 hours from this time" />
+            <TextField label="Client / site" name="siteName" required defaultValue={defaults?.site} placeholder="e.g. ABC Traders, Okhla" className="sm:col-span-2" />
+            <TextField label="Reporting time" name="siteReportingTime" type="time" required value={time} onChange={(e) => setTime(e.target.value)} />
+            <TextField label="Working hours" name="siteDayHours" type="number" required min={1} max={16} step={0.25} value={hours} onChange={(e) => setHours(e.target.value)} hint={ends ? `Day: ${time}–${ends}` : "Hours in the day, e.g. 8 or 8.5"} />
+            <div className="-mt-1 flex flex-wrap gap-1.5 sm:col-span-2" role="group" aria-label="Usual working hours">
+              {DAY_PRESETS.map((p) => (
+                <button key={p} type="button" aria-pressed={h === p} onClick={() => setHours(String(p))}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${h === p ? "border-ink bg-ink text-paper" : "border-line bg-surface text-muted hover:border-ink/30 hover:text-ink"}`}>
+                  {p} h{p === firmSiteHours ? " (usual)" : ""}
+                </button>
+              ))}
+            </div>
           </>
         )}
       </div>

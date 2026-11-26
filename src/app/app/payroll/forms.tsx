@@ -5,7 +5,7 @@ import { ActionForm, SelectField, SubmitButton, TextField, type FormState } from
 import { SearchSelect } from "@/components/pickers";
 
 type Act = (p: FormState, fd: FormData) => Promise<FormState>;
-type Current = { monthly: number; period: string } | null;
+type Current = { monthly: number; period: string; allowance?: number } | null;
 
 const inr = (n: number) => `₹ ${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
@@ -45,10 +45,11 @@ export function SalaryForm({ action, employees, today, current, defaultEmployee 
         )}
         {change === "percent" && <TextField label="Increase (%)" name="increasePercent" type="number" step="0.01" required value={pct} onChange={(e) => setPct(e.target.value)} hint="Use a minus sign for a reduction" />}
         {change === "amount" && <TextField label="Increase (₹ a month)" name="increaseAmount" type="number" step="0.01" required value={amt} onChange={(e) => setAmt(e.target.value)} hint="Use a minus sign for a reduction" />}
-        <TextField label="Effective from" name="effectiveFrom" type="date" required defaultValue={today} />
+        <TextField label="Effective from" name="effectiveFrom" type="date" required defaultValue={today} hint="The new salary applies from this date; the old one stays in history" />
         <SelectField label="Paid by" name="salaryMode" options={[{ value: "TRANSFER", label: "Bank transfer" }, { value: "CASH", label: "Cash" }]} placeholder="Same as before" />
+        <TextField label="Fixed allowance (₹ a month)" name="fixedAllowance" type="number" min={0} step="0.01" placeholder={cur?.allowance ? String(cur.allowance) : "0"} hint={cur?.allowance ? "Blank = keep the current allowance" : "Paid on top of the salary, shown on the slip"} />
       </div>
-      {preview !== null && <p className="rounded-lg border border-ok/30 bg-ok-bg px-3 py-2 text-sm text-ok">New salary: <strong>{inr(Math.round(preview * 100) / 100)} a month</strong> (was {inr(cur!.monthly)}).</p>}
+      {preview !== null && <p className="rounded-lg border border-ok/30 bg-ok-bg px-3 py-2 text-sm text-ok">New salary: <strong>{inr(Math.round(preview * 100) / 100)} a month</strong> (was {inr(cur!.monthly)}, {preview >= cur!.monthly ? "+" : ""}{inr(Math.round((preview - cur!.monthly) * 100) / 100)} · {Math.round(((preview - cur!.monthly) / cur!.monthly) * 1000) / 10}%).</p>}
       <TextField label="Note (reason, appraisal…)" name="incrementNotes" />
       <details className="rounded-lg border border-line p-3 text-sm">
         <summary className="cursor-pointer font-medium">Next increment promised (optional)</summary>
@@ -72,7 +73,8 @@ export function SalaryEditForm({ action, d }: { action: Act; d: Record<string, s
         <SelectField label="Per" name="salaryPeriod" placeholder={null} defaultValue={d.salaryPeriod} options={[{ value: "MONTHLY", label: "Month" }, { value: "ANNUAL", label: "Year" }]} />
         <TextField label="Effective from" name="effectiveFrom" type="date" required defaultValue={d.effectiveFrom} />
         <SelectField label="Paid by" name="salaryMode" defaultValue={d.salaryMode} options={[{ value: "TRANSFER", label: "Bank transfer" }, { value: "CASH", label: "Cash" }]} />
-        <TextField label="Note" name="incrementNotes" defaultValue={d.incrementNotes} className="sm:col-span-2 lg:col-span-4" />
+        <TextField label="Fixed allowance (₹ a month)" name="fixedAllowance" type="number" min={0} step="0.01" defaultValue={d.fixedAllowance} />
+        <TextField label="Note" name="incrementNotes" defaultValue={d.incrementNotes} className="sm:col-span-2 lg:col-span-3" />
         <TextField label="Next increment due on" name="committedIncrementDate" type="date" defaultValue={d.committedIncrementDate} />
         <TextField label="By %" name="committedIncrementPercent" type="number" step="0.01" defaultValue={d.committedIncrementPercent} />
         <TextField label="Or by ₹ a month" name="committedIncrementAmount" type="number" step="0.01" defaultValue={d.committedIncrementAmount} />
@@ -84,20 +86,45 @@ export function SalaryEditForm({ action, d }: { action: Act; d: Record<string, s
 
 // ---------------------------------------------------------------- conveyance and advances (tracker S.No. 84, 85)
 
-const MODES = ["Two-wheeler", "Car", "Auto / cab", "Bus / metro", "Other"].map((v) => ({ value: v, label: v }));
+const OWN = ["Bike (own)", "Car (own)"];
+const FARE = ["Metro", "Bus", "Auto / rickshaw", "Rapido / cab", "Porter", "Others"];
 
-/** A day's travel claim: client (or place), mode, km, amount and a photo of the bill. */
-export function ConveyanceForm({ action, clients, today, minDate }: { action: Act; clients: { value: string; label: string }[]; today: string; minDate: string }) {
+/**
+ * A day's travel claim, laid out like the SSDA conveyance sheet (25 Nov 2026): date, client (only the
+ * person's own clients), mode; for an own vehicle the total run less the home ↔ office km gives the km for
+ * office work × the firm's rate; for metro / bus / cab the fare paid. Worked out as you type.
+ */
+export function ConveyanceForm({ action, clients, today, minDate, rate, commute }: { action: Act; clients: { value: string; label: string }[]; today: string; minDate: string; rate: number; commute: number | null }) {
+  const [mode, setMode] = useState("Bike (own)");
+  const [total, setTotal] = useState("");
+  const [home, setHome] = useState(commute !== null ? String(commute) : "");
+  const own = OWN.includes(mode);
+  const officeKm = Math.max(0, Math.round(((Number(total) || 0) - (Number(home) || 0)) * 10) / 10);
+  const amount = Math.round(officeKm * rate * 100) / 100;
   return (
     <ActionForm action={action} resetOnSuccess>
       <div className="grid gap-3 sm:grid-cols-2">
-        <TextField label="Date of travel" name="claimDate" type="date" required defaultValue={today} max={today} min={minDate} />
-        <SearchSelect label="Client visited" name="clientId" options={clients} placeholder="Search the client…" emptyLabel="Not a client (bank, office …)" />
-        <TextField label="Place / route" name="place" placeholder="e.g. Office → Okhla → Office, or GST office" hint="Needed when it is not a client" />
-        <SelectField label="Mode" name="mode" options={MODES} />
-        <TextField label="Distance (km)" name="km" type="number" min={0} step="0.1" />
-        <TextField label="Amount claimed (₹)" name="amount" type="number" min={1} step="1" required />
-        <TextField label="Purpose" name="purpose" placeholder="e.g. GST data collection" className="sm:col-span-2" />
+        <TextField label="Date" name="claimDate" type="date" required defaultValue={today} max={today} min={minDate} />
+        <SearchSelect label="Name of client" name="clientId" options={clients} placeholder={clients.length ? "Search your clients…" : "No client allocated to you"} emptyLabel="Not a client (office, bank, GST office …)" hint="Only your own clients: allocated to you, with your tasks, or visited" />
+        <SelectField label="Mode of conveyance" name="mode" placeholder={null} value={mode} onChange={(e) => setMode(e.target.value)} options={[...OWN, ...FARE].map((v) => ({ value: v, label: v }))} />
+        <TextField label="From – to / place" name="place" placeholder="e.g. Home → Okhla → Home, or GST office" hint="Needed when it is not a client" />
+      </div>
+      {own ? (
+        <div className="rounded-lg border border-line bg-paper p-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <TextField label="Total run (km)" name="totalRunKm" type="number" min={0} step="0.1" required value={total} onChange={(e) => setTotal(e.target.value)} hint="Both ways, the whole day" />
+            <TextField label="Commuted home ↔ office (km)" name="commuteKm" type="number" min={0} step="0.1" value={home} onChange={(e) => setHome(e.target.value)} hint="Taken off: you travel it anyway" />
+            <div className="text-sm"><span className="mb-1 block font-medium">KM run for office</span><span className="flex h-10 items-center rounded-md border border-line bg-surface px-3 font-medium">{officeKm} km</span></div>
+          </div>
+          <p className="mt-2 text-sm">Amount: <strong>{officeKm} km × ₹{rate} = ₹{amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+          <label className="mt-2 inline-flex items-center gap-2 text-xs text-muted"><input type="checkbox" name="rememberCommute" defaultChecked={commute === null} className="accent-ink" /> Remember my home ↔ office km for next time</label>
+        </div>
+      ) : (
+        <TextField label="Fare / amount paid (₹)" name="amount" type="number" min={1} step="1" required hint="e.g. metro both sides + bike parking" />
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <TextField label="Purpose" name="purpose" placeholder="e.g. GST data collection" />
+        <TextField label="Remark (if any)" name="remark" placeholder="e.g. second half at RK Vision" />
         <div className="sm:col-span-2">
           <label className="mb-1 block text-sm font-medium" htmlFor="conv-bill">Bill / ticket photo (optional)</label>
           <input id="conv-bill" name="bill" type="file" accept="application/pdf,image/*" capture="environment" className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-sm" />

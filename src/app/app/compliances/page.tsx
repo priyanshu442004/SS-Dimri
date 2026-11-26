@@ -10,6 +10,7 @@ import { COMPLIANCE_STATUS_LABELS, complianceStatus, daysRemaining, isEscalated,
 import { complianceScope } from "@/lib/services/compliance";
 import { canDelete } from "@/lib/services/deletions";
 import { activeClientOptions, employeeOptions } from "@/lib/services/lookups";
+import { gstinLabel } from "@/lib/domain/gst-state";
 import { ActionButton } from "@/components/action-button";
 import { DeleteButton } from "@/components/delete-dialog";
 import { Badge, Card, DownloadButton, EmptyState, Notice, PageHeader, Stat, TabNav, Table, Td, Th } from "@/components/ui";
@@ -125,7 +126,7 @@ export default async function CompliancesPage({ searchParams }: PageProps<"/app/
     const where: Prisma.ComplianceEntryWhereInput = {
       AND: [complianceScope(ctx), { department: dept }, selected ? { OR: [{ complianceItemId: selected.id }, { complianceType: { contains: selected.name, mode: "insensitive" } }] } : {}],
     };
-    const [entries, columns, clients, employees] = await Promise.all([
+    const [entries, columns, clients, gstinRows, employees] = await Promise.all([
       prisma.complianceEntry.findMany({
         where,
         orderBy: [{ actionTaken: "asc" }, { dueDate: "asc" }],
@@ -134,8 +135,11 @@ export default async function CompliancesPage({ searchParams }: PageProps<"/app/
       }),
       prisma.complianceColumn.findMany({ where: { organizationId: ctx.organization.id }, orderBy: { sortOrder: "asc" } }),
       manage ? activeClientOptions(ctx.organization.id) : Promise.resolve([]),
+      manage ? prisma.clientGstRegistration.findMany({ where: { client: { organizationId: ctx.organization.id, status: { in: ["ACTIVE", "ON_HOLD"] } } }, orderBy: { createdAt: "asc" }, select: { clientId: true, gstin: true, state: true, branchName: true } }) : Promise.resolve([]),
       manage ? employeeOptions(ctx.organization.id) : Promise.resolve([]),
     ]);
+    const gstins: Record<string, string[]> = {};
+    for (const g of gstinRows) (gstins[g.clientId] ??= []).push(gstinLabel(g));
     const withStatus = entries.map((e) => ({ e, s: complianceStatus(e, today), left: daysRemaining(e.dueDate, today), escalated: isEscalated(e, today) }));
     // The Upcoming tile counts everything not yet pressing, so its list does too.
     const shown = status ? withStatus.filter((r) => r.s === status || (status === "UPCOMING" && r.s === "OK")) : withStatus;
@@ -193,6 +197,7 @@ export default async function CompliancesPage({ searchParams }: PageProps<"/app/
                             <ComplianceEntryForm
                               action={updateComplianceEntryAction.bind(null, e.id)}
                               departments={departments}
+                              gstins={gstins}
                               items={choices}
                               clients={clients}
                               employees={employees}
@@ -224,6 +229,7 @@ export default async function CompliancesPage({ searchParams }: PageProps<"/app/
                 key={`${dept}-${selected?.id ?? ""}`}
                 action={createComplianceEntryAction}
                 departments={departments}
+                gstins={gstins}
                 items={choices}
                 clients={clients}
                 employees={employees}

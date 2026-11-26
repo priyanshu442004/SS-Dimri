@@ -22,6 +22,7 @@ const RULES: Rule[] = [
   { day: 11, title: "GSTR-1 (monthly)", form: "GSTR-1", department: "GST" },
   { day: 13, title: "Invoice Furnishing Facility (QRMP)", form: "IFF", department: "GST", months: QRMP_M1_M2_NEXT },
   { day: 13, title: "GSTR-1 (quarterly, QRMP)", form: "GSTR-1", department: "GST", months: QUARTER_END_NEXT },
+  { day: 13, title: "ISD return (Input Service Distributor)", form: "GSTR-6", department: "GST" },
   { day: 15, title: "PF contribution & ECR, ESI contribution", form: "ECR + challan", department: "EPF / ESI" },
   { day: 18, title: "Composition quarterly payment", form: "CMP-08", department: "GST", months: QUARTER_END_NEXT },
   { day: 20, title: "GSTR-3B (monthly)", form: "GSTR-3B", department: "GST" },

@@ -43,6 +43,17 @@ The agent loop is in `src/lib/ai/agent.ts`. When the model writes the answer tex
 | `sheet_overview` / `read_sheet` | The live Google Sheet (`src/lib/ai/sheet.ts`) |
 | `show_kpis` / `show_chart` / `show_table` / `suggest_follow_up` | Visual blocks, validated with zod (`src/lib/ai/blocks.ts`) |
 
+### PDF and Excel files (25 Nov 2026, `src/lib/ai/files/`)
+
+`create_excel` and `create_pdf` make a file only when the user asks for one ("Excel of everyone late this month", or a follow-up "make that a PDF"). The rule is **no number or fact out of the blue**:
+
+- Every data tool result in an answer becomes a data set (`_dataset: "d1"` …). A table can point at it (`from: { dataset, path, where }` with a `field` per column) and the server copies the rows straight from the database result — the model does not retype long lists.
+- Rows the model does type are checked (`facts.ts`): every number must be one the tools returned in this conversation (allowing rounding, a fraction shown as %, minutes as hours), every word of a name / text cell must be in that data (or a plain word such as "late"), every date one of its dates. Numbers in titles, text, headline figures and charts are checked too (they may also quote the file's own totals).
+- Calculations are never typed by the model: `computed` columns are formulas over other columns (`{Late days} / {Working days} * 100`) and `totals` adds a total row; the server works them out (`resolve.ts`) and in Excel they are real formulas.
+- If anything does not check out, the file is **not** made and the model gets the list of problems, so it looks the data up again instead of guessing.
+
+Files are stored in `ai_generated_files` (bytes, owner) and downloaded from `/api/assistant/files/<id>` (only by the person who asked; `?inline=1` opens a PDF). The chat shows them as a card with Download / Open; deleting a chat deletes its files. PDFs are printed with the server's headless Chromium (`lib/pdf.ts`), Excel files are built by `lib/xlsx-styled.ts` (title block, headline figures, styled header, ₹ in Indian grouping, %, dates, frozen header, filter, totals as `SUM` formulas).
+
 ### Database safety (`db-query.ts`)
 
 - **Read-only.** There is no write operation.

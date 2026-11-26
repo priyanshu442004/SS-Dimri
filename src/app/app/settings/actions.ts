@@ -116,7 +116,11 @@ const policySchema = z.object({
   officeName: z.string().trim().min(2, "Name the office").max(80),
   officeStart: hhmm, reportingGraceUntil: hhmm, lunchStart: hhmm, lunchEnd: hhmm, officeEnd: hhmm, leavingGraceUntil: hhmm, halfDayIfLeavingBefore: hhmm,
   markOutReminderAt: hhmm.optional(), autoAbsentAt: hhmm, morningPlanBy: hhmm,
-  onsiteRequiredMinutes: zInt(60, 1440),
+  /** Shown in hours (8, 8.5 …), stored in minutes. */
+  onsiteRequiredHours: z.coerce.number("Enter the hours").min(1, "At least 1 hour").max(16, "At most 16 hours"),
+  requestMarksPerMonth: zInt(0, 31),
+  conveyanceRatePerKm: z.coerce.number().min(0).max(1000),
+  salaryPayDay: zInt(1, 28),
   lateArrivalsPerHalfDay: zInt(1, 31), lateGracePerMonth: zInt(0, 31), veryLateAfterMinutes: zInt(15, 600),
   overtimeMinutesPerDay: zInt(60, 1440),
   paidLeavesPerMonth: z.coerce.number().min(0).max(31), plannedLeaveNoticeDays: zInt(0, 365),
@@ -134,11 +138,13 @@ export async function savePolicyAction(_p: ActionState, fd: FormData): Promise<A
   if (!parsed.success) return parsed.state;
   return safeAction(async () => {
     const ctx = await actionContext("org.manage");
+    const { onsiteRequiredHours, ...rest } = parsed.data;
+    const data = { ...rest, onsiteRequiredMinutes: Math.round(onsiteRequiredHours * 60) };
     await prisma.$transaction(async (tx) => {
       await tx.attendancePolicy.upsert({
         where: { organizationId: ctx.organization.id },
-        update: { ...parsed.data, overtimeMode: "ACTUAL_MINUTES", policyConfirmed: true },
-        create: { ...parsed.data, overtimeMode: "ACTUAL_MINUTES", policyConfirmed: true, organizationId: ctx.organization.id },
+        update: { ...data, overtimeMode: "ACTUAL_MINUTES", policyConfirmed: true },
+        create: { ...data, overtimeMode: "ACTUAL_MINUTES", policyConfirmed: true, organizationId: ctx.organization.id },
       });
       await audit(tx, ctx, "attendance_policy.updated", "organization", ctx.organization.id);
     });
