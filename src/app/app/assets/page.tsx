@@ -67,7 +67,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
     const q = typeof sp.q === "string" ? sp.q.trim().toLowerCase() : "";
     const people = [...byPerson.entries()].filter(([, v]) => !q || v.name.toLowerCase().includes(q)).sort((x, y) => x[1].name.localeCompare(y[1].name));
     return (
-      <div className="grid gap-6 xl:grid-cols-[3fr_2fr]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             <Stat label="Assets issued" value={issued.length} tone="info" />
@@ -121,7 +121,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
           <Stat label="In stock" value={count("IN_STOCK")} tone="ok" />
           <Stat label="Under repair / disposed" value={`${count("UNDER_REPAIR")} / ${count("DISPOSED")}`} />
         </div>
-        <div className="grid gap-6 xl:grid-cols-[3fr_2fr]">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div className="space-y-3">
             <form className="flex flex-wrap items-end gap-2" role="search">
               <input name="q" defaultValue={f.q} placeholder="Code, description, serial, person" className={`${selectCls} w-64`} aria-label="Search assets" />

@@ -57,7 +57,7 @@ export default async function BulkAllocationPage({ searchParams }: { searchParam
       people: [...new Map(c.teamAllocations.map((a) => [a.employee.id, { id: a.employee.id, name: person(a.employee) }])).values()],
     }));
     return (
-      <div className="grid gap-6 xl:grid-cols-[3fr_2fr]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Card title="Allocate one person to many clients">
           <BulkAllocateForm action={bulkAllocateAction} employees={employees} clients={list} today={today} capacity={capacity} />
         </Card>
@@ -85,7 +85,7 @@ export default async function BulkAllocationPage({ searchParams }: { searchParam
     const num = (d: unknown) => (d === null || d === undefined ? null : Number(d));
     const fromName = everyone.find((e) => e.value === from)?.label;
     return (
-      <div className="grid gap-6 xl:grid-cols-[3fr_2fr]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Card title={from ? `Move ${fromName?.split(" — ")[0]}'s clients` : "Whose clients are you moving?"}>
           <form className="mb-4 flex flex-wrap items-end gap-2">
             <input type="hidden" name="tab" value="transfer" />

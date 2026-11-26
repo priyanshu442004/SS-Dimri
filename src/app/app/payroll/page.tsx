@@ -271,8 +271,8 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
     const monthBack = toIsoDate(new Date(Date.now() - 62 * 86_400_000));
     const place = (c: { client: { tradeName: string } | null; place: string | null }) => [c.client?.tradeName, c.place].filter(Boolean).join(" · ") || "—";
     return (
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="min-w-0 space-y-6">
           {ctx.employee && (
             <Card title="Claim conveyance">
               <p className="mb-3 text-sm text-muted">Claim each day&apos;s travel for office work. Once an administrator approves it, it is added to that month&apos;s salary as &ldquo;Any other&rdquo; — no separate sheet needed.</p>
@@ -304,7 +304,7 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
           </Card>
         </div>
         {manage && (
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
             <Card title={`Waiting for approval (${waiting.length})`}>
               {waiting.length === 0 ? <p className="text-sm text-muted">No claim is waiting.</p> : (
                 <ul className="space-y-4">
@@ -348,7 +348,7 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
     const open = rows.filter((r) => !r.settled);
     const editId = typeof sp.edit === "string" ? sp.edit : "";
     return (
-      <div className="grid gap-6 xl:grid-cols-[3fr_2fr]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Card title={`Advances · ${monthName(month)}`} padded={false}>
           {rows.length === 0 ? <p className="p-4 text-sm text-muted">No advance recorded.</p> : (
             <Table minWidth={760}>
@@ -404,7 +404,7 @@ export default async function PayrollPage({ searchParams }: PageProps<"/app/payr
           <Stat label="Monthly salary bill" value={inr(rows.reduce((s, r) => s + (r.current?.monthly ?? 0), 0))} />
         </div>
         {rows.length === 0 ? <EmptyState kind="people" title="Nobody to show">People appear here once they report to you.</EmptyState> : (
-          <div className="grid gap-6 xl:grid-cols-[3fr_2fr]">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <Card title="Current salaries" padded={false}>
               <Table minWidth={900}>
                 <thead><tr><Th>Team member</Th><Th>Last salary</Th><Th>Current salary</Th><Th>Increment</Th><Th>Since</Th><Th>Next</Th><Th /></tr></thead>
