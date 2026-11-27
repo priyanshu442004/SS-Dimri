@@ -59,15 +59,17 @@ const KINDS = [
 ] as const;
 
 /** One form for everything the rules ask to be raised in the ERP; the fields follow the choice. */
-export function RequestForm({ action, today, initialKind, defaults, clients = [], officeLabel = "Office", firmStart = "09:30", markInfo }: {
+export function RequestForm({ action, today, initialKind, defaults, clients = [], officeLabel = "Office", firmStart = "09:30", markInfo, places = ["OFFICE", "CLIENT_OFFICE", "CLIENT_VISIT"] }: {
   action: Act; today: string; initialKind?: string;
   defaults: { arrival: string; leaving: string; overtimeUntil: string; monthBack?: string; reachedAt?: string };
   clients?: PlaceClient[]; officeLabel?: string; firmStart?: string;
   /** Mark-attendance: cut-off today and how many days were already marked on request this month. */
   markInfo?: { cutoff: string; used: number; limit: number; pastCutoff: boolean; markedIn: boolean };
+  /** Where the Team Lead lets them work (Team timings); all three when nothing is set. */
+  places?: string[];
 }) {
   const [kind, setKind] = useState<string>(KINDS.some((k) => k.value === initialKind) ? initialKind! : "LATE_ARRIVAL");
-  const [where, setWhere] = useState("OFFICE");
+  const [where, setWhere] = useState(places[0] ?? "OFFICE");
   const info = KINDS.find((k) => k.value === kind)!;
   return (
     <ActionForm action={action}>
@@ -95,7 +97,7 @@ export function RequestForm({ action, today, initialKind, defaults, clients = []
             <TextField label="I reached at" name="atTime" type="time" required defaultValue={defaults.reachedAt ?? defaults.arrival} key="reached" hint="The time you actually reached" />
             <SelectField label="Where are you working today?" name="workLocation" placeholder={null} value={where} onChange={(e) => setWhere(e.target.value)} options={[
               { value: "OFFICE", label: officeLabel }, { value: "CLIENT_OFFICE", label: "Client office" }, { value: "CLIENT_VISIT", label: "Client visit" },
-            ]} />
+            ].filter((o) => places.includes(o.value))} />
           </div>
           {where !== "OFFICE" && <ClientPlacePicker clients={clients} label={where === "CLIENT_OFFICE" ? "Which client's office?" : "Which client are you visiting?"} firmStart={firmStart} />}
         </>
@@ -135,44 +137,73 @@ export function RequestDecisionForm({ action, late, approveLabel, rejectLabel }:
 const DAY_PRESETS = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10];
 const toHhmm = (min: number) => `${String(Math.floor((((min % 1440) + 1440) % 1440) / 60)).padStart(2, "0")}:${String(((min % 60) + 60) % 60).padStart(2, "0")}`;
 
+type Place = "OFFICE" | "CLIENT_OFFICE" | "CLIENT_VISIT";
+
 /**
- * Team timings: office, or a client site with its own reporting time AND working hours (25 Nov 2026:
- * the day is no longer always 8 hours). One tap for the usual lengths, or type any; the leaving time
- * is shown as you choose, so the Team Lead sees exactly what the person's day will be.
+ * Team timings: where the person works — office, client office, client visit, one or more (client
+ * feedback, 26 Nov 2026) — which are then the only choices at their mark-in. With "Client office", the
+ * client and its own reporting time and working hours (25 Nov 2026: the day is not always 8 hours).
+ * One tap for the usual lengths, or type any; the leaving time is shown as you choose.
  */
-export function ScheduleForm({ action, employees, officeHours, defaults, firmSiteHours = 8 }: {
+export function ScheduleForm({ action, employees, officeHours, defaults, firmSiteHours = 8, clients = [], labels }: {
   action: Act; employees: Option[]; officeHours: string; firmSiteHours?: number;
-  defaults?: { employeeId?: string; place?: "OFFICE" | "SITE"; time?: string; site?: string; hours?: number };
+  defaults?: { employeeId?: string; places?: Place[]; time?: string; site?: string; hours?: number };
+  /** The firm's active clients for the "Client / site" list (client feedback, 26 Nov 2026). */
+  clients?: PlaceClient[];
+  labels: Record<Place, string>;
 }) {
-  const [place, setPlace] = useState(defaults?.place ?? "SITE");
+  const [places, setPlaces] = useState<Place[]>(defaults?.places?.length ? defaults.places : ["CLIENT_OFFICE"]);
   const [time, setTime] = useState(defaults?.time ?? "10:00");
   const [hours, setHours] = useState(String(defaults?.hours ?? firmSiteHours));
   const h = Number(hours);
   const [hh, mm] = time.split(":").map(Number);
   const ends = Number.isFinite(h) && h > 0 && Number.isFinite(hh) ? toHhmm(hh * 60 + (mm || 0) + Math.round(h * 60)) : null;
+  const site = places.includes("CLIENT_OFFICE");
+  const toggle = (p: Place) => setPlaces((xs) => (xs.includes(p) ? xs.filter((x) => x !== p) : [...xs, p]));
+  const HINT: Record<Place, string> = {
+    OFFICE: `Office hours ${officeHours}`,
+    CLIENT_OFFICE: "Works at a client's office, on that client's timing",
+    CLIENT_VISIT: "Goes out to clients during the day",
+  };
   return (
     <ActionForm action={action}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <SelectField label="Team member" name="employeeId" required options={employees} defaultValue={defaults?.employeeId} />
-        <SelectField label="Works at" name="place" placeholder={null} value={place} onChange={(e) => setPlace(e.target.value as "OFFICE" | "SITE")} options={[
-          { value: "SITE", label: "Client site (own timing)" }, { value: "OFFICE", label: `Office (${officeHours})` },
-        ]} />
-        {place === "SITE" && (
-          <>
-            <TextField label="Client / site" name="siteName" required defaultValue={defaults?.site} placeholder="e.g. ABC Traders, Okhla" className="sm:col-span-2" />
-            <TextField label="Reporting time" name="siteReportingTime" type="time" required value={time} onChange={(e) => setTime(e.target.value)} />
-            <TextField label="Working hours" name="siteDayHours" type="number" required min={1} max={16} step={0.25} value={hours} onChange={(e) => setHours(e.target.value)} hint={ends ? `Day: ${time}–${ends}` : "Hours in the day, e.g. 8 or 8.5"} />
-            <div className="-mt-1 flex flex-wrap gap-1.5 sm:col-span-2" role="group" aria-label="Usual working hours">
-              {DAY_PRESETS.map((p) => (
-                <button key={p} type="button" aria-pressed={h === p} onClick={() => setHours(String(p))}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${h === p ? "border-ink bg-ink text-paper" : "border-line bg-surface text-muted hover:border-ink/30 hover:text-ink"}`}>
-                  {p} h{p === firmSiteHours ? " (usual)" : ""}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+      <SelectField label="Team member" name="employeeId" required options={employees} defaultValue={defaults?.employeeId} />
+      <fieldset>
+        <legend className="mb-1.5 text-sm font-medium">Works at <span className="font-normal text-muted">(tick one or more)</span></legend>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {(["OFFICE", "CLIENT_OFFICE", "CLIENT_VISIT"] as Place[]).map((p) => (
+            <label key={p} className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${places.includes(p) ? "border-ink bg-paper" : "border-line hover:border-ink/30"}`}>
+              <input type="checkbox" name="places[]" value={p} checked={places.includes(p)} onChange={() => toggle(p)} className="mt-0.5 accent-ink" />
+              <span><span className={places.includes(p) ? "font-medium" : undefined}>{labels[p]}</span><span className="block text-xs text-muted">{HINT[p]}</span></span>
+            </label>
+          ))}
+        </div>
+        <p className={`mt-1.5 text-xs ${places.length ? "text-muted" : "text-danger"}`}>
+          {places.length === 0 ? "Tick at least one place." : `At mark-in they can choose only: ${places.map((p) => labels[p]).join(", ")}.`}
+        </p>
+      </fieldset>
+      {site && (
+        <div className="grid gap-3 rounded-lg border border-line p-3 sm:grid-cols-2">
+          <p className="text-xs text-muted sm:col-span-2">
+            <strong className="text-ink">Client office timing.</strong> Their day follows this timing{places.length > 1 ? " on every day, also when they mark in elsewhere" : ""}.
+          </p>
+          <div className="sm:col-span-2">
+            <ClientPlacePicker clients={clients} name="siteName" required label="Client / site" defaultValue={defaults?.site} firmStart={officeHours} scheduleHint
+              onPick={(c) => { if (c.opens) setTime(c.opens); }} />
+          </div>
+          <TextField label="Reporting time" name="siteReportingTime" type="time" required value={time} onChange={(e) => setTime(e.target.value)} />
+          <TextField label="Working hours" name="siteDayHours" type="number" required min={1} max={16} step={0.25} value={hours} onChange={(e) => setHours(e.target.value)} hint={ends ? `Day: ${time}–${ends}` : "Hours in the day, e.g. 8 or 8.5"} />
+          <div className="-mt-1 flex flex-wrap gap-1.5 sm:col-span-2" role="group" aria-label="Usual working hours">
+            {DAY_PRESETS.map((p) => (
+              <button key={p} type="button" aria-pressed={h === p} onClick={() => setHours(String(p))}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${h === p ? "border-ink bg-ink text-paper" : "border-line bg-surface text-muted hover:border-ink/30 hover:text-ink"}`}>
+                {p} h{p === firmSiteHours ? " (usual)" : ""}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {!site && places.length > 0 && <p className="text-xs text-muted">Their day follows office hours ({officeHours}).</p>}
       <SubmitButton>Save timing</SubmitButton>
     </ActionForm>
   );

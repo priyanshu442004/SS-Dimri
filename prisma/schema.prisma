@@ -1405,6 +1405,9 @@ model Employee {
   department               Department?          @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   employmentType           EmploymentType       @default(EMPLOYEE) @map("employment_type")
   attendanceProfile        AttendanceProfile    @default(STANDARD) @map("attendance_profile")
+  /// Where the Team Lead lets this person mark in (Team timings, 26 Nov 2026): OFFICE, CLIENT_OFFICE,
+  /// CLIENT_VISIT. Empty = any of the three.
+  allowedWorkLocations     String[]             @default([]) @map("allowed_work_locations")
   fatherName               String?              @map("father_name")
   motherName               String?              @map("mother_name")
   voterIdNumber            String?              @map("voter_id_number")
@@ -3242,6 +3245,7 @@ model OfficeAsset {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   issues       AssetIssue[]
+  spareParts   AssetSparePart[]
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -3266,6 +3270,21 @@ model AssetIssue {
   @@index([assetId])
   @@index([employeeId, returnedOn])
   @@map("asset_issues")
+}
+
+/// A spare part fitted to / issued with an asset (client feedback, 26 Nov 2026): e.g. charger, RAM, toner.
+model AssetSparePart {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  assetId   String   @map("asset_id") @db.Uuid
+  name      String   @db.VarChar(200)
+  issuedOn  DateTime @map("issued_on") @db.Date
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  asset OfficeAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@map("asset_spare_parts")
 }
 
 /// A PDF or Excel file the AI assistant made from the firm's data (25 Nov 2026). Kept so the

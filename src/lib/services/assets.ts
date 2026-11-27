@@ -35,7 +35,29 @@ export const assetSchema = z.object({
   notes: zOptionalText(1000),
 });
 
-export async function saveAsset(ctx: AppContext, v: z.infer<typeof assetSchema>, id?: string) {
+export type SparePart = { name: string; issuedOn: string };
+
+/**
+ * Spare parts from the asset form's repeating rows ("spareName" / "spareDate", client feedback
+ * 26 Nov 2026). Fully blank rows are dropped; a half-filled row is an error, not silently lost.
+ */
+export function parseSpareParts(fd: FormData): { parts: SparePart[] } | { error: string } {
+  const names = fd.getAll("spareName").map((x) => String(x).trim());
+  const dates = fd.getAll("spareDate").map((x) => String(x).trim());
+  const parts: SparePart[] = [];
+  for (let i = 0; i < Math.max(names.length, dates.length); i++) {
+    const name = names[i] ?? "", date = dates[i] ?? "";
+    if (!name && !date) continue;
+    if (!name) return { error: `Spare part row ${i + 1}: enter the spare part.` };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: `Spare part row ${i + 1} (${name}): enter the issue date.` };
+    if (name.length > 200) return { error: `Spare part row ${i + 1}: keep the name under 200 characters.` };
+    parts.push({ name, issuedOn: date });
+  }
+  if (parts.length > 100) return { error: "At most 100 spare parts per asset." };
+  return { parts };
+}
+
+export async function saveAsset(ctx: AppContext, v: z.infer<typeof assetSchema>, id?: string, spareParts?: SparePart[]) {
   assertManage(ctx);
   const clash = await prisma.officeAsset.findFirst({ where: { organizationId: ctx.organization.id, code: v.code, ...(id ? { id: { not: id } } : {}) }, select: { id: true } });
   if (clash) throw new BusinessRuleError(`Asset code ${v.code} is already used.`);
@@ -50,13 +72,21 @@ export async function saveAsset(ctx: AppContext, v: z.infer<typeof assetSchema>,
       if (!a) throw new BusinessRuleError("Asset not found.");
       // An issued asset stays "Issued" until it is returned.
       await tx.officeAsset.update({ where: { id }, data: { ...data, ...(a.status !== "ISSUED" && v.status ? { status: v.status } : {}) } });
+      if (spareParts) await replaceSpareParts(tx, id, spareParts);
       await audit(tx, ctx, "asset.updated", "asset", id);
       return id;
     }
     const a = await tx.officeAsset.create({ data: { ...data, organizationId: ctx.organization.id, status: v.status ?? "IN_STOCK" } });
+    if (spareParts?.length) await replaceSpareParts(tx, a.id, spareParts);
     await audit(tx, ctx, "asset.added", "asset", a.id);
     return a.id;
   });
+}
+
+/** The form shows every spare part, so what it sends is the asset's full list. */
+async function replaceSpareParts(tx: Prisma.TransactionClient, assetId: string, parts: SparePart[]) {
+  await tx.assetSparePart.deleteMany({ where: { assetId } });
+  if (parts.length) await tx.assetSparePart.createMany({ data: parts.map((p, i) => ({ assetId, name: p.name, issuedOn: dateOnly(p.issuedOn), sortOrder: i })) });
 }
 
 export const issueSchema = z.object({ employeeId: z.uuid("Select the team member"), issuedOn: zIsoDate, issueCondition: z.enum(conditions).optional(), notes: zOptionalText(500) });
@@ -122,7 +152,10 @@ export async function assetRegister(organizationId: string, f: AssetFilters) {
   };
   return prisma.officeAsset.findMany({
     where, orderBy: { code: "asc" }, take: 2000,
-    include: { issues: { orderBy: { issuedOn: "desc" }, include: { employee: { select: { id: true, firstName: true, lastName: true } } } } },
+    include: {
+      issues: { orderBy: { issuedOn: "desc" }, include: { employee: { select: { id: true, firstName: true, lastName: true } } } },
+      spareParts: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+    },
   });
 }
 

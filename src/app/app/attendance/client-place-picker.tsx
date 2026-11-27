@@ -13,7 +13,15 @@ export type PlaceClient = { name: string; opens: string | null; mine: boolean };
  * (a client not yet registered). When the client has an office opening time, it is shown: late-coming
  * is checked against it.
  */
-export function ClientPlacePicker({ clients, defaultValue, label, firmStart }: { clients: PlaceClient[]; defaultValue?: string | null; label: string; firmStart: string }) {
+export function ClientPlacePicker({ clients, defaultValue, label, firmStart, name = "workPlace", required, onPick, scheduleHint }: {
+  clients: PlaceClient[]; defaultValue?: string | null; label: string; firmStart: string;
+  /** Form field name (Team timings posts it as "siteName"). */
+  name?: string; required?: boolean;
+  /** Called when a client is picked from the list. */
+  onPick?: (c: PlaceClient) => void;
+  /** Team timings: the note speaks of the reporting time, not of today's late-coming. */
+  scheduleHint?: boolean;
+}) {
   const [value, setValue] = useState(defaultValue ?? "");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -30,12 +38,16 @@ export function ClientPlacePicker({ clients, defaultValue, label, firmStart }: {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, []);
-  const choose = (name: string) => { setValue(name); setOpen(false); };
+  const choose = (picked: string) => {
+    setValue(picked); setOpen(false);
+    const c = clients.find((x) => x.name === picked);
+    if (c) onPick?.(c);
+  };
   return (
     <div ref={box} className="relative">
       <label htmlFor={`${id}-in`} className="mb-1 block text-sm font-medium">{label}</label>
       <input
-        id={`${id}-in`} name="workPlace" value={value} autoComplete="off" role="combobox" aria-expanded={open} aria-controls={`${id}-list`}
+        id={`${id}-in`} name={name} required={required} value={value} autoComplete="off" role="combobox" aria-expanded={open} aria-controls={`${id}-list`}
         placeholder={clients.length ? "Search or pick the client" : "Type the client's name"}
         className={inputCls}
         onFocus={() => setOpen(true)}
@@ -61,7 +73,10 @@ export function ClientPlacePicker({ clients, defaultValue, label, firmStart }: {
         </ul>
       )}
       <p className="mt-1 text-xs text-muted">
-        {picked?.opens ? <>Late-coming today is checked against <strong className="text-ink">{picked.name}</strong>&apos;s opening time, <strong className="text-ink">{picked.opens}</strong>.</>
+        {scheduleHint ? (picked?.opens ? <>{picked.name} opens at <strong className="text-ink">{picked.opens}</strong> — set as the reporting time; change it if needed.</>
+          : picked ? null
+          : value.trim() ? "Not a registered client: saved as typed. Pick from the list if the client is registered." : null)
+          : picked?.opens ? <>Late-coming today is checked against <strong className="text-ink">{picked.name}</strong>&apos;s opening time, <strong className="text-ink">{picked.opens}</strong>.</>
           : picked ? <>No opening time is set for this client: late-coming is checked against the office time ({firmStart}).</>
           : value.trim() ? "Not a registered client name: the office time applies. Pick from the list if the client is registered." : null}
       </p>

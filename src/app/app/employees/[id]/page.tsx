@@ -157,6 +157,7 @@ export default async function EmployeeDetailPage({ params, searchParams }: PageP
                 )}
               </Card>
             )}
+            <AllottedWork employeeId={e.id} />
           </div>
 
           {(seesPersonal || invite) && (
@@ -285,6 +286,63 @@ async function WorkSummary({ employeeId, timezone }: { employeeId: string; timez
         ["Timesheet", `${minutesToHhmm(timesheet._sum.approxMinutes ?? 0)} across ${timesheet._count} entries`],
         ["Open tasks", tasks.length ? <ul key="t" className="space-y-0.5">{tasks.map((t) => <li key={t.id}><Link href={`/app/tasks/${t.id}`} className="text-brand-700 hover:underline">{t.title}</Link>{t.dueAt && <span className="text-xs text-muted"> · due {formatDate(t.dueAt)}</span>}</li>)}</ul> : "None"],
       ]} />
+    </Card>
+  );
+}
+
+/**
+ * Clients allotted to the person (Team allocation, current and planned) and, for a Team Lead, the team
+ * members under them — reporting to them, or allotted to a client with them as reviewer / team leader
+ * (client feedback, 26 Nov 2026).
+ */
+async function AllottedWork({ employeeId }: { employeeId: string }) {
+  const live = { status: { in: ["ACTIVE", "PLANNED"] as ("ACTIVE" | "PLANNED")[] } };
+  const person = { id: true, firstName: true, lastName: true, designation: { select: { name: true } } } as const;
+  const [allocations, reportees, underOnClients] = await Promise.all([
+    prisma.teamAllocation.findMany({ where: { employeeId, ...live }, orderBy: [{ client: { tradeName: "asc" } }, { startDate: "asc" }], select: { id: true, status: true, startDate: true, resourceType: true, client: { select: { id: true, tradeName: true } } } }),
+    prisma.employeeReportingRelationship.findMany({ where: { managerId: employeeId, employee: { employmentStatus: { not: "EXITED" } } }, select: { employee: { select: person } } }),
+    prisma.teamAllocation.findMany({
+      where: { ...live, employeeId: { not: employeeId }, OR: [{ reportsToEmployeeId: employeeId }, { teamLeaderEmployeeId: employeeId }], employee: { employmentStatus: { not: "EXITED" } } },
+      select: { employee: { select: person }, client: { select: { tradeName: true } } },
+    }),
+  ]);
+  // One row per client (a client can be allotted twice, e.g. two services).
+  const clients = [...new Map(allocations.map((a) => [a.client.id, a])).values()];
+  const team = new Map<string, { e: (typeof reportees)[number]["employee"]; reports: boolean; clients: Set<string> }>();
+  for (const r of reportees) team.set(r.employee.id, { e: r.employee, reports: true, clients: new Set() });
+  for (const a of underOnClients) {
+    const t = team.get(a.employee.id) ?? { e: a.employee, reports: false, clients: new Set<string>() };
+    t.clients.add(a.client.tradeName);
+    team.set(a.employee.id, t);
+  }
+  const members = [...team.values()].sort((x, y) => x.e.firstName.localeCompare(y.e.firstName));
+  const nm = (x: { firstName: string; lastName: string | null }) => `${x.firstName} ${x.lastName ?? ""}`.trim();
+  return (
+    <Card title="Allotted clients & team">
+      <h3 className="mb-1 text-sm font-semibold">Allotted clients ({clients.length})</h3>
+      {clients.length === 0 ? <p className="text-sm text-muted">No client is allotted. Allot clients in <Link href="/app/allocations" className="font-medium text-brand-700 hover:underline">Team allocation</Link>.</p> : (
+        <ul className="divide-y divide-line text-sm">
+          {clients.map((a) => (
+            <li key={a.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-1.5">
+              <Link href={`/app/clients/${a.client.id}`} className="font-medium text-brand-700 hover:underline">{a.client.tradeName}</Link>
+              <span className="text-xs text-muted">{[a.resourceType, a.status === "PLANNED" ? `starts ${formatDate(a.startDate)}` : `since ${formatDate(a.startDate)}`].filter(Boolean).join(" · ")}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {members.length > 0 && (
+        <>
+          <h3 className="mb-1 mt-4 text-sm font-semibold">Allotted team members ({members.length})</h3>
+          <ul className="divide-y divide-line text-sm">
+            {members.map(({ e: m, reports, clients: cs }) => (
+              <li key={m.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-1.5">
+                <span><Link href={`/app/employees/${m.id}`} className="font-medium text-brand-700 hover:underline">{nm(m)}</Link>{m.designation && <span className="text-xs text-muted"> · {m.designation.name}</span>}</span>
+                <span className="text-xs text-muted">{[reports && "Reports to them", cs.size > 0 && `On ${[...cs].sort().join(", ")}`].filter(Boolean).join(" · ")}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </Card>
   );
 }

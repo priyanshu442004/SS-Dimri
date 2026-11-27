@@ -39,6 +39,20 @@ export type Schedule = {
   site: boolean;
 };
 
+/** Where someone can mark in: the office, a client's office, or a client visit. */
+export const WORK_LOCATIONS = ["OFFICE", "CLIENT_OFFICE", "CLIENT_VISIT"] as const;
+export type WorkLocation = (typeof WORK_LOCATIONS)[number];
+export const WORK_LOCATION_WORDS: Record<WorkLocation, string> = { OFFICE: "Office", CLIENT_OFFICE: "Client office", CLIENT_VISIT: "Client visit" };
+
+/**
+ * The places the Team Lead lets this person mark in at (Team timings "Works at", 26 Nov 2026), in the
+ * usual order. Nothing set = all three, as before.
+ */
+export function allowedWorkLocations(set: readonly string[] | null | undefined): WorkLocation[] {
+  const picked = WORK_LOCATIONS.filter((l) => set?.includes(l));
+  return picked.length ? picked : [...WORK_LOCATIONS];
+}
+
 export type ScheduleOwner = { attendanceProfile: string; siteReportingTime: string | null; siteDayMinutes?: number | null };
 
 /** Has this person a client-site schedule set by the Team Lead? */

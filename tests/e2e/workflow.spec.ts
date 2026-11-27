@@ -685,7 +685,8 @@ test("senior returns a timesheet entry, the team member corrects it, and the sen
   // Leads get the three team views; the staff member's entry shows in each.
   await seniorPage.goto("/app/timesheet");
   const sections = seniorPage.getByRole("navigation", { name: "Sections" });
-  for (const name of ["Tracker", "Dashboard", "Client Pending Report", "Team daily log", "Hours & reviews", "My daily log"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
+  for (const name of ["Dashboard", "Client Pending Report", "Team daily log", "Hours & reviews", "My daily log"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
+  await expect(sections.getByRole("link", { name: "Tracker", exact: true })).toHaveCount(0);
   await expect(sections.getByRole("link", { name: /Communication/ })).toHaveCount(0);
   await seniorPage.goto("/app/timesheet?tab=pending");
   await expect(seniorPage.getByRole("heading", { name: /Waiting for review \([1-9]/ })).toBeVisible();

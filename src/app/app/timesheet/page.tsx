@@ -23,6 +23,7 @@ import { CircleAlert, Clock, IndianRupee, ListChecks, TimerReset, Users } from "
 import { MyPlanTab, TeamPlansTab } from "./plan-tabs";
 import { getPolicy, plansApplyTo, reporteeIds } from "@/lib/services/office-rules";
 import { finesForMonth } from "@/lib/services/daily-plans";
+import { lineIds, seesFirm } from "@/lib/hierarchy";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -49,17 +50,21 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
   const clientId = typeof sp.client === "string" && UUID.test(sp.client) ? sp.client : "";
 
   // Admin, Manager and Senior see the Accounting Workflow Tracker; everyone else the Team Daily Work Log.
+  // The "Tracker" tab itself is no longer listed (client feedback, 26 Nov 2026); Dashboard and report
+  // links still open its filtered lists.
   // Office rules (14 Nov 2026): everyone who fills the timesheet sends a morning plan and files the EOD
   // report ("plan"); a Team Lead (anyone others report to, and administrators) sees "team-plans" first.
   // Older tab names are kept so existing links still work.
   const ownPlan = plansApplyTo(ctx);
   const teamLead = can(ctx, "org.manage") || (await reporteeIds(ctx)).length > 0;
   const LEAD_TABS = ["tracker", "dashboard", "report", "log", "hours", "reviews", "daily", "day", "mine", "plan", "team-plans"];
-  const STAFF_TABS = ["plan", "daily", "day", "mine", ...(teamLead ? ["team-plans"] : [])];
+  // A Team Lead without the "see the team's timesheets" right still sees the daily log of their line
+  // (client feedback, 26 Nov 2026).
+  const STAFF_TABS = ["plan", "daily", "day", "mine", ...(teamLead ? ["team-plans", "log"] : [])];
   const legacy: Record<string, string> = { collective: "log", pending: "reviews" };
   const requested = typeof sp.tab === "string" ? (legacy[sp.tab] ?? sp.tab) : "";
   const tab = viewAll
-    ? (LEAD_TABS.includes(requested) && (ctx.employee || !["daily", "day", "mine", "plan"].includes(requested)) && (requested !== "team-plans" || teamLead) ? requested : teamLead ? "team-plans" : "tracker")
+    ? (LEAD_TABS.includes(requested) && (ctx.employee || !["daily", "day", "mine", "plan"].includes(requested)) && (requested !== "team-plans" || teamLead) ? requested : teamLead ? "team-plans" : "log")
     : (STAFF_TABS.includes(requested) ? requested : ownPlan ? "plan" : "daily");
 
   return (
@@ -74,7 +79,6 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
         tabs={viewAll ? [
           ...(teamLead ? [{ key: "team-plans", label: "Team plans & EOD", href: "/app/timesheet?tab=team-plans" }] : []),
           ...(ownPlan ? [{ key: "plan", label: "My plan & EOD", href: "/app/timesheet?tab=plan" }] : []),
-          { key: "tracker", label: "Tracker", href: "/app/timesheet?tab=tracker" },
           { key: "dashboard", label: "Dashboard", href: "/app/timesheet?tab=dashboard" },
           { key: "report", label: "Client Pending Report", href: "/app/timesheet?tab=report" },
           { key: "log", label: "Team daily log", href: "/app/timesheet?tab=log" },
@@ -83,6 +87,7 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
         ] : [
           ...(ownPlan ? [{ key: "plan", label: "Plan & EOD report", href: "/app/timesheet?tab=plan" }] : []),
           ...(teamLead ? [{ key: "team-plans", label: "Team plans & EOD", href: "/app/timesheet?tab=team-plans" }] : []),
+          ...(teamLead ? [{ key: "log", label: "Team daily log", href: "/app/timesheet?tab=log" }] : []),
           { key: "daily", label: "Daily Log", href: `/app/timesheet?tab=daily&date=${date}` },
           { key: "day", label: "Day Report", href: `/app/timesheet?tab=day&date=${date}` },
           { key: "mine", label: "Pending Tracker", href: "/app/timesheet?tab=mine" },
@@ -258,7 +263,10 @@ export default async function TimesheetPage({ searchParams }: PageProps<"/app/ti
   }
 
   async function TeamMemberSelect() {
-    const employees = await employeeOptions(ctx.organization.id);
+    // A lead picks only from their own line; owners / administrators from the whole firm.
+    const all = await employeeOptions(ctx.organization.id);
+    const line = seesFirm(ctx, "timesheet.view_all") ? null : new Set(await lineIds(ctx));
+    const employees = line ? all.filter((e) => line.has(e.value)) : all;
     return (
       <label className="text-sm"><span className="mb-1 block font-medium">Team member</span>
         <select name="employee" defaultValue={employeeId} className="h-10 rounded-md border border-line bg-surface px-2 text-sm">

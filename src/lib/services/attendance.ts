@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { BusinessRuleError, zCheckbox, zIsoDate, zOptionalText } from "@/lib/actions";
 import { addDays, dateOnly, formatDate, hhmmToMinutes, isoDateInTz, minutesOfDayInTz, monthRange, toIsoDate, todayDateOnly } from "@/lib/dates";
-import { hhmm, leaveWithIntimation, noticeDays, scheduleFor, timesOfDay } from "@/lib/domain/attendance-policy";
+import { allowedWorkLocations, hhmm, leaveWithIntimation, noticeDays, scheduleFor, timesOfDay, WORK_LOCATION_WORDS } from "@/lib/domain/attendance-policy";
 import { isMissingTimeOut, lunchAllowanceMinutes, lunchMinutes, lunchOverMinutes, markOutReminderDue } from "@/lib/domain/attendance-extras";
 import type { AppContext } from "@/lib/session";
 import { can } from "@/lib/permissions";
@@ -71,10 +71,14 @@ export async function markAttendance(ctx: AppContext, kind: "in" | "out", v: z.i
   const [existing, policy, emp] = await Promise.all([
     prisma.attendanceRecord.findFirst({ where: { organizationId: ctx.organization.id, employeeId: ctx.employee.id, attendanceDate: day }, orderBy: { createdAt: "desc" } }),
     getPolicy(ctx.organization.id),
-    prisma.employee.findUniqueOrThrow({ where: { id: ctx.employee.id }, select: { attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true } }),
+    prisma.employee.findUniqueOrThrow({ where: { id: ctx.employee.id }, select: { attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true, allowedWorkLocations: true } }),
   ]);
   const location = v.workLocation ?? existing?.workLocation ?? undefined;
   if (kind === "in" && !location) throw new BusinessRuleError("Choose where you are working today.");
+  // Only the places the Team Lead set in Team timings (the one marked in at stays valid at mark-out).
+  if (location && location !== existing?.workLocation && !allowedWorkLocations(emp.allowedWorkLocations).includes(location)) {
+    throw new BusinessRuleError(`Your Team Lead has set where you work: ${allowedWorkLocations(emp.allowedWorkLocations).map((l) => WORK_LOCATION_WORDS[l]).join(", ")}. Choose one of these.`);
+  }
   if (location && location !== "OFFICE" && !v.workPlace && !(kind === "out" && existing?.workPlace)) {
     throw new BusinessRuleError(location === "CLIENT_OFFICE" ? "Enter the client whose office you are at." : "Enter the client you are visiting.");
   }

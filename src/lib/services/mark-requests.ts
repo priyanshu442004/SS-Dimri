@@ -4,7 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { BusinessRuleError, zOptionalText } from "@/lib/actions";
 import { formatDate, formatTime, hhmmToMinutes, minutesOfDayInTz, monthRange, toIsoDate, todayDateOnly, zonedDateTime } from "@/lib/dates";
-import { hhmm, scheduleFor, type Schedule } from "@/lib/domain/attendance-policy";
+import { allowedWorkLocations, hhmm, scheduleFor, WORK_LOCATION_WORDS, type Schedule } from "@/lib/domain/attendance-policy";
 import { can } from "@/lib/permissions";
 import type { AppContext } from "@/lib/session";
 import { NO_EMPLOYEE } from "@/lib/ids";
@@ -76,6 +76,9 @@ export async function raiseMarkRequest(ctx: AppContext, v: z.infer<typeof markRe
   const now = new Date();
   const nowMin = minutesOfDayInTz(now, tz);
   if (v.workLocation !== "OFFICE" && !v.workPlace?.trim()) throw new BusinessRuleError(v.workLocation === "CLIENT_OFFICE" ? "Enter the client whose office you are at." : "Enter the client you are visiting.");
+  const me = await prisma.employee.findUniqueOrThrow({ where: { id: ctx.employee.id }, select: { allowedWorkLocations: true } });
+  const allowed = allowedWorkLocations(me.allowedWorkLocations);
+  if (!allowed.includes(v.workLocation)) throw new BusinessRuleError(`Your Team Lead has set where you work: ${allowed.map((l) => WORK_LOCATION_WORDS[l]).join(", ")}. Choose one of these.`);
   const policy = await getPolicy(ctx.organization.id);
   const existing = await prisma.attendanceRecord.findFirst({ where: { organizationId: ctx.organization.id, employeeId: ctx.employee.id, attendanceDate: day } });
   if (existing?.timeIn) throw new BusinessRuleError(`You are already marked in today (${formatTime(existing.timeIn, tz)}).`);

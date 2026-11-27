@@ -130,8 +130,8 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
               <button className="h-10 rounded-md border border-line bg-surface px-4 text-sm hover:bg-subtle">Apply</button>
             </form>
             {rows.length === 0 ? <EmptyState kind="documents" title="No assets yet">Add the firm&apos;s laptops, desktops, printers, mobiles and furniture on the right.</EmptyState> : (
-              <Table minWidth={860}>
-                <thead><tr><Th>Code</Th><Th>Asset</Th><Th>Purchase</Th><Th>Location / condition</Th><Th>Status · with</Th><Th /></tr></thead>
+              <Table minWidth={980}>
+                <thead><tr><Th>Code</Th><Th>Asset</Th><Th>Purchase</Th><Th>Location / condition</Th><Th>Status</Th><Th>Assigned to</Th><Th /></tr></thead>
                 <tbody>
                   {rows.map((a) => {
                     const holder = a.issues.find((i) => !i.returnedOn);
@@ -141,7 +141,8 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
                         <Td><span className="font-medium">{a.description}</span><div className="text-xs text-muted">{[a.category, a.serialNo && `S/N ${a.serialNo}`].filter(Boolean).join(" · ")}</div></Td>
                         <Td className="whitespace-nowrap text-xs">{a.purchaseDate ? formatDate(a.purchaseDate) : "—"}<div>{inr(a.cost)}{a.vendor ? ` · ${a.vendor}` : ""}</div></Td>
                         <Td className="text-xs">{a.location ?? "—"}<div className="text-muted">{a.condition ? ASSET_CONDITIONS[a.condition as keyof typeof ASSET_CONDITIONS] : ""}</div></Td>
-                        <Td className="text-xs"><Badge tone={STATUS_TONE[a.status as keyof typeof STATUS_TONE] ?? "neutral"}>{ASSET_STATUSES[a.status as keyof typeof ASSET_STATUSES] ?? a.status}</Badge>{holder && <div className="mt-1">{person(holder.employee)} · since {formatDate(holder.issuedOn)}</div>}</Td>
+                        <Td className="text-xs"><Badge tone={STATUS_TONE[a.status as keyof typeof STATUS_TONE] ?? "neutral"}>{ASSET_STATUSES[a.status as keyof typeof ASSET_STATUSES] ?? a.status}</Badge>{a.spareParts.length > 0 && <div className="mt-1 text-muted">{a.spareParts.length} spare part{a.spareParts.length === 1 ? "" : "s"}</div>}</Td>
+                        <Td className="text-xs">{holder ? <><Link href={`/app/employees/${holder.employee.id}`} className="font-medium text-ink hover:underline">{person(holder.employee)}</Link><div className="text-muted">since {formatDate(holder.issuedOn)}</div></> : <span className="text-muted">—</span>}</Td>
                         <Td><Link href={`/app/assets?asset=${a.id}#asset`} className="whitespace-nowrap text-sm font-medium text-brand-700 hover:underline">{a.status === "IN_STOCK" ? "Issue to someone" : a.status === "ISSUED" ? "Take back" : "Open"}</Link></Td>
                       </tr>
                     );
@@ -165,7 +166,8 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
                   )}
                 </Card>
                 <Card title="Edit asset">
-                  <AssetForm key={open.id} edit action={saveAssetAction.bind(null, open.id)} categories={ASSET_CATEGORIES} conditions={CONDITIONS} d={{ code: open.code, description: open.description, category: open.category ?? "", serialNo: open.serialNo ?? "", purchaseDate: open.purchaseDate ? toIsoDate(open.purchaseDate) : "", vendor: open.vendor ?? "", cost: open.cost ? String(Number(open.cost)) : "", location: open.location ?? "", condition: open.condition ?? "", status: open.status, notes: open.notes ?? "" }} />
+                  <AssetForm key={open.id} edit action={saveAssetAction.bind(null, open.id)} categories={ASSET_CATEGORIES} conditions={CONDITIONS} d={{ code: open.code, description: open.description, category: open.category ?? "", serialNo: open.serialNo ?? "", purchaseDate: open.purchaseDate ? toIsoDate(open.purchaseDate) : "", vendor: open.vendor ?? "", cost: open.cost ? String(Number(open.cost)) : "", location: open.location ?? "", condition: open.condition ?? "", status: open.status, notes: open.notes ?? "" }}
+                    spareParts={open.spareParts.map((p) => ({ name: p.name, issuedOn: toIsoDate(p.issuedOn) }))} today={today} />
                   {open.issues.length === 0 && <div className="mt-3"><ActionButton variant="ghost" action={deleteAssetAction.bind(null, open.id)} confirm="Remove this asset from the register?">Remove asset</ActionButton></div>}
                 </Card>
               </section>

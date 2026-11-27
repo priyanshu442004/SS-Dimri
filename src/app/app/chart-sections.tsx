@@ -28,7 +28,7 @@ const more = (href: string, label = "Open") => (
 export function FirmCharts({ a }: { a: Firm }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <ChartCard title="Hours recorded per day" subtitle={`Last 30 days · ${fmt(sum(a.hoursPerDay), "minutes")} in total`} table={daily(a.hoursPerDay, "minutes", ["Hours"])} action={more("/app/timesheet?tab=tracker")}>
+      <ChartCard title="Hours recorded per day" subtitle={`Last 30 days · ${fmt(sum(a.hoursPerDay), "minutes")} in total`} table={daily(a.hoursPerDay, "minutes", ["Hours"])} action={more("/app/timesheet?tab=log")}>
         <TrendLine points={a.hoursPerDay} series={["Hours"]} format="minutes" />
       </ChartCard>
       <ChartCard title="Tasks created vs completed" subtitle={`Last 30 days · ${sum(a.tasksFlow, 0)} created, ${sum(a.tasksFlow, 1)} completed`} table={daily(a.tasksFlow, "count", ["Created", "Completed"])} action={more("/app/tasks?scope=all")}>

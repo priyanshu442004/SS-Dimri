@@ -20,8 +20,10 @@ export async function GET(request: Request) {
     return [a.code, a.description, a.category ?? "", a.serialNo ?? "", a.purchaseDate, a.vendor ?? "", a.cost === null ? null : Number(a.cost), a.location ?? "", cond(a.condition), ASSET_STATUSES[a.status as keyof typeof ASSET_STATUSES] ?? a.status, h ? name(h.employee) : "", h?.issuedOn ?? null, a.notes ?? ""];
   });
   const history = rows.flatMap((a) => a.issues.map((i) => [a.code, a.description, name(i.employee), i.issuedOn, cond(i.issueCondition), i.returnedOn, cond(i.returnCondition), i.notes ?? ""]));
+  const spares = rows.flatMap((a) => a.spareParts.map((p) => [a.code, a.description, p.name, p.issuedOn]));
   return xlsxResponse(`fixed-assets-${today}.xlsx`, [
     { name: "Register", title: `${ctx.organization.tradeName} – Fixed Assets Register · ${today}`, rows: [["Asset code", "Description", "Category", "Serial no.", "Purchase date", "Vendor", "Cost", "Location", "Condition", "Status", "Issued to", "Issued on", "Notes"], ...register] },
     { name: "Issue history", title: `${ctx.organization.tradeName} – Asset issue / return history`, rows: [["Asset code", "Description", "Employee", "Issued (out)", "Condition at issue", "Returned (in)", "Condition at return", "Notes"], ...history] },
+    { name: "Spare parts", title: `${ctx.organization.tradeName} – Spare parts`, rows: [["Asset code", "Description", "Spare part", "Issue date"], ...spares] },
   ]);
 }

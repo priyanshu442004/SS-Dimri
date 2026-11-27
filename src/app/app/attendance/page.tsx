@@ -10,7 +10,7 @@ import { DownloadButton } from "@/components/ui";
 import { DeleteButton } from "@/components/delete-dialog";
 import { canDelete } from "@/lib/services/deletions";
 import { CalendarCheck2, CalendarOff, Camera, CircleSlash, Clock4, LogOut, MapPin, MoonStar, UserCheck, Users, UtensilsCrossed } from "lucide-react";
-import { hhmm, noLeaveBonusDays, noticeDays } from "@/lib/domain/attendance-policy";
+import { allowedWorkLocations, hhmm, noLeaveBonusDays, noticeDays } from "@/lib/domain/attendance-policy";
 import { leaveUsedThisMonth, parseTeamFilters, teamAttendanceRows, todayIso, type AttendanceFilter } from "@/lib/services/attendance";
 import { getPolicy, hasAcceptedRules, holidaySet, isOffDay, reporteeIds, scheduleOf, workLocationLabels } from "@/lib/services/office-rules";
 import { ownWorkClientOptions } from "@/lib/services/lookups";
@@ -124,7 +124,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
     const [todayRec, records, emp, visits, missed, leaveToday, myForms, pay, plans, holidays] = await Promise.all([
       prisma.attendanceRecord.findFirst({ where: { employeeId: me, attendanceDate: day }, orderBy: { createdAt: "desc" }, include: { timeInProxyBy: { select: { name: true } } } }),
       prisma.attendanceRecord.findMany({ where: { employeeId: me, attendanceDate: { gte: start, lte: end } }, orderBy: { attendanceDate: "asc" } }),
-      prisma.employee.findUniqueOrThrow({ where: { id: me }, select: { attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true, siteName: true, rulesAcknowledgedAt: true } }),
+      prisma.employee.findUniqueOrThrow({ where: { id: me }, select: { attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true, siteName: true, rulesAcknowledgedAt: true, allowedWorkLocations: true } }),
       myVisitsToday(ctx),
       // Earlier days (last month) with a time in and no time out: their hours cannot be counted.
       prisma.attendanceRecord.findMany({
@@ -141,6 +141,12 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
     const now = new Date();
     const nowMin = minutesOfDayInTz(now, tz);
     const schedule = scheduleOf(policy, emp, todayRec);
+    // Only the places the Team Lead set in Team timings (all three when nothing is set); at mark-out,
+    // also the place marked in at.
+    const myPlaces = allowedWorkLocations(emp.allowedWorkLocations);
+    const pick = (ls: string[]) => Object.fromEntries((Object.keys(labels) as (keyof typeof labels)[]).filter((k) => ls.includes(k)).map((k) => [k, labels[k]])) as typeof labels;
+    const myLabels = pick(myPlaces);
+    const outLabels = pick([...myPlaces, ...(todayRec?.workLocation ? [todayRec.workLocation] : [])]);
     const reminderDue = markOutReminderDue(now, policyRow.markOutReminderAt, tz);
     const markedInOpen = !!todayRec?.timeIn && !todayRec.timeOut;
     const currentVisit = visits.find((v) => !v.endedAt) ?? null;
@@ -213,7 +219,8 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                       <p className="mb-3 text-sm">Forgot, or can&apos;t mark in (phone, location, network)? <Link href="/app/attendance?tab=requests&kind=MARK_ATTENDANCE" className="font-medium text-brand-700 hover:underline">Ask your seniors to mark your attendance</Link> — before {hhmm(schedule.absentAt)}.</p>
                     );
                   })()}
-                  <MarkCard action={markAction.bind(null, "in")} kind="in" showLateReason={lateNow} labels={labels} clients={clientNames} firmStart={policyRow.officeStart} photo={policyRow.attendancePhoto} defaultLocation={emp.attendanceProfile === "ONSITE" ? "CLIENT_OFFICE" : null} defaultPlace={emp.siteName}
+                  {emp.allowedWorkLocations.length > 0 && <p className="mb-2 text-xs text-muted">Your Team Lead has set where you work: {myPlaces.map((l) => labels[l]).join(", ")}.</p>}
+                  <MarkCard action={markAction.bind(null, "in")} kind="in" showLateReason={lateNow} labels={myLabels} clients={clientNames} firmStart={policyRow.officeStart} photo={policyRow.attendancePhoto} defaultLocation={myPlaces.length === 1 ? myPlaces[0] : emp.attendanceProfile === "ONSITE" && myPlaces.includes("CLIENT_OFFICE") ? "CLIENT_OFFICE" : null} defaultPlace={emp.siteName}
                     warning={lateNow ? `It is past ${hhmm(schedule.graceUntil)}, so this counts as a late arrival${nowMin - schedule.start > policy.numbers.veryLateAfterMinutes ? " of more than an hour (a half day)" : ""}.` : null} />
                 </>
               ) : !todayRec && pastCutoff && !off ? (
@@ -245,7 +252,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                   {ot ? <span className="text-muted">Overtime{ot.atTime ? ` till ${ot.atTime}` : ""}: <StatusBadge status={ot.status} /></span>
                     : nowMin < schedule.overtimeAfter && <Link href="/app/attendance?tab=requests&kind=OVERTIME" className="font-medium text-brand-700 hover:underline">Need to stay after {hhmm(schedule.overtimeAfter)}?</Link>}
                 </div>
-                <MarkCard action={markAction.bind(null, "out")} kind="out" showLateReason={false} labels={labels} clients={clientNames} firmStart={policyRow.officeStart} photo={policyRow.attendancePhoto} defaultLocation={todayRec.workLocation} defaultPlace={todayRec.workPlace} warning={outWarning} />
+                <MarkCard action={markAction.bind(null, "out")} kind="out" showLateReason={false} labels={outLabels} clients={clientNames} firmStart={policyRow.officeStart} photo={policyRow.attendancePhoto} defaultLocation={todayRec.workLocation} defaultPlace={todayRec.workPlace} warning={outWarning} />
               </>
             ) : (
               <div className="space-y-2">
@@ -374,7 +381,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
     const [mine, toDecide, emp, markQueue, placeClients, todayRec, usedMarks] = await Promise.all([
       myRequests(ctx),
       lead ? requestsToDecide(ctx) : Promise.resolve([]),
-      ctx.employee ? prisma.employee.findUnique({ where: { id: ctx.employee.id }, select: { attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true } }) : Promise.resolve(null),
+      ctx.employee ? prisma.employee.findUnique({ where: { id: ctx.employee.id }, select: { attendanceProfile: true, siteReportingTime: true, siteDayMinutes: true, allowedWorkLocations: true } }) : Promise.resolve(null),
       markRequestsToDecide(ctx),
       ctx.employee ? placeClientOptions() : Promise.resolve([]),
       ctx.employee ? prisma.attendanceRecord.findFirst({ where: { employeeId: ctx.employee.id, attendanceDate: day } }) : Promise.resolve(null),
@@ -392,7 +399,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
         <div className="space-y-6">
           {ctx.employee && (
             <Card title="Inform or ask your Team Lead">
-              <RequestForm action={raiseRequestAction} today={today} initialKind={kind} clients={placeClients} officeLabel={labels.OFFICE} firmStart={policyRow.officeStart} markInfo={markInfo}
+              <RequestForm action={raiseRequestAction} today={today} initialKind={kind} clients={placeClients} officeLabel={labels.OFFICE} firmStart={policyRow.officeStart} markInfo={markInfo} places={allowedWorkLocations(emp?.allowedWorkLocations)}
                 defaults={{ arrival: hhmm(s.start + 30), leaving: hhmm(s.halfDayBefore), overtimeUntil: hhmm(s.overtimeAfter + 60), monthBack: toIsoDate(addDays(dateOnly(today), -31)), reachedAt: hhmm(Math.min(nowMin, s.start)) }} />
             </Card>
           )}
@@ -652,7 +659,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
   }
 
   async function Schedules() {
-    const rows = await scheduleRows(ctx);
+    const [rows, siteClients] = await Promise.all([scheduleRows(ctx), placeClientOptions().then((cs) => cs.map((c) => ({ ...c, mine: false })).sort((x, y) => x.name.localeCompare(y.name)))]);
     const office = scheduleOf(policy, null);
     const officeHours = `${hhmm(office.start)}–${hhmm(office.end)}`;
     const editId = typeof sp.edit === "string" ? sp.edit : "";
@@ -669,7 +676,13 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <Td className="font-medium">{nameOf(r)}<div className="text-xs font-normal text-muted">{r.designation?.name}</div></Td>
-                    <Td>{r.schedule.site ? <><Badge tone="info">Client site</Badge> <span className="text-xs">{r.siteName}</span></> : <span className="text-xs">{labels.OFFICE}</span>}</Td>
+                    <Td>
+                      {r.allowedWorkLocations.length ? (
+                        <span className="flex flex-wrap gap-1">{allowedWorkLocations(r.allowedWorkLocations).map((l) => <Badge key={l} tone={l === "OFFICE" ? "neutral" : "info"}>{labels[l]}</Badge>)}</span>
+                      ) : r.schedule.site ? <Badge tone="info">Client site</Badge> : <span className="text-xs">{labels.OFFICE}</span>}
+                      {r.schedule.site && r.siteName && <div className="mt-0.5 text-xs">{r.siteName}</div>}
+                      {!r.allowedWorkLocations.length && <div className="text-[11px] text-muted">Any place at mark-in</div>}
+                    </Td>
                     <Td className="whitespace-nowrap text-xs">{hhmm(r.schedule.start)}–{hhmm(r.schedule.end)} · {Math.round(((r.schedule.end - r.schedule.start) / 60) * 100) / 100} h<div className="text-muted">grace {hhmm(r.schedule.graceUntil)}</div></Td>
                     <Td className="text-xs">{r.today?.lunchShiftedTo ? `Moved to ${r.today.lunchShiftedTo}` : r.today?.timeIn ? `${policyRow.lunchStart}–${policyRow.lunchEnd}` : "—"}</Td>
                     <Td><Link href={`/app/attendance?tab=schedules&edit=${r.id}#timing`} className="text-xs font-medium text-brand-700 hover:underline">Change</Link></Td>
@@ -682,8 +695,9 @@ export default async function AttendancePage({ searchParams }: PageProps<"/app/a
         <div className="space-y-6">
           <Card title="Set a client-site timing">
             <p id="timing" className="mb-3 scroll-mt-24 text-xs text-muted">For team members working at a client: fix the reporting time from the client&apos;s timing and location, and how many hours their day is (usually {policyRow.onsiteRequiredMinutes / 60} h — change it when the client works shorter or longer). Grace, half-day and overtime times move with it. Office team: {officeHours}.</p>
-            <ScheduleForm key={editId} action={setScheduleAction} employees={options} officeHours={officeHours} firmSiteHours={policyRow.onsiteRequiredMinutes / 60}
-              defaults={editing ? { employeeId: editing.id, place: editing.schedule.site ? "SITE" : "OFFICE", time: editing.siteReportingTime ?? undefined, site: editing.siteName ?? undefined, hours: editing.siteDayMinutes ? editing.siteDayMinutes / 60 : undefined } : undefined} />
+            <ScheduleForm key={editId} action={setScheduleAction} employees={options} officeHours={officeHours} firmSiteHours={policyRow.onsiteRequiredMinutes / 60} clients={siteClients}
+              labels={labels}
+              defaults={editing ? { employeeId: editing.id, places: editing.allowedWorkLocations.length ? allowedWorkLocations(editing.allowedWorkLocations) : [editing.schedule.site ? "CLIENT_OFFICE" : "OFFICE"], time: editing.siteReportingTime ?? undefined, site: editing.siteName ?? undefined, hours: editing.siteDayMinutes ? editing.siteDayMinutes / 60 : undefined } : undefined} />
           </Card>
           <Card title="Move today's lunch (urgent work)">
             <p className="mb-3 text-xs text-muted">Lunch is {policyRow.lunchStart}–{policyRow.lunchEnd}. You may shift it for urgent work; it is never more than {lunchAllowance} minutes.</p>

@@ -292,11 +292,15 @@ export function trackerWho(ctx: AppContext): Prisma.TrackerLineWhereInput {
   return { OR: [{ maker: inLine(ctx) }, { checker: inLine(ctx) }] };
 }
 
-/** Whose timesheet entries the caller sees: the firm, their line (a lead), or their own (tracker S.No. 97). */
+/**
+ * Whose timesheet entries the caller sees: the firm, else their own and everyone in their line —
+ * reporting to them directly or through others — whatever their role (tracker S.No. 97; client
+ * feedback 26 Nov 2026: every Team Lead sees the team daily log of the people under them).
+ */
 export function timesheetWho(ctx: AppContext): Prisma.TimesheetEntryWhereInput {
   if (seesFirm(ctx, "timesheet.view_all")) return {};
-  if (can(ctx, "timesheet.view_all")) return { employee: inLine(ctx) };
-  return { employeeId: ctx.employee?.id ?? NO_EMPLOYEE };
+  if (!ctx.employee) return { employeeId: NO_EMPLOYEE };
+  return { employee: inLine(ctx) };
 }
 
 export const pendingSchema = z.object({

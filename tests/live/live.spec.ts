@@ -155,7 +155,8 @@ test("admin timesheet: workflow tracker, dashboard, client pending report, team 
   await signIn(page, firmA.email, firmA.password);
   await page.goto("/app/timesheet?tab=tracker");
   const sections = page.getByRole("navigation", { name: "Sections" });
-  for (const name of ["Tracker", "Dashboard", "Client Pending Report", "Team daily log", "Hours & reviews"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
+  for (const name of ["Dashboard", "Client Pending Report", "Team daily log", "Hours & reviews"]) await expect(sections.getByRole("link", { name, exact: true })).toBeVisible();
+  await expect(sections.getByRole("link", { name: "Tracker", exact: true })).toHaveCount(0);
   await expect(page.getByText("No tracker lines yet")).toBeVisible();
   // Add a tracker line for a client typed by name, with a pending point for the client.
   const add = page.locator("form", { has: page.getByRole("button", { name: "Add to tracker" }) });

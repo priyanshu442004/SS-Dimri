@@ -3,14 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { parseForm, safeAction, type ActionState } from "@/lib/actions";
 import { actionContext } from "@/lib/session";
-import { assetSchema, deleteAsset, issueAsset, issueSchema, returnAsset, returnSchema, saveAsset } from "@/lib/services/assets";
+import { assetSchema, parseSpareParts, deleteAsset, issueAsset, issueSchema, returnAsset, returnSchema, saveAsset } from "@/lib/services/assets";
 
 export async function saveAssetAction(id: string | null, _p: ActionState, fd: FormData): Promise<ActionState> {
   const parsed = parseForm(assetSchema, fd);
   if (!parsed.success) return parsed.state;
+  const spares = parseSpareParts(fd);
+  if ("error" in spares) return { ok: false, message: spares.error };
   return safeAction(async () => {
     const ctx = await actionContext("assets.manage");
-    await saveAsset(ctx, parsed.data, id ?? undefined);
+    // Only the edit form carries the spare-part rows (its marker field); the add form leaves them alone.
+    await saveAsset(ctx, parsed.data, id ?? undefined, fd.has("sparePartsShown") ? spares.parts : undefined);
     revalidatePath("/app/assets");
     return { ok: true, message: id ? "Asset updated." : `Asset ${parsed.data.code} added to the register.` };
   });
