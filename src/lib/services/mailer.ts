@@ -13,10 +13,10 @@ import { firmTransport } from "./messaging";
 // Mail sent for a firm shows that firm's name as the sender (on the server's own
 // address, so SPF/DKIM still pass) and replies go to the firm's contact email.
 
-export type MailResult = { status: "SENT" | "FAILED" | "SKIPPED"; error?: string };
+export type MailResult = { status: "SENT" | "FAILED" | "SKIPPED"; error?: string; /** Message-ID of the sent mail (without < >). */ messageId?: string };
 
 /** The sending address: the address part of MAIL_FROM ("Name <addr>" or "addr"), else SMTP_USER. */
-function senderAddress() {
+export function senderAddress() {
   const raw = process.env.MAIL_FROM ?? process.env.SMTP_USER ?? "";
   return /<([^>]+)>/.exec(raw)?.[1]?.trim() ?? raw.trim();
 }
@@ -56,6 +56,15 @@ export async function sendMail(m: {
   html: string;
   relatedUserId?: string;
   attachments?: { filename: string; content: Uint8Array; contentType: string }[];
+  /** Where replies go, instead of the firm's contact email (e.g. the careers mailbox the ERP reads). */
+  replyTo?: string;
+  /** Our own Message-ID ("<…@…>"), so replies can be matched to this mail. */
+  messageId?: string;
+  /** Use the server's own account even when the firm has its own SMTP set up (its replies are read from that mailbox). */
+  serverAccount?: boolean;
+  /** Thread headers, so the mail shows as a reply in the recipient's conversation. */
+  inReplyTo?: string;
+  references?: string[];
 }): Promise<MailResult> {
   let result: MailResult;
   if (m.to.toLowerCase().endsWith(".invalid")) {
@@ -68,18 +77,18 @@ export async function sendMail(m: {
     }
   } else {
     // The firm's own email account (Settings → Email & WhatsApp) when set up, else the server's.
-    const own = m.organizationId ? await firmTransport(m.organizationId).catch(() => null) : null;
+    const own = m.organizationId && !m.serverAccount ? await firmTransport(m.organizationId).catch(() => null) : null;
     const t = own?.t ?? smtp();
     if (!t) {
       result = { status: "FAILED", error: "Email is not configured on the server (SMTP settings missing)." };
     } else {
       try {
         const { from, replyTo } = own ? { from: own.from, replyTo: undefined } : await senderFor(m.organizationId);
-        await t.sendMail({
-          from, replyTo, to: m.to, subject: m.subject, text: m.text, html: m.html,
+        const info = await t.sendMail({
+          from, replyTo: m.replyTo ?? replyTo, to: m.to, subject: m.subject, text: m.text, html: m.html, messageId: m.messageId, inReplyTo: m.inReplyTo, references: m.references,
           attachments: m.attachments?.map((a) => ({ filename: a.filename, content: Buffer.from(a.content), contentType: a.contentType })),
         });
-        result = { status: "SENT" };
+        result = { status: "SENT", messageId: String(info.messageId ?? m.messageId ?? "").replace(/^<|>$/g, "") || undefined };
       } catch (e) {
         // Keep the reason short and free of credentials.
         result = { status: "FAILED", error: (e instanceof Error ? e.message : "Send failed").slice(0, 300) };

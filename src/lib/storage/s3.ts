@@ -14,7 +14,8 @@ export type StorageArea =
   | "employees"
   | "tasks"
   | "attendance"
-  | "reports";
+  | "reports"
+  | "careers";
 
 let client: S3Client | undefined;
 

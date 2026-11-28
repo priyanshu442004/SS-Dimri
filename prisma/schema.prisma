@@ -540,6 +540,7 @@ model User {
   attendanceCorrections     AttendanceCorrection[]
   followUps                 FollowUp[]
   reviewedTimesheets        TimesheetEntry[]       @relation("TimesheetReviewedBy")
+  uploadedResumes           ResumeSubmission[]     @relation("ResumeUploadedBy")
   createdObservations       ClientObservation[]    @relation("ObservationCreatedBy")
   issuedLetters             EmployeeLetter[]       @relation("LetterIssuedBy")
   createdComplianceEntries  ComplianceEntry[]      @relation("ComplianceCreatedBy")
@@ -724,6 +725,8 @@ model Organization {
   aiReports              AiReport[]
   clientNotices          ClientNotice[]
   officeAssets           OfficeAsset[]
+  resumeSubmissions      ResumeSubmission[]
+  candidateReplies       CandidateReply[]
   conveyanceClaims       ConveyanceClaim[]
   employeeAdvances       EmployeeAdvance[]
   notifications          Notification[]
@@ -898,6 +901,7 @@ model StoredFile {
   clientReportExport         ClientReport?               @relation("ClientReportFile")
   followUp                   FollowUp?                   @relation("FollowUpFile")
   conveyanceBill             ConveyanceClaim?            @relation("ConveyanceBill")
+  resumeSubmission           ResumeSubmission?           @relation("ResumeFile")
 
   @@index([organizationId])
   @@map("stored_files")
@@ -3243,7 +3247,7 @@ model OfficeAsset {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   issues       AssetIssue[]
   spareParts   AssetSparePart[]
 
@@ -3307,4 +3311,112 @@ model AiGeneratedFile {
 
   @@index([userId, createdAt])
   @@map("ai_generated_files")
+}
+
+/// Careers (client request 28 Nov 2026): a resume any team member uploads, one at a time, with who
+/// referred the candidate. On upload the candidate is emailed (at the address found in the resume)
+/// for their CTC, notice period, interview slots and location; their reply is read back from the
+/// mailbox and shown to administrators.
+model ResumeSubmission {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  /// Short reference put in the email subject ("CV-7KQ2MX"), so a reply can be matched even when the
+  /// candidate's mail program drops the thread headers.
+  ref             String    @db.VarChar(12)
+  fileId          String?   @unique @map("file_id") @db.Uuid
+  candidateName   String    @map("candidate_name") @db.VarChar(200)
+  candidateEmail  String    @map("candidate_email") @db.VarChar(254)
+  candidatePhone  String?   @map("candidate_phone") @db.VarChar(20)
+  /// How the address was chosen: RESUME (as written / a mailto: link), CHECKED (a repaired reading
+  /// the uploader confirmed) or TYPED (entered by the uploader).
+  emailSource     String    @map("email_source") @db.VarChar(10)
+  /// Every address the resume contained, for the administrator.
+  emailsFound     String[]  @default([]) @map("emails_found")
+  /// SELF or OTHER.
+  referredBy      String    @map("referred_by") @db.VarChar(6)
+  referrerName    String    @map("referrer_name") @db.VarChar(200)
+  uploadedById    String?   @map("uploaded_by_id") @db.Uuid
+  /// NEW, SHORTLISTED, INTERVIEW, SELECTED, REJECTED or ON_HOLD (administrators only).
+  status          String    @default("NEW") @db.VarChar(12)
+  adminNote       String?   @map("admin_note") @db.Text
+  /// PENDING, SENT, FAILED, SKIPPED (already emailed recently) or BOUNCED (the address does not exist).
+  mailStatus      String    @default("PENDING") @map("mail_status") @db.VarChar(10)
+  mailError       String?   @map("mail_error") @db.VarChar(400)
+  mailTo          String?   @map("mail_to") @db.VarChar(254)
+  mailedAt        DateTime? @map("mailed_at") @db.Timestamptz(3)
+  mailCount       Int       @default(0) @map("mail_count")
+  /// Message-IDs of every email sent for this resume: replies are matched on these.
+  mailMessageIds  String[]  @default([]) @map("mail_message_ids")
+  // The details from the candidate's reply, as written.
+  currentCtc      String?   @map("current_ctc") @db.VarChar(200)
+  expectedCtc     String?   @map("expected_ctc") @db.VarChar(200)
+  noticePeriod    String?   @map("notice_period") @db.VarChar(200)
+  interviewSlots  String?   @map("interview_slots") @db.VarChar(300)
+  currentLocation String?   @map("current_location") @db.VarChar(200)
+  detailsAt       DateTime? @map("details_at") @db.Timestamptz(3)
+  replyCount      Int       @default(0) @map("reply_count")
+  lastReplyAt     DateTime? @map("last_reply_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  file         StoredFile?      @relation("ResumeFile", fields: [fileId], references: [id], onDelete: SetNull)
+  uploadedBy   User?            @relation("ResumeUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  replies      CandidateReply[]
+
+  @@unique([organizationId, ref])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, candidateEmail])
+  @@index([uploadedById, createdAt])
+  @@map("resume_submissions")
+}
+
+/// A message from the careers mailbox that belongs to a resume: the candidate's reply, an
+/// out-of-office answer, or a bounce. Mail that matches no resume is never stored.
+model CandidateReply {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  submissionId   String   @map("submission_id") @db.Uuid
+  /// The message's own Message-ID (without < >, lower case): one row per message.
+  messageId      String   @unique @map("message_id") @db.VarChar(500)
+  folder         String   @db.VarChar(100)
+  fromEmail      String   @map("from_email") @db.VarChar(254)
+  fromName       String?  @map("from_name") @db.VarChar(200)
+  subject        String?  @db.VarChar(500)
+  receivedAt     DateTime @map("received_at") @db.Timestamptz(3)
+  /// REPLY, AUTO_REPLY or BOUNCE.
+  kind           String   @default("REPLY") @db.VarChar(10)
+  /// THREAD (In-Reply-To / References), REF (the reference in the subject) or SENDER (same address).
+  matchedBy      String   @map("matched_by") @db.VarChar(8)
+  /// The reply without the quoted original.
+  bodyText       String   @map("body_text") @db.Text
+  /// PROCESSING, APPLIED, NO_DETAILS, FAILED or SKIPPED (auto-replies and bounces).
+  status         String   @default("PROCESSING") @db.VarChar(12)
+  attempts       Int      @default(0)
+  error          String?  @db.VarChar(400)
+  /// What the AI read from it: { currentCtc, expectedCtc, noticePeriod, interviewSlots, currentLocation }.
+  details        Json?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  submission   ResumeSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([submissionId, receivedAt])
+  @@map("candidate_replies")
+}
+
+/// Where reading the careers mailbox got to, per folder (INBOX, Junk), and how the last run went.
+model CareersMailSync {
+  folder      String    @id @db.VarChar(100)
+  uidValidity BigInt?   @map("uid_validity")
+  lastUid     Int       @default(0) @map("last_uid")
+  lastRunAt   DateTime? @map("last_run_at") @db.Timestamptz(3)
+  lastOkAt    DateTime? @map("last_ok_at") @db.Timestamptz(3)
+  lastError   String?   @map("last_error") @db.VarChar(400)
+  lastFound   Int       @default(0) @map("last_found")
+  runs        Int       @default(0)
+
+  @@map("careers_mail_sync")
 }

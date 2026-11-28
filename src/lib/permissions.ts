@@ -102,6 +102,10 @@ export const CAPABILITIES = {
   "ai_products.use": EVERYONE,
   /** Fixed Assets Register: add assets, issue them to staff and take them back (tracker S.No. 89, 90). */
   "assets.manage": ADMINS,
+  /** Careers: upload a resume (one at a time) and see the ones you uploaded (client request 28 Nov 2026). */
+  "careers.use": EVERYONE,
+  /** Careers: every resume, who uploaded / referred it, the emails sent and the candidates' replies. */
+  "careers.manage": ADMINS,
   /** Client portal: own business profile, requests, permitted work updates, dues. */
   "portal.use": CLIENTS,
 } as const satisfies Record<string, readonly Role[]>;
@@ -189,6 +193,7 @@ export const GRANTABLE_RIGHTS: { capability: Capability; label: string; group: s
   { capability: "compliance.manage", label: "Manage the compliance tracker", group: "Compliance" },
   { capability: "services.manage", label: "Manage services & departments", group: "Other" },
   { capability: "assets.manage", label: "Manage the fixed assets register (issue / return)", group: "Other" },
+  { capability: "careers.manage", label: "See all resumes and candidates' replies (Careers)", group: "Other" },
   { capability: "reports.client", label: "Client reports", group: "Other" },
   { capability: "dues.manage", label: "Fees & dues", group: "Other" },
   { capability: "observations.manage", label: "Manage client observations", group: "Other" },

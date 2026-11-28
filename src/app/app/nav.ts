@@ -26,6 +26,7 @@ const ITEMS: (NavItem & { cap?: Capability })[] = [
   { href: "/app/rules", label: "Office rules", icon: "book", section: "People", cap: "attendance.mark_own" },
   { href: "/app/assets", label: "Assets", icon: "package", section: "People", cap: "app.use" },
   { href: "/app/employees", label: "Employees", icon: "id", section: "People", cap: "employees.view" },
+  { href: "/app/careers", label: "Careers", icon: "career", section: "People", cap: "careers.use" },
   { href: "/app/services", label: "Services & departments", icon: "briefcase", section: "Setup", cap: "services.manage" },
   { href: "/app/compliances", label: "Compliance", icon: "book", section: "Setup", cap: "compliance.use" },
   { href: "/app/settings", label: "Settings", icon: "settings", section: "Setup", cap: "org.manage" },

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { after } from "next/server";
 import { prisma } from "@/lib/db";
 import { can, ROLE_LABELS } from "@/lib/permissions";
 import { NO_EMPLOYEE } from "@/lib/ids";
@@ -6,6 +7,7 @@ import { OPEN_STATUSES } from "@/lib/domain/task-workflow";
 import { isAwaitingApproval, requireContext } from "@/lib/session";
 import { deliverDueReminders } from "@/lib/services/tasks";
 import { formatDateTime } from "@/lib/dates";
+import { syncCareersMailbox } from "@/lib/careers/mailbox";
 import { AccessWatcher } from "@/components/access-watcher";
 import { signOutAction } from "./account-actions";
 import { navFor } from "./nav";
@@ -17,6 +19,8 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
   await deliverDueReminders(ctx.organization.id).catch(() => undefined);
   const unread = await prisma.notification.count({ where: { userId: ctx.user.id, organizationId: ctx.organization.id, readAt: null } });
   const awaiting = isAwaitingApproval(ctx);
+  // Careers: any page load also reads candidates' replies (at most once a minute, after the page is sent).
+  after(() => syncCareersMailbox({ minIntervalSeconds: 60 }).then(() => undefined, () => undefined));
   const badges = awaiting ? {} : await navBadges(ctx);
 
   return (

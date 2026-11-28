@@ -87,6 +87,27 @@
   .ops-skel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgb(255 255 255 / .55), transparent); animation: ai-shimmer-x 1.2s linear infinite; }
   @keyframes ai-shimmer-x { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 
+  /* Careers: the drop zone breathes while a file is dragged over it, a scan line sweeps the file while
+     it is read, found details slide in, the live dot pulses, a newly arrived reply glows once, and the
+     candidate panel slides in from the right. */
+  .cv-drop-active { animation: cv-breathe 1.2s ease-in-out infinite; }
+  @keyframes cv-breathe { 0%, 100% { box-shadow: 0 0 0 0 rgb(31 61 98 / 0); } 50% { box-shadow: 0 0 0 6px rgb(31 61 98 / .10); } }
+  .cv-scan { position: relative; overflow: hidden; }
+  .cv-scan::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 40%; background: linear-gradient(180deg, transparent, rgb(227 162 26 / .22), transparent); animation: cv-sweep 1.15s ease-in-out infinite; }
+  @keyframes cv-sweep { from { transform: translateY(-100%); } to { transform: translateY(250%); } }
+  .cv-reveal { animation: ai-in 380ms var(--ease-out-expo) both; animation-delay: var(--d, 0ms); }
+  .cv-live-dot { position: relative; }
+  .cv-live-dot::after { content: ""; position: absolute; inset: 0; border-radius: 9999px; background: currentColor; animation: cv-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite; }
+  @keyframes cv-ping { 0% { transform: scale(1); opacity: .55; } 80%, 100% { transform: scale(2.6); opacity: 0; } }
+  .cv-new { animation: cv-glow 2.4s ease-out 1 both; }
+  @keyframes cv-glow { 0% { background-color: rgb(227 162 26 / .32); } 100% { background-color: transparent; } }
+  .cv-panel-backdrop { animation: chart-fade 200ms ease-out both; }
+  .cv-panel { animation: cv-slide 420ms var(--ease-out-expo) both; }
+  @keyframes cv-slide { from { transform: translateX(32px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .cv-spin { animation: ai-spin 900ms linear infinite; }
+  .cv-check { stroke-dasharray: 24; stroke-dashoffset: 24; animation: cv-draw 520ms var(--ease-out-expo) 80ms forwards; }
+  @keyframes cv-draw { to { stroke-dashoffset: 0; } }
+
   @media (prefers-reduced-motion: reduce) {
     .ai-in, .ai-pop, .ai-orb, .ai-shimmer, .ops-rise, .ops-loading-bar { animation: none; }
     .ops-spark { stroke-dashoffset: 0; animation: none; }
@@ -95,6 +116,8 @@
     .ai-caret::after { animation: none; }
     .chart-line { stroke-dashoffset: 0; animation: none; }
     .chart-col, .chart-hbar, .chart-arc, .chart-area, .app-rise, .app-palette, .app-drawer, .app-bump { animation: none; }
+    .cv-drop-active, .cv-reveal, .cv-new, .cv-panel, .cv-panel-backdrop, .cv-spin, .cv-scan::after, .cv-live-dot::after { animation: none; }
+    .cv-check { stroke-dashoffset: 0; animation: none; }
     .app-skeleton::after { animation: none; }
   }
 
